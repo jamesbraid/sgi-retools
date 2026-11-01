@@ -1,0 +1,44 @@
+# Optional second image: Ghidra's headless analyser, for the Ghidra processor
+# modules and scripts under ghidra/. Nothing else in the repository needs it.
+# Run it with `tools/re-run --ghidra`, or `--ghidra-export` for decompiled C and
+# BSim; it is a separate image because it carries
+# a JDK and a 600 MB analyser that the toolchain image does not.
+#
+# Ghidra is Apache-2.0 and ships as a prebuilt zip. It is pinned to a release
+# and checked against that release's published SHA-256, so two builds of this
+# file install the same bytes.
+FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d AS download
+ARG GHIDRA_VERSION=12.1.3
+ARG GHIDRA_ZIP=ghidra_12.1.3_PUBLIC_20260817.zip
+ARG GHIDRA_SHA256=93a5d11a9ad510622acaaf908c556a7b9b764d338e78a7567f3689bf5081fd54
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl unzip \
+ && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL -o /tmp/ghidra.zip \
+      "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/${GHIDRA_ZIP}" \
+ && printf '%s  /tmp/ghidra.zip\n' "$GHIDRA_SHA256" | sha256sum -c - \
+ && unzip -q /tmp/ghidra.zip -d /opt \
+ && mv "/opt/ghidra_${GHIDRA_VERSION}_PUBLIC" /opt/ghidra \
+ && rm /tmp/ghidra.zip
+
+# A JDK, not a JRE: headless compiles a GhidraScript written in Java on the
+# first run, which needs javac. Ghidra 12 wants Java 21.
+FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      openjdk-21-jdk-headless \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=download /opt/ghidra /opt/ghidra
+ENV PATH=/opt/ghidra/support:$PATH
+# analyzeHeadless creates a project inside a directory but not the directory
+# itself, so make a scratch one here and name it in -import runs.
+RUN mkdir -p /tmp/ghidra-projects && chmod 1777 /tmp/ghidra-projects
+# The scripts tools/re-run --ghidra-export drives: global pointer seeding, .mdebug
+# names, decompile export and BSim. Use them from your own analyzeHeadless run
+# with -scriptPath /opt/re-scripts.
+COPY ghidra/scripts /opt/re-scripts
+WORKDIR /work
+RUN java -version 2>&1 | grep -q '21\.' \
+ && javac -version \
+ && test -x /opt/ghidra/support/analyzeHeadless

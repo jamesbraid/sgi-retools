@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Transform-engine microcode of the SGI VPro (Odyssey) BUZZ ASIC:
+     96-bit records, ucode/buzz_isa.md. -->
+<language_definitions>
+  <language processor="ODSY-BUZZ"
+            endian="big"
+            size="16"
+            variant="default"
+            version="1.0"
+            slafile="odsy_buzz.sla"
+            processorspec="odsy_buzz.pspec"
+            id="ODSY-BUZZ:BE:16:default">
+    <description>SGI VPro BUZZ transform microcode (96-bit records, bits 93:64 in context)</description>
+    <compiler name="default" spec="odsy_buzz.cspec" id="default"/>
+  </language>
+</language_definitions>

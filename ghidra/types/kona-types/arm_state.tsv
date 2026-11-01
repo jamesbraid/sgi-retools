@@ -1,0 +1,23 @@
+# The ARM firmware's state block: SRAM addressed as r8 + offset, r8 = 0 (arm1.u, IRIX 6.5.30m).
+# offset: byte offset; type: u8, u16, u32, ptr, or TYPE[N]; status as the cited page labels it.
+# KonaTypes.java builds the structure kona_arm_state from these rows and leaves the rest undefined.
+offset	type	name	status	source
+0x000	u32[16]	vectors	established	init_arm copies the 16 words at vector_start here (ucode/arm1_firmware.md)
+0x040	u8[6]	board_bytes	established	three 16-bit values assembled from these bytes go to the data block at start-up (ucode/arm1_firmware.md)
+0x048	u16[256]	gepc_packed	established	gepc[0..127] packed two 16-bit handler addresses to a word; the low half of 0x4c is slot 3 (ucode/arm1.md)
+0x258	u32	cull_face	established	cull-face value arm_cullface keeps (ucode/arm1_firmware.md)
+0x73c	u32	matrix_mode	established	the current matrix mode (ucode/arm1_firmware.md)
+0x75c	u8	cull_enable	established	set to 1 and cleared by the cull-face enable and disable handlers (ucode/arm1_functions.md)
+0x761	u8	line_smooth	established	set and cleared by the line-smooth enable and disable handlers, which then call ResolveLine (ucode/arm1_functions.md)
+0x766	u8	point_smooth	established	set and cleared by the point-smoothing enable and disable handlers, which then call ResolvePoint (ucode/arm1_functions.md)
+0x860	u16	gl_error	established	sticky GL error, read big-endian; set_error writes only when zero, arm_geterror clears it (ucode/arm1_firmware.md)
+0xc90	u32[2]	ged_xfer_mask	established	the two distributor transfer-mask words compute_gedxfermask forces bits on in (ucode/arm1_functions.md)
+0xc98	u32[3]	rdata_setup	established	read-back set-up written by RDATA_SETUP: address pair and length (ucode/arm1_firmware.md)
+0xca4	u32	rdata_pending	established	zeroed with the read-back set-up, recording a pending transfer (ucode/arm1_functions.md)
+0xcdc	u32	dmapool_page	established	DMA pool base page: arm_dmapool_setup's first payload word, added to input-DMA page numbers (ucode/arm1_firmware.md)
+0xce0	u32	dmapool_offset	established	the same word with its low 12 bits cleared (ucode/arm1_functions.md)
+0xce4	u32	dmapool_last	established	arm_dmapool_setup's last payload word (ucode/arm1_functions.md)
+0xce8	u32	list_base	established	list base the list-DMA handlers add to a pipe-memory address (ucode/arm1_firmware.md)
+0xcf4	ptr	texture_records	established	pointer to the block saved as KONA_CTX_ARM_SDRAM (docs/ge.md)
+0xcf9	u8	dist_mode	established	distribution mode written to distributor register 0x220 at start-up (ucode/arm1_firmware.md)
+0xd00	u32[192]	stack	established	the stack, filled with 0xdeadbeef at start-up (ucode/arm1_firmware.md)

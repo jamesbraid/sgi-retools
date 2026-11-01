@@ -1,0 +1,10 @@
+import os
+exec(open("sp0.py").read().split("pts=c.alloc(32)")[0])
+c.put(v.D+12,struct.pack(">HH",64,64)); c.w8(v.G,3); c.w32(v.G+12,0x0b0b0b0b)
+pts=c.alloc(32); c.put(pts,struct.pack('>hhhh',3,5,9,6)); wd=c.alloc(16); c.w32(wd,6); c.w32(wd+4,7)
+src=c.alloc(64); c.put(src,bytes(range(1,65)))
+FN=int(os.environ["FN"],0)
+try: c.call(FN,[v.D,v.GC,src,pts,wd,2,1])
+except Halt as e: print('halt',e)
+for k in regions: print(k,sorted((o,n) for kk,o,n in log if kk==k))
+print([hex(v.img()[y*64+x]) for (x,y) in ((3,5),(4,5),(9,6))])

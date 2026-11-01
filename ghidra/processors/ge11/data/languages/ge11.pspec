@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<processor_spec>
+  <programcounter register="PC"/>
+  <!-- Every context field is set per word by ghidra_scripts/GE11Import.java
+       from the decoded record; none flows between words. -->
+</processor_spec>

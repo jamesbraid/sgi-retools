@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<processor_spec>
+  <programcounter register="PC"/>
+  <!-- Output words leave the chip as a stream: every write counts, so the
+       decompiler must keep each one. -->
+  <volatile outputop="send_word" inputop="read_word">
+    <range space="outw" first="0x0" last="0x7f"/>
+  </volatile>
+  <!-- Every context field is set per record by ghidra_scripts/BuzzImport.java
+       from the record's bits 93:64 and the image's marks and program table;
+       none flows between records. -->
+</processor_spec>

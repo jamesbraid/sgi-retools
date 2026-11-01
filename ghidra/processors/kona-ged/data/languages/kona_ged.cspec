@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The distributor has no stack and no calls: program entries are chosen
+     by table B and end in a jump. SP is a placeholder Ghidra requires. -->
+<compiler_spec>
+  <data_organization>
+    <pointer_size value="4"/>
+  </data_organization>
+  <global>
+    <range space="ram"/>
+  </global>
+  <stackpointer register="SP" space="ram"/>
+  <default_proto>
+    <prototype name="__ged" extrapop="0" stackshift="0">
+      <input/>
+      <output/>
+      <unaffected>
+        <register name="SP"/>
+      </unaffected>
+    </prototype>
+  </default_proto>
+</compiler_spec>

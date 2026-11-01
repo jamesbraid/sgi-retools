@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Distributor program of SGI InfiniteReality (KONA): 32-bit words,
+     ucode/ged.md. -->
+<language_definitions>
+  <language processor="KONA-GED"
+            endian="big"
+            size="32"
+            variant="default"
+            version="1.0"
+            slafile="kona_ged.sla"
+            processorspec="kona_ged.pspec"
+            id="KONA-GED:BE:32:default">
+    <description>SGI KONA geometry distributor program (ged1b.u, 32-bit words)</description>
+    <compiler name="default" spec="kona_ged.cspec" id="default"/>
+  </language>
+</language_definitions>

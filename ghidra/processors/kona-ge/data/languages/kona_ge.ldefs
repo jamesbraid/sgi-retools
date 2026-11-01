@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Geometry-engine microcode of SGI InfiniteReality (KONA) and IMPACT (GE11):
+     one shared 72-bit instruction set, ucode/ge_isa.md. -->
+<language_definitions>
+  <language processor="KONA-GE"
+            endian="big"
+            size="32"
+            variant="default"
+            version="1.0"
+            slafile="kona_ge.sla"
+            processorspec="kona_ge.pspec"
+            id="KONA-GE:BE:32:default">
+    <description>SGI KONA / GE11 geometry-engine microcode (72-bit words, decoded record in context)</description>
+    <compiler name="default" spec="kona_ge.cspec" id="default"/>
+  </language>
+</language_definitions>

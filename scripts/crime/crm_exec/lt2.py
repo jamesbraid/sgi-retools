@@ -1,0 +1,16 @@
+exec(open("lt.py").read())
+from ref3 import *
+def rund(v,fn,pts,clip,dl,off,double,mode=0,cap=1,seg=False,col=0x0b0b0b0b,bgp=0x0d0d0d0d,alu=3,rop=3,pm=0xffffffff):
+    c=v.c; v.clear(); v.setclip(clip)
+    c.put(v.G,bytes(256)); c.w32(v.G+8,v.R)
+    c.w8(v.G,rop); c.w32(v.G+12,col); c.w32(v.G+16,0)
+    c.put(v.GC,bytes(80)); c.w32(v.GC+76,v.GCP)
+    c.w8(v.GC+5,alu); c.w16(v.GC+8,off); c.w16(v.GC+10,len(dl))
+    dp=c.alloc(len(dl)+8); c.put(dp,bytes(dl)); c.w32(v.GC+12,dp)
+    c.w32(v.GC+16,((2 if double else 1)<<30)|(cap<<28))
+    c.w32(v.GC+20,pm); c.w32(v.GC+28,bgp)
+    pp=c.alloc(4*len(pts)+16)
+    for i,(x,y) in enumerate(pts): c.put(pp+4*i,struct.pack('>hh',x,y))
+    if seg: c.call(fn,[v.D,v.GC,len(pts)//2,pp])
+    else: c.call(fn,[v.D,v.GC,mode,len(pts),pp])
+    return px_of(v,v.img())

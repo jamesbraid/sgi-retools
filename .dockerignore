@@ -1,0 +1,6 @@
+*
+!ghidra/
+!ghidra/scripts/
+!ghidra/scripts/**
+!tools/
+!tools/Containerfile*

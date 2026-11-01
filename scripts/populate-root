@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Create the relative symlinks listed in IRIX_FILES.md once root/ is filled.
+
+Usage: scripts/populate-root [--check]
+
+Reads two fenced blocks of IRIX_FILES.md. `archives`: one `ARCHIVE LINKDIR` pair
+per line; each ar archive under root/ is unpacked into `ARCHIVE_members/` beside
+it (inside root/, so nothing proprietary is tracked) and every member gets a
+symlink in LINKDIR. `links`: one `LINK TARGET` pair per line, both relative to
+the repository root. Each LINK becomes a relative
+symlink to its TARGET under root/. A target that is missing is reported and
+skipped (install layouts differ by release); --check only reports.
+Copying the files into root/ is manual: follow the `files` block of
+IRIX_FILES.md on your IRIX system and unpack the result into root/.
+"""
+import os
+import re
+import sys
+
+repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+check = '--check' in sys.argv[1:]
+text = open(os.path.join(repo, 'IRIX_FILES.md')).read()
+blocks = re.findall(r'^```links\s*$(.*?)^```\s*$', text, re.S | re.M)
+if not blocks:
+    sys.exit('IRIX_FILES.md has no ```links block')
+
+def unpack_ar(path, outdir):
+    """Minimal reader for the common ar format; skips symbol and name tables."""
+    data = open(path, 'rb').read()
+    if data[:8] != b'!<arch>\n':
+        raise SystemExit(f'{path}: not an ar archive')
+    names = b''
+    pos, members = 8, []
+    while pos + 60 <= len(data):
+        hdr = data[pos:pos + 60]
+        name = hdr[:16].decode('latin1').strip()
+        size = int(hdr[48:58])
+        body = data[pos + 60:pos + 60 + size]
+        pos += 60 + size + (size & 1)
+        if name == '//':
+            names = body
+            continue
+        if name in ('/', '/SYM64/', '__.SYMDEF', '__.SYMDEF SORTED'):
+            continue
+        if name.startswith('/') and name[1:].isdigit():
+            end = names.index(b'\n', int(name[1:]))
+            name = names[int(name[1:]):end].decode('latin1').rstrip('/')
+        elif name.startswith('#1/'):
+            n = int(name[3:])
+            name, body = body[:n].decode('latin1').rstrip('\0'), body[n:]
+        members.append((name.rstrip('/'), body))
+    os.makedirs(outdir, exist_ok=True)
+    for name, body in members:
+        with open(os.path.join(outdir, os.path.basename(name)), 'wb') as f:
+            f.write(body)
+    return [os.path.basename(n) for n, _ in members]
+
+
+made = missing = 0
+ablocks = re.findall(r'^```archives\s*$(.*?)^```\s*$', text, re.S | re.M)
+for line in (ablocks[0].splitlines() if ablocks else []):
+    line = line.split('#', 1)[0].strip()
+    if not line:
+        continue
+    archive, linkdir = line.split()
+    apath = os.path.join(repo, archive)
+    if not os.path.exists(apath):
+        print(f'missing: {archive}')
+        missing += 1
+        continue
+    if check:
+        continue
+    outdir = apath + '_members'
+    for m in unpack_ar(apath, outdir):
+        lpath = os.path.join(repo, linkdir, m)
+        os.makedirs(os.path.dirname(lpath), exist_ok=True)
+        if os.path.islink(lpath):
+            os.unlink(lpath)
+        os.symlink(os.path.relpath(os.path.join(outdir, m), os.path.dirname(lpath)), lpath)
+        made += 1
+for line in blocks[0].splitlines():
+    line = line.split('#', 1)[0].strip()
+    if not line:
+        continue
+    link, target = line.split()
+    lpath, tpath = os.path.join(repo, link), os.path.join(repo, target)
+    if not os.path.lexists(tpath):
+        print(f'missing: {target}')
+        missing += 1
+        continue
+    if check:
+        continue
+    os.makedirs(os.path.dirname(lpath), exist_ok=True)
+    rel = os.path.relpath(tpath, os.path.dirname(lpath))
+    if os.path.islink(lpath):
+        os.unlink(lpath)
+    elif os.path.exists(lpath):
+        print(f'exists, not a link: {link}')
+        continue
+    os.symlink(rel, lpath)
+    made += 1
+print(f'{made} links made, {missing} targets missing')

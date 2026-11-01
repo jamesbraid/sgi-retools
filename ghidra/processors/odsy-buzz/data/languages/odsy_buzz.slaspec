@@ -1,0 +1,603 @@
+# VPro (Odyssey) BUZZ transform-engine microcode: SLEIGH specification.
+#
+# Sources: ucode/buzz_isa.md (word format, fields, the latch-and-fire timing,
+# the lane read rule, scalar codes and their pairs, the output stage, the
+# colour unit, end marks) and ucode/buzz_routines.md (routines, the program
+# table). Field names are the listing's (scripts/buzz_ucode_disasm.py), not
+# SGI's. Labels in the comments are those of buzz_isa.md: ESTABLISHED,
+# INFERRED or UNKNOWN. Every timing rule is INFERRED except the eleven-record
+# distance from a latch to the output stage, which buzz_isa.md pass 18
+# establishes against the field diagnostics' points test.
+#
+# How the decode works. A record is 96 bits; bits 95:94 are never set.
+# Ghidra cannot address a 12-byte unit, so the loader
+# (ghidra_scripts/BuzzImport.java) puts record bits 63:0 in code memory, one
+# 8-byte unit per record, so a code address is a record number, and puts
+# bits 93:64 (fields a, r1, r2, r3, b, ln, rb, bx) in the context register at
+# that record, with a few derived bits. The display prints every nonzero field
+# of the listing, so it can be compared with the script field for field.
+#
+# How the timing is modelled. Results travel down delay lines that every
+# record shifts by one before it runs: VQ (what reaches port V and the scalar
+# unit, a fire six records on or a load seven), DQ (what reaches the output
+# stage, a fire ten records on), SQ (a scalar result, four records on), PQ (a
+# parameter-memory read, two records on), LQ (a lane read, one record on), OQ
+# (an output-stage result, seven records on, for port V) and FQ (a code 1 or
+# 0xc result, usable as the 0xe/6 factor four records on). Each slot has a
+# valid flag (the *V registers); a unit whose input slot is empty takes
+# NOSRC, the '-' of scripts/buzz_ucode_dataflow.py. Inside a routine the
+# flags are constants and the decompiler folds them; at a routine entry they
+# are what the routine before left, so they show as inputs.
+
+define endian=big;
+# Alignment is in bytes and must be a multiple of the 8-byte address unit.
+define alignment=8;
+
+# Code: one 8-byte unit per record (bits 63:0); bits 93:64 live in context.
+define space code type=ram_space size=2 wordsize=8 default;
+# Register file: 32 registers of four lanes x, y, z, w; word 4*r + lane
+# (INFERRED, buzz_isa.md "Register file and the matrix table").
+define space vreg type=ram_space size=2 wordsize=4;
+# Parameter memory: the table the 0x1a2 and 0x1bb stores fill (INFERRED),
+# one word per address.
+define space pmem type=ram_space size=2 wordsize=4;
+# Colour unit memory: entry e lane l at word 4*e + l (ESTABLISHED host side:
+# ValidateLightColor writes light i's colours at entries 3i to 3i+2).
+define space cmem type=ram_space size=2 wordsize=4;
+# Inputs: attribute slot s lane l at word 4*s + l (s = 0 to 15), operand k of
+# the dispatching command word at word 64 + k (r3 = 16 + k).
+define space inp type=ram_space size=2 wordsize=4;
+# Output packet: word n of the vertex packet at word n.
+define space outw type=ram_space size=2 wordsize=4;
+define space register type=register_space size=4;
+
+define register offset=0x0 size=2 [ PC NEXT SP ];
+# Sequencer registers 0x20 to 0x35 (ESTABLISHED numbering, 6.5.7
+# stand/arcs/lib/libsk/graphics/ODYSSEY/odsy_init.c and the 6.5.30m start-up
+# words). SEQ31 is the parameter-memory light base, SEQ32 the colour-unit
+# light base; SEQ29, SEQ2A and SEQ2C the program's start, loop and exit.
+define register offset=0x10 size=4 [ SEQ20 SEQ21 SEQ22 SEQ23 SEQ24 SEQ25 SEQ26 SEQ27
+    SEQ28 SEQ29 SEQ2A SEQ2B SEQ2C SEQ2D SEQ2E SEQ2F SEQ30 SEQ31 SEQ32 SEQ33 SEQ34 SEQ35 ];
+# A: the issue latch. B: the operand latch; NB: what a load puts in B from the
+# next record. K/NK: the factor of codes 0xd and 5, loaded by d2 bit 7 and used
+# from the next record. F: the factor of codes 0xe and 6. INVW: the output
+# stage's reciprocal. CSR..CSA: the colour unit's running result.
+define register offset=0x100 size=4 [ AX AY AZ AW BX BY BZ BW NBX NBY NBZ NBW
+    K NK F INVW CSR CSG CSB CSA OSINK NOSRC ];
+# NOSRC is never written: a unit whose input slot is empty under the rules (the
+# routine before left it, or nothing feeds it) takes it, and the decompiler
+# shows it as in_NOSRC, the '-' of scripts/buzz_ucode_dataflow.py. OSINK
+# takes the output of records that send no word.
+# Delay lines; slot 0 is what arrives in the current record.
+define register offset=0x200 size=4 [ VQ0 VQ1 VQ2 VQ3 VQ4 VQ5 VQ6 VQ7
+    DQ0 DQ1 DQ2 DQ3 DQ4 DQ5 DQ6 DQ7 DQ8 DQ9 DQ10
+    SQ0 SQ1 SQ2 SQ3 SQ4 PQ0 PQ1 PQ2 LQ0 LQ1
+    OQ0 OQ1 OQ2 OQ3 OQ4 OQ5 OQ6 OQ7 FQ0 FQ1 FQ2 FQ3 FQ4 ];
+define register offset=0x300 size=1 [ VQV0 VQV1 VQV2 VQV3 VQV4 VQV5 VQV6 VQV7
+    DQV0 DQV1 DQV2 DQV3 DQV4 DQV5 DQV6 DQV7 DQV8 DQV9 DQV10
+    SQV0 SQV1 SQV2 SQV3 SQV4 LQV0 LQV1
+    OQV0 OQV1 OQV2 OQV3 OQV4 OQV5 OQV6 OQV7 FQV0 FQV1 FQV2 FQV3 FQV4 ISSUED ];
+
+# Context, set per record by BuzzImport.java; nothing flows between records.
+define register offset=0x400 size=16 [ contextreg ];
+# A context field may not cross a 32-bit boundary.
+define context contextreg
+  ca=(0,1) noflow         # bits 93:92, listing a
+  cr1=(2,6) noflow        # bits 91:87, listing r1
+  cr2=(7,11) noflow       # bits 86:82, listing r2
+  cr3=(12,16) noflow      # bits 81:77, listing r3
+  cb=(17,18) noflow       # bits 76:75, listing b
+  cln=(19,21) noflow      # bits 74:72, listing ln
+  crb=(22,26) noflow      # bits 71:67, listing rb
+  cbx=(27,29) noflow      # bits 66:64, listing bx
+  # Bits derived from those fields, kept apart so no field overlaps another.
+  xa0=(30,30) noflow      # a bit 0
+  xa1=(31,31) noflow      # a bit 1
+  xr1h=(32,32) noflow     # r1 bit 4
+  xr1l=(33,34) noflow     # r1 bits 1:0
+  xm0=(35,35) noflow      # r1 bit 0 (lane-merge mask, lane x)
+  xm1=(36,36) noflow      # r1 bit 1
+  xm2=(37,37) noflow      # r1 bit 2
+  xm3=(38,38) noflow      # r1 bit 3
+  xr3h=(39,39) noflow     # r3 bit 4: an operand, not a slot
+  xln2=(40,40) noflow     # ln bit 2: port P writes
+  xlnl=(41,42) noflow     # ln bits 1:0: port P lane
+  xbx2=(43,43) noflow     # bx bit 2: port V writes
+  xbxl=(44,45) noflow     # bx bits 1:0: port V lane
+  fvalid=(46,46) noflow   # a record of the image
+  fidle=(47,47) noflow    # the idle record, only bit 19 set
+  fdly=(48,50) noflow     # delay slots after an end mark (4, fewer at the image end)
+  fnest=(51,51) noflow    # a mark shown without flow (see the end of this file)
+  fprog=(52,52) noflow    # a value-3 mark whose loop and exit records are known
+  floop=(64,75) noflow    # its program's sequencer 0x2a record
+  fexit=(80,91) noflow    # its program's sequencer 0x2c record
+;
+
+define token word(64)
+  vd=(59,63)              # port V register (bits 63:59)
+  mc=(58,63)              # listing mc
+  st=(58,58)              # parameter store
+  ma=(48,57)              # parameter address, listing ma
+  mrel=(57,57)            # address bit 9: relative to SEQ31
+  mlow=(48,56)
+  d0=(44,47)
+  iss=(47,47) ld=(46,46) ldreg=(45,45) fire=(44,44)
+  d1=(40,43) d1s=(43,43)
+  d2=(32,39) d2k=(39,39)
+  e0=(28,31) e1=(24,27) e2=(20,23) e3=(16,19)
+  cu=(16,31)              # colour unit, bits 31:16
+  cst=(31,31) crel=(30,30) caddr=(24,29) cop=(16,23) cb16=(16,16)
+  s0=(12,15) s1=(2,11)
+  s1w=(9,9)               # a numbered output word
+  s1l=(10,10)             # with s1w: the packet's last word
+  s1h=(10,11)             # without s1w: a packet header
+  s1c=(2,2)               # colour words
+  sq=(0,1)                # end mark
+;
+
+# UNKNOWN functions, named so the decompiler shows where they act.
+define pcodeop scalar_table;      # codes 0xb and 3: one table function (INFERRED pair; shape open)
+define pcodeop scalar_op2;        # code 2
+define pcodeop scalar_op;         # any other code (none occurs in the three images)
+define pcodeop stage_op;          # output-stage codes without a reading
+define pcodeop portp_source;      # port P sources b = 1 and 3
+define pcodeop colour_op;         # colour operations with 0x40/0x80 but no base term
+define pcodeop colour_assemble;   # op bit 2: one lane per record, lane order UNKNOWN
+define pcodeop colour_send;       # op bit 1: the colour as two output words (packing UNKNOWN)
+define pcodeop colour_send_assembled;
+define pcodeop packet_header;     # header record: s0 = words - 1, s1 low bits UNKNOWN
+define pcodeop packet_last;       # last word of the packet
+define pcodeop seq_take_exit;     # value-3 mark: exit (0x2c) rather than loop (0x2a); the choice is UNKNOWN
+
+# ---------------------------------------------------------------- display
+
+F_a: is ca=0 { }
+F_a: " a="^ca is ca { }
+F_r1: is cr1=0 { }
+F_r1: " r1="^cr1 is cr1 { }
+F_r2: is cr2=0 { }
+F_r2: " r2="^cr2 is cr2 { }
+F_r3: is cr3=0 { }
+F_r3: " r3="^cr3 is cr3 { }
+F_b: is cb=0 { }
+F_b: " b="^cb is cb { }
+F_ln: is cln=0 { }
+F_ln: " ln="^cln is cln { }
+F_rb: is crb=0 { }
+F_rb: " rb="^crb is crb { }
+F_bx: is cbx=0 { }
+F_bx: " bx="^cbx is cbx { }
+F_mc: is mc=0 { }
+F_mc: " mc="^mc is mc { }
+F_ma: is ma=0 { }
+F_ma: " ma="^ma is ma { }
+F_d0: is d0=0 { }
+F_d0: " d0="^d0 is d0 { }
+F_d1: is d1=0 { }
+F_d1: " d1="^d1 is d1 { }
+F_d2: is d2=0 { }
+F_d2: " d2="^d2 is d2 { }
+F_e0: is e0=0 { }
+F_e0: " e0="^e0 is e0 { }
+F_e1: is e1=0 { }
+F_e1: " e1="^e1 is e1 { }
+F_e2: is e2=0 { }
+F_e2: " e2="^e2 is e2 { }
+F_e3: is e3=0 { }
+F_e3: " e3="^e3 is e3 { }
+F_s0: is s0=0 { }
+F_s0: " s0="^s0 is s0 { }
+F_s1: is s1=0 { }
+F_s1: " s1="^s1 is s1 { }
+DISP: F_a^F_r1^F_r2^F_r3^F_b^F_ln^F_rb^F_bx^F_mc^F_ma^F_d0^F_d1^F_d2^F_e0^F_e1^F_e2^F_e3^F_s0^F_s1 is F_a & F_r1 & F_r2 & F_r3 & F_b & F_ln & F_rb & F_bx & F_mc & F_ma & F_d0 & F_d1 & F_d2 & F_e0 & F_e1 & F_e2 & F_e3 & F_s0 & F_s1 { }
+
+# ---------------------------------------------------------------- locations
+
+# Input r3: slot r3 (r3 < 16) or operand r3 - 16, which fills all four lanes
+# (INFERRED, buzz_isa.md pass 14).
+SLX: sa is xr3h=0 & cr3 [ sa = cr3 * 4 + 0; ] { export *[inp]:4 sa; }
+SLX: sa is xr3h=1 & cr3 [ sa = 64 + cr3 - 16; ] { export *[inp]:4 sa; }
+SLY: sa is xr3h=0 & cr3 [ sa = cr3 * 4 + 1; ] { export *[inp]:4 sa; }
+SLY: sa is xr3h=1 & cr3 [ sa = 64 + cr3 - 16; ] { export *[inp]:4 sa; }
+SLZ: sa is xr3h=0 & cr3 [ sa = cr3 * 4 + 2; ] { export *[inp]:4 sa; }
+SLZ: sa is xr3h=1 & cr3 [ sa = 64 + cr3 - 16; ] { export *[inp]:4 sa; }
+SLW: sa is xr3h=0 & cr3 [ sa = cr3 * 4 + 3; ] { export *[inp]:4 sa; }
+SLW: sa is xr3h=1 & cr3 [ sa = 64 + cr3 - 16; ] { export *[inp]:4 sa; }
+
+# The register an issue latches as A and a register load puts in B: with
+# a bit 0 clear, lanes x to z from R[r1] and lane w from R[r2]; with it set,
+# all of R[r2] (INFERRED, buzz_isa.md pass 17).
+RAX: ra is xa0=0 & cr1 [ ra = cr1 * 4 + 0; ] { export *[vreg]:4 ra; }
+RAX: ra is xa0=1 & cr2 [ ra = cr2 * 4 + 0; ] { export *[vreg]:4 ra; }
+RAY: ra is xa0=0 & cr1 [ ra = cr1 * 4 + 1; ] { export *[vreg]:4 ra; }
+RAY: ra is xa0=1 & cr2 [ ra = cr2 * 4 + 1; ] { export *[vreg]:4 ra; }
+RAZ: ra is xa0=0 & cr1 [ ra = cr1 * 4 + 2; ] { export *[vreg]:4 ra; }
+RAZ: ra is xa0=1 & cr2 [ ra = cr2 * 4 + 2; ] { export *[vreg]:4 ra; }
+RAW: ra is cr2 [ ra = cr2 * 4 + 3; ] { export *[vreg]:4 ra; }
+
+# Lane merge (a bit 0 and r1 bit 4 set): only the lanes in r1 bits 3:0 of
+# R[r2] replace B's lanes (INFERRED, buzz_isa.md pass 12).
+MBX: is xm0=1 & RAX { export RAX; }
+MBX: is xm0=0 { export BX; }
+MBY: is xm1=1 & RAY { export RAY; }
+MBY: is xm1=0 { export BY; }
+MBZ: is xm2=1 & RAZ { export RAZ; }
+MBZ: is xm2=0 { export BZ; }
+MBW: is xm3=1 & RAW { export RAW; }
+MBW: is xm3=0 { export BW; }
+
+# Lane read (a bit 0 set, r1 bit 4 clear): lane r1 bits 1:0 of R[r2].
+LRS: la is cr2 & xr1l [ la = cr2 * 4 + xr1l; ] { export *[vreg]:4 la; }
+# Port V: lane bx bits 1:0 of R[bits 63:59]. Port P: lane ln bits 1:0 of R[rb].
+PVD: pa is vd & xbxl [ pa = vd * 4 + xbxl; ] { export *[vreg]:4 pa; }
+PPD: pa is crb & xlnl [ pa = crb * 4 + xlnl; ] { export *[vreg]:4 pa; }
+
+# Parameter address: bit 9 adds sequencer 0x31 (INFERRED, buzz_isa.md
+# "Parameter memory").
+PMA: ma is mrel=0 & ma { export *[pmem]:4 ma; }
+PMA: mlow is mrel=1 & mlow { local ad:2 = SEQ31:2 + mlow; export *[pmem]:4 ad; }
+PMZ: z is epsilon [ z = 0; ] { export *[pmem]:4 z; }
+
+# Colour memory entry bits 29:24, plus sequencer 0x32 when bit 30 is set
+# (INFERRED, buzz_isa.md pass 13).
+CMR: c is crel=0 & caddr [ c = caddr * 4 + 0; ] { export *[cmem]:4 c; }
+CMR: caddr is crel=1 & caddr { local ad:2 = (SEQ32:2 + caddr) * 4 + 0; export *[cmem]:4 ad; }
+CMG: c is crel=0 & caddr [ c = caddr * 4 + 1; ] { export *[cmem]:4 c; }
+CMG: caddr is crel=1 & caddr { local ad:2 = (SEQ32:2 + caddr) * 4 + 1; export *[cmem]:4 ad; }
+CMB: c is crel=0 & caddr [ c = caddr * 4 + 2; ] { export *[cmem]:4 c; }
+CMB: caddr is crel=1 & caddr { local ad:2 = (SEQ32:2 + caddr) * 4 + 2; export *[cmem]:4 ad; }
+CMA: c is crel=0 & caddr [ c = caddr * 4 + 3; ] { export *[cmem]:4 c; }
+CMA: caddr is crel=1 & caddr { local ad:2 = (SEQ32:2 + caddr) * 4 + 3; export *[cmem]:4 ad; }
+
+# Output word: s0, plus 16 when bit 16 is set (ESTABLISHED, buzz_isa.md
+# pass 16); records that output no word write a dead register.
+OUTW: ow is s1w=1 & s1c=0 & s0 & cb16 [ ow = s0 + cb16 * 16; ] { export *[outw]:4 ow; }
+OUTW: is s1w=0 { export OSINK; }
+OUTW: is s1w=1 & s1c=1 { export OSINK; }
+
+# ---------------------------------------------------------------- arrivals
+
+# What reaches port V and the scalar unit in this record.
+VARR: is epsilon { local v:4 = VQ0; if (VQV0 != 0) goto <ok>; v = NOSRC; <ok> export v; }
+# A lane read of one record before.
+LARR: is epsilon { local v:4 = LQ0; if (LQV0 != 0) goto <ok>; v = NOSRC; <ok> export v; }
+# A scalar result of four records before.
+SARR: is epsilon { local v:4 = SQ0; if (SQV0 != 0) goto <ok>; v = NOSRC; <ok> export v; }
+# A product fired ten records before (what reaches the output stage).
+DARR: is epsilon { local v:4 = DQ0; if (DQV0 != 0) goto <ok>; v = NOSRC; <ok> export v; }
+
+macro dot() {
+    local d:4 = AX f* BX f+ AY f* BY f+ AZ f* BZ f+ AW f* BW;
+    VQ6 = d; VQV6 = 1;
+    DQ10 = d; DQV10 = 1;
+}
+
+macro sres(v) { SQ4 = v; SQV4 = 1; }
+macro factor(v) { FQ4 = v; FQV4 = 1; }
+
+# ---------------------------------------------------------------- vector unit
+
+# Fire: in the record after an issue, and in any record with d0 bit 44; the
+# product is A against B as B stands when the record starts (INFERRED,
+# buzz_isa.md pass 13). Port V and the scalar unit get it six records later,
+# the output stage ten (the latch-to-output distance of eleven is ESTABLISHED
+# for 214 to 242, pass 18).
+FIRE: is fire=1 { dot(); }
+FIRE: is fire=0 { if (ISSUED == 0) goto <no>; dot(); <no> }
+
+# Load (d0 bit 46) takes effect from the next record; bit 45 picks a register
+# over the r3 input. Lane w also reaches port V and the scalar unit seven
+# records later (INFERRED, pass 15).
+LOAD: is ld=0 { }
+LOAD: is ld=1 & ldreg=0 & SLX & SLY & SLZ & SLW {
+    NBX = SLX; NBY = SLY; NBZ = SLZ; NBW = SLW;
+    VQ7 = NBW; VQV7 = 1;
+}
+LOAD: is ld=1 & ldreg=1 & xa0=0 & RAX & RAY & RAZ & RAW {
+    NBX = RAX; NBY = RAY; NBZ = RAZ; NBW = RAW;
+    VQ7 = NBW; VQV7 = 1;
+}
+LOAD: is ld=1 & ldreg=1 & xa0=1 & xr1h=0 & RAX & RAY & RAZ & RAW {
+    NBX = RAX; NBY = RAY; NBZ = RAZ; NBW = RAW;
+    VQ7 = NBW; VQV7 = 1;
+}
+LOAD: is ld=1 & ldreg=1 & xa0=1 & xr1h=1 & MBX & MBY & MBZ & MBW {
+    NBX = MBX; NBY = MBY; NBZ = MBZ; NBW = MBW;
+    VQ7 = NBW; VQV7 = 1;
+}
+
+LREAD: is xa0=0 { }
+LREAD: is xa0=1 & xr1h=1 { }
+LREAD: is xa0=1 & xr1h=0 & LRS { LQ1 = LRS; LQV1 = 1; }
+
+# Issue (d0 bit 47) latches A; it fires in the next record.
+ISS: is iss=0 { ISSUED = 0; }
+ISS: is iss=1 & RAX & RAY & RAZ & RAW { AX = RAX; AY = RAY; AZ = RAZ; AW = RAW; ISSUED = 1; }
+
+# ---------------------------------------------------------------- factor K
+
+# d2 bit 7 loads K, used from the next record: with a bit 1 set, the
+# parameter word read two records before; otherwise what reaches port V, else
+# the scalar result of four records before, else the product reaching the
+# output stage (INFERRED, passes 13 and 15).
+KF: is d2k=0 { }
+KF: is d2k=1 & xa1=1 { NK = PQ0; }
+KF: is d2k=1 & xa1=0 {
+    NK = VQ0;
+    if (VQV0 != 0) goto <done>;
+    NK = SQ0;
+    if (SQV0 != 0) goto <done>;
+    NK = DQ0;
+    if (DQV0 != 0) goto <done>;
+    NK = NOSRC;
+    <done>
+}
+
+# ---------------------------------------------------------------- scalar unit
+
+# Code bit 3 picks the operand: set, the lane read one record before; clear,
+# what reaches the unit in its own record. A record that stores to parameter
+# memory spends the read on the store and takes what arrives (INFERRED,
+# pass 16). The result reaches port P and the output stage four records on.
+SOP: is d1s=1 & st=0 & LARR { export LARR; }
+SOP: is d1s=1 & st=1 & VARR { export VARR; }
+SOP: is d1s=0 & VARR { export VARR; }
+
+SCAL: is d1=0 { }
+# 8: passes the operand (INFERRED).
+SCAL: is d1=8 & SOP { sres(SOP); }
+# 1: reciprocal square root, and the new 0xe/6 factor (INFERRED, pass 13).
+SCAL: is d1=1 & SOP { local v:4 = int2float(1:4) f/ sqrt(SOP); sres(v); factor(v); }
+# 0xc negates and is the new 0xe/6 factor; 4 negates (INFERRED, passes 13, 15, 16).
+SCAL: is d1=0xc & SOP { local v:4 = f- SOP; sres(v); factor(v); }
+SCAL: is d1=4 & SOP { local v:4 = f- SOP; sres(v); }
+# 0xd and 5 multiply by K (INFERRED, passes 13, 15, 16).
+SCAL: is d1=0xd & SOP { local v:4 = K f* SOP; sres(v); }
+SCAL: is d1=5 & SOP { local v:4 = K f* SOP; sres(v); }
+# 0xe and 6 multiply by the last code 1 or 0xc result at least four records
+# old (INFERRED, passes 13, 16, 17).
+SCAL: is d1=0xe & SOP { local v:4 = F f* SOP; sres(v); }
+SCAL: is d1=6 & SOP { local v:4 = F f* SOP; sres(v); }
+# 0xb and 3 apply one table function: 1 at 8, falling above (INFERRED pair,
+# function UNKNOWN, passes 14 and 16).
+SCAL: is d1=0xb & SOP { local v:4 = scalar_table(SOP); sres(v); }
+SCAL: is d1=3 & SOP { local v:4 = scalar_table(SOP); sres(v); }
+# 2: UNKNOWN (no run fixes both its operand and its use).
+SCAL: is d1=2 & SOP { local v:4 = scalar_op2(SOP); sres(v); }
+SCAL: is d1 & SOP { local c:1 = d1; local v:4 = scalar_op(c, SOP); sres(v); }
+
+# ---------------------------------------------------------------- parameter memory
+
+# Bits 57:48 address a word; bit 58 clear reads it (reaching port P and K two
+# records later), set stores the lane read of one record before (INFERRED,
+# pass 12). A store record reads nothing, which the rules take as word 0.
+PMR: is st=0 & PMA { PQ2 = PMA; }
+PMR: is st=1 & PMZ { PQ2 = PMZ; }
+STO: is st=0 { }
+STO: is st=1 & PMA & LARR { PMA = LARR; }
+
+# ---------------------------------------------------------------- write ports
+
+# Port V (bx bit 2): what reaches it, else the output stage's result of seven
+# records before (INFERRED, passes 12, 13, 15).
+PV: is xbx2=0 { }
+PV: is xbx2=1 & PVD {
+    local v:4 = VQ0;
+    if (VQV0 != 0) goto <w>;
+    v = OQ0;
+    if (OQV0 != 0) goto <w>;
+    v = NOSRC;
+    <w>
+    PVD = v;
+}
+
+# Port P (ln bit 2): b = 0 the parameter word read two records before, b = 2
+# the scalar result of four records before (INFERRED, pass 12); b = 1 and 3
+# UNKNOWN.
+PP: is xln2=0 { }
+PP: is xln2=1 & cb=0 & PPD { PPD = PQ0; }
+PP: is xln2=1 & cb=2 & PPD & SARR { PPD = SARR; }
+PP: is xln2=1 & cb=1 & PPD { local b:1 = 1; PPD = portp_source(b); }
+PP: is xln2=1 & cb=3 & PPD { local b:1 = 3; PPD = portp_source(b); }
+
+# ---------------------------------------------------------------- output stage
+
+# The stage takes the product fired ten records before, else the scalar
+# result of four records before; with d2 bit 7 and a bit 1 set, the parameter
+# word read two records before (INFERRED, passes 12, 13; the order is that of
+# scripts/buzz_ucode_dataflow.py). The word field of the same record outputs
+# the result; port V can take it seven records later.
+SSRC: is d2k=1 & xa1=1 { export PQ0; }
+SSRC: is d2k=0 {
+    local v:4 = DQ0;
+    if (DQV0 != 0) goto <ok>;
+    v = SQ0;
+    if (SQV0 != 0) goto <ok>;
+    v = NOSRC;
+    <ok>
+    export v;
+}
+SSRC: is d2k=1 & xa1=0 {
+    local v:4 = DQ0;
+    if (DQV0 != 0) goto <ok>;
+    v = SQ0;
+    if (SQV0 != 0) goto <ok>;
+    v = NOSRC;
+    <ok>
+    export v;
+}
+
+macro staged(v) { OQ7 = v; OQV7 = 1; }
+
+# No stage code (d2 0, or 0x80 that only loads K): a word record outputs what
+# reaches the stage unchanged (INFERRED: routine 12's words 5, 4 and 3 and the
+# dump 278's sixteen words, buzz_isa.md passes 12 and 13).
+STG: is d2=0 & s1w=1 & s1c=0 & OUTW & SSRC { OUTW = SSRC; }
+STG: is d2=0x80 & s1w=1 & s1c=0 & OUTW & SSRC { OUTW = SSRC; }
+STG: is d2=0 & s1w=0 { }
+STG: is d2=0 & s1w=1 & s1c=1 { }
+STG: is d2=0x80 & s1w=0 { }
+STG: is d2=0x80 & s1w=1 & s1c=1 { }
+# 0x08 consumes a value; it outputs no word in any routine read (INFERRED).
+STG: is d2=0x08 & OUTW & SSRC { local v:4 = SSRC; staged(v); OUTW = v; }
+# 0x2b and 0x33 form 1/w (INFERRED, pass 12; 0x2b ESTABLISHED for 214 to 242
+# by pass 18); 0x10 forms it from clip w without a word (INFERRED, pass 16).
+STG: is d2=0x2b & OUTW & SSRC { INVW = int2float(1:4) f/ SSRC; staged(INVW); OUTW = INVW; }
+STG: is d2=0x33 & OUTW & SSRC { INVW = int2float(1:4) f/ SSRC; staged(INVW); OUTW = INVW; }
+STG: is d2=0x10 & OUTW & SSRC { INVW = int2float(1:4) f/ SSRC; staged(INVW); OUTW = INVW; }
+# 0x46, 0x26, 0x44 and 0x24 multiply by 1/w (INFERRED, passes 12 and 13; 0x46
+# and 0x26 ESTABLISHED for 214 to 242 by pass 18).
+STG: is d2=0x46 & OUTW & SSRC { local v:4 = SSRC f* INVW; staged(v); OUTW = v; }
+STG: is d2=0x26 & OUTW & SSRC { local v:4 = SSRC f* INVW; staged(v); OUTW = v; }
+STG: is d2=0x44 & OUTW & SSRC { local v:4 = SSRC f* INVW; staged(v); OUTW = v; }
+STG: is d2=0x24 & OUTW & SSRC { local v:4 = SSRC f* INVW; staged(v); OUTW = v; }
+# 0x25 sends the reciprocal formed earlier in the vertex (INFERRED, pass 16).
+STG: is d2=0x25 & OUTW { staged(INVW); OUTW = INVW; }
+# 0x21, 0x23, 0x27, 0x2c and the bit-7 forms 0x90, 0xa1, 0xa3, 0xa6, 0xc6:
+# UNKNOWN functions.
+STG: is d2 & OUTW & SSRC { local c:1 = d2; local v:4 = stage_op(c, SSRC); staged(v); OUTW = v; }
+
+# Packet framing (INFERRED, pass 12): a header record (s1 bits 9:8 nonzero,
+# no word) announces s0 + 1 words; the last word carries s1 bit 8.
+HDR: is s1w=0 & s1h=0 { }
+HDR: is s1w=0 & s1h & s0 & s1 { local n:1 = s0; local f:2 = s1; packet_header(n, f); }
+HDR: is s1w=1 & s1l=0 { }
+HDR: is s1w=1 & s1l=1 { packet_last(); }
+
+# ---------------------------------------------------------------- colour unit
+
+# Bits 31:16: store (31), light-relative (30), entry (29:24), operation
+# (23:16). Bit 19 alone is idle. Operation bits (INFERRED, passes 13 and 14):
+# 0x20 the r3 input, times the colour word unless the entry is 31; 0x10 the
+# colour word alone; 0x40 times the product reaching the output stage; 0x80
+# times the scalar result reaching it; 0x08 adds the running result; 0x04
+# assembles the arriving scalar result one lane per record; 0x02 sends the
+# result as the two colour words; 0x01 is word bit 4 (pass 16, not here).
+# With bit 31 the result is stored at the entry.
+COL: is cu=8 { }
+COL: is cop & caddr & cst & s0 & SLX & SLY & SLZ & SLW & CMR & CMG & CMB & CMA & DARR & SARR {
+    local op:1 = cop;
+    local ad:1 = caddr;
+    local sto:1 = cst;
+    local wd:1 = s0;
+    local tr:4; local tg:4; local tb:4; local ta:4;
+    if ((op & 4) != 0) goto <asm>;
+    if ((op & 0x10) != 0) goto <mem>;
+    if ((op & 0x20) == 0) goto <nobase>;
+    tr = SLX; tg = SLY; tb = SLZ; ta = SLW;
+    if (ad == 31) goto <base>;
+    tr = tr f* CMR; tg = tg f* CMG; tb = tb f* CMB; ta = ta f* CMA;
+    goto <base>;
+<mem>
+    tr = CMR; tg = CMG; tb = CMB; ta = CMA;
+    goto <base>;
+<nobase>
+    # 0x40 or 0x80 without a base term (0x48): UNKNOWN.
+    if ((op & 0xc0) == 0) goto <store>;
+    colour_op(op);
+    goto <store>;
+<base>
+    if ((op & 0x40) == 0) goto <n40>;
+    tr = tr f* DARR; tg = tg f* DARR; tb = tb f* DARR; ta = ta f* DARR;
+<n40>
+    if ((op & 0x80) == 0) goto <n80>;
+    tr = tr f* SARR; tg = tg f* SARR; tb = tb f* SARR; ta = ta f* SARR;
+<n80>
+    if ((op & 8) == 0) goto <set>;
+    CSR = CSR f+ tr; CSG = CSG f+ tg; CSB = CSB f+ tb; CSA = CSA f+ ta;
+    goto <store>;
+<set>
+    CSR = tr; CSG = tg; CSB = tb; CSA = ta;
+    goto <store>;
+<asm>
+    colour_assemble(SARR);
+<store>
+    if (sto == 0) goto <nost>;
+    CMR = CSR; CMG = CSG; CMB = CSB; CMA = CSA;
+<nost>
+    if ((op & 2) == 0) goto <end>;
+    if ((op & 4) != 0) goto <sendasm>;
+    colour_send(wd, CSR, CSG, CSB, CSA);
+    goto <end>;
+<sendasm>
+    colour_send_assembled(wd);
+<end>
+}
+
+# ---------------------------------------------------------------- one record
+
+BODY: is FIRE & LOAD & LREAD & ISS & KF & SCAL & PMR & STO & PV & PP & STG & HDR & COL {
+    # Each record first moves every delay line on by one.
+    BX = NBX; BY = NBY; BZ = NBZ; BW = NBW;
+    K = NK;
+    VQ0 = VQ1; VQ1 = VQ2; VQ2 = VQ3; VQ3 = VQ4; VQ4 = VQ5; VQ5 = VQ6; VQ6 = VQ7;
+    VQV0 = VQV1; VQV1 = VQV2; VQV2 = VQV3; VQV3 = VQV4; VQV4 = VQV5; VQV5 = VQV6; VQV6 = VQV7; VQV7 = 0;
+    DQ0 = DQ1; DQ1 = DQ2; DQ2 = DQ3; DQ3 = DQ4; DQ4 = DQ5; DQ5 = DQ6; DQ6 = DQ7; DQ7 = DQ8; DQ8 = DQ9; DQ9 = DQ10;
+    DQV0 = DQV1; DQV1 = DQV2; DQV2 = DQV3; DQV3 = DQV4; DQV4 = DQV5; DQV5 = DQV6; DQV6 = DQV7; DQV7 = DQV8; DQV8 = DQV9; DQV9 = DQV10; DQV10 = 0;
+    SQ0 = SQ1; SQ1 = SQ2; SQ2 = SQ3; SQ3 = SQ4;
+    SQV0 = SQV1; SQV1 = SQV2; SQV2 = SQV3; SQV3 = SQV4; SQV4 = 0;
+    PQ0 = PQ1; PQ1 = PQ2;
+    LQ0 = LQ1; LQV0 = LQV1; LQV1 = 0;
+    OQ0 = OQ1; OQ1 = OQ2; OQ2 = OQ3; OQ3 = OQ4; OQ4 = OQ5; OQ5 = OQ6; OQ6 = OQ7;
+    OQV0 = OQV1; OQV1 = OQV2; OQV2 = OQV3; OQV3 = OQV4; OQV4 = OQV5; OQV5 = OQV6; OQV6 = OQV7; OQV7 = 0;
+    FQ0 = FQ1; FQ1 = FQ2; FQ2 = FQ3; FQ3 = FQ4;
+    FQV0 = FQV1; FQV1 = FQV2; FQV2 = FQV3; FQV3 = FQV4; FQV4 = 0;
+    if (FQV0 == 0) goto <nf>;
+    F = FQ0;
+<nf>
+    # Then the units, in the order scripts/buzz_ucode_dataflow.py runs them.
+    build FIRE; build LOAD; build LREAD; build ISS; build KF; build SCAL;
+    build PMR; build STO; build PV; build PP; build STG; build HDR; build COL;
+}
+
+# Targets of a value-3 mark: the program's loop (0x2a) and exit (0x2c) records.
+LOOPT: dst is floop [ dst = floop & 0xfff; ] { export *[code]:8 dst; }
+EXITT: dst is fexit [ dst = fexit & 0xfff; ] { export *[code]:8 dst; }
+
+# ---------------------------------------------------------------- instructions
+
+# The idle record (only bit 19 set): every unit idle, the delay lines still move.
+:idle is fvalid=1 & fidle=1 & BODY { build BODY; }
+
+:rec DISP is fvalid=1 & fidle=0 & sq=0 & DISP & BODY { build BODY; }
+
+# End marks 1 and 2 (bits 1:0) take effect after four delay slots
+# (ESTABLISHED position, buzz_isa.md "Sequencing bits 1:0"). After a 1 the
+# sequencer starts the next routine of the list, after a 2 the command is done
+# (INFERRED, pass 14); neither target is in the program, so both return.
+:end DISP is fvalid=1 & fidle=0 & sq=1 & fnest=0 & fdly=4 & DISP & BODY { build BODY; delayslot(32); return [NEXT]; }
+:end DISP is fvalid=1 & fidle=0 & sq=1 & fnest=0 & fdly=3 & DISP & BODY { build BODY; delayslot(24); return [NEXT]; }
+:end DISP is fvalid=1 & fidle=0 & sq=1 & fnest=0 & fdly=2 & DISP & BODY { build BODY; delayslot(16); return [NEXT]; }
+:end DISP is fvalid=1 & fidle=0 & sq=1 & fnest=0 & fdly=1 & DISP & BODY { build BODY; delayslot(8); return [NEXT]; }
+:end DISP is fvalid=1 & fidle=0 & sq=1 & fnest=0 & fdly=0 & DISP & BODY { build BODY; return [NEXT]; }
+:end2 DISP is fvalid=1 & fidle=0 & sq=2 & fnest=0 & fdly=4 & DISP & BODY { build BODY; delayslot(32); return [NEXT]; }
+:end2 DISP is fvalid=1 & fidle=0 & sq=2 & fnest=0 & fdly=3 & DISP & BODY { build BODY; delayslot(24); return [NEXT]; }
+:end2 DISP is fvalid=1 & fidle=0 & sq=2 & fnest=0 & fdly=2 & DISP & BODY { build BODY; delayslot(16); return [NEXT]; }
+:end2 DISP is fvalid=1 & fidle=0 & sq=2 & fnest=0 & fdly=1 & DISP & BODY { build BODY; delayslot(8); return [NEXT]; }
+:end2 DISP is fvalid=1 & fidle=0 & sq=2 & fnest=0 & fdly=0 & DISP & BODY { build BODY; return [NEXT]; }
+# Value 3 (UNKNOWN in general): in a table program it ends a part, and after
+# its four delay slots the sequencer continues at the loop record (0x2a) or the
+# exit record (0x2c) (INFERRED, buzz_isa.md pass 17 and the 6.5.7 source's
+# start, loop and exit names). Which one it takes is UNKNOWN: seq_take_exit().
+:seq3 DISP is fvalid=1 & fidle=0 & sq=3 & fnest=0 & fprog=1 & fdly=4 & DISP & BODY & LOOPT & EXITT {
+    build BODY;
+    delayslot(32);
+    local ex:1 = seq_take_exit();
+    if (ex != 0) goto EXITT;
+    goto LOOPT;
+}
+# Outside a known program its targets are unknown, so it ends the routine.
+:seq3 DISP is fvalid=1 & fidle=0 & sq=3 & fnest=0 & fprog=0 & fdly=4 & DISP & BODY { build BODY; delayslot(32); return [NEXT]; }
+:seq3 DISP is fvalid=1 & fidle=0 & sq=3 & fnest=0 & fdly=3 & DISP & BODY { build BODY; delayslot(24); return [NEXT]; }
+:seq3 DISP is fvalid=1 & fidle=0 & sq=3 & fnest=0 & fdly=2 & DISP & BODY { build BODY; delayslot(16); return [NEXT]; }
+:seq3 DISP is fvalid=1 & fidle=0 & sq=3 & fnest=0 & fdly=1 & DISP & BODY { build BODY; delayslot(8); return [NEXT]; }
+:seq3 DISP is fvalid=1 & fidle=0 & sq=3 & fnest=0 & fdly=0 & DISP & BODY { build BODY; return [NEXT]; }
+# Marks shown without flow (fnest): a mark inside an earlier mark's delay
+# slots (record 118 of buzz_xform.bin, 1610 of diagxform.bin), since Ghidra
+# cannot nest delay slots; and a program's patch record (255 in buzz_xform.bin,
+# ucode/buzz_routines.md "Table records"), an end mark that runs only when the
+# host copies it over the program's value-3 mark, so the records after it in
+# the image are the program's loop, not its delay slots.
+:end DISP is fvalid=1 & fidle=0 & sq=1 & fnest=1 & DISP & BODY { build BODY; }
+:end2 DISP is fvalid=1 & fidle=0 & sq=2 & fnest=1 & DISP & BODY { build BODY; }
+:seq3 DISP is fvalid=1 & fidle=0 & sq=3 & fnest=1 & DISP & BODY { build BODY; }

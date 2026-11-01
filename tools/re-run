@@ -1,0 +1,135 @@
+#!/bin/sh
+# Run a command in the toolchain container with this repository mounted at /work.
+#
+#   tools/re-run [--ghidra] [--workspace DIR] [--] [COMMAND...]
+#   tools/re-run [--workspace DIR] --ghidra-export OBJECT [OPTIONS...]
+#   tools/re-run --syscalls KERNEL... [OPTIONS...]
+#   tools/re-run --syssgi KERNEL... [OPTIONS...]
+#
+#   tools/re-run python3 scripts/inventory.py
+#   tools/re-run mips64-linux-gnuabi64-objdump -h root/unix
+#   tools/re-run                       # a shell in the container
+#   tools/re-run --ghidra analyzeHeadless /tmp/ghidra-projects p -import root/unix
+#   tools/re-run --ghidra-export root/usr/gfx/arch/IP27KONA32/libGLcore.so \
+#       --decompile-symbol NAME --types ghidra/types/ctx.types.json
+#
+# Needs Podman (rootless is fine) and nothing else. The image is built from
+# retools/tools/Containerfile the first time and again whenever that file changes; it
+# is tagged with a hash of the file. --ghidra uses the optional second image,
+# built from retools/tools/Containerfile.ghidra (large; fetches Ghidra from its
+# release page). It has analyzeHeadless on PATH and a JDK, but not the
+# toolchain: run Python tools without --ghidra. The image also carries the
+# Ghidra scripts under /opt/re-scripts, built from retools/ghidra/scripts/.
+#
+# --ghidra-export OBJECT runs Ghidra over OBJECT, an ELF file in the
+# repository (a linked library, a kernel, a relocatable driver object), and
+# writes decompiled C per function as JSON under .cache/ghidra-export/, naming
+# the file on stdout. OPTIONS: --decompile-symbol NAME|GLOB|@0xADDR (repeat),
+# --decompile-list FILE, --decompile-all, --decompile-timeout S, --types
+# SPEC.json, --mdebug (import the object's .mdebug table), --bsim-db NAME --bsim-label LABEL (similarity database under
+# .cache/ghidra-bsim), --timeout S, --cpus N. It builds both images and needs
+# the repository itself as the workspace. Decompiler and BSim output is
+# navigation, not evidence. tools/ghidra-export.py has the full list.
+#
+# --syscalls KERNEL... runs scripts/syscall_table.py: the system call table of each linked
+# kernel as TSV on stdout. --syssgi KERNEL... runs scripts/syssgi_selectors.py: the syssgi()
+# selector dispatch. Both take --out FILE, --cross-check DIR (a directory of public lists) and
+# --report FILE; see the top of each script. Kernel paths are inside the repository (root/ works).
+#
+# The repository is mounted read-write at /work, as your own user id, so
+# generated files are yours. root/ (the IRIX files you copied in, see
+# IRIX_FILES.md) is inside it. If root/ is a symlink to a directory elsewhere,
+# that directory is mounted read-only at the path the link resolves to inside
+# the container, so the link works. A link that resolves into a system
+# directory of the container (/usr, /etc, /var and so on) is refused: make
+# root/ a real directory instead. Links inside root/ that point outside it are
+# not followed. scripts/populate-root writes into root/: run it on the host
+# (it only needs python3), not here.
+#
+#   RE_ENGINE=CMD   container command to use instead of podman
+#   RE_NOTTY=1      never allocate a terminal
+set -eu
+# This file is shared: a workspace's tools/re-run is a link into the retools submodule. The
+# workspace is the directory holding the link; the container definitions and the Ghidra
+# scripts are in the submodule, found through the link's target.
+here=$(cd "$(dirname "$0")" && pwd -P)
+repo=$(dirname "$here")
+shared=$(dirname "$(dirname "$(readlink -f "$0")")")
+engine=${RE_ENGINE:-podman}
+workspace=$repo
+ghidra=
+export=
+tool=
+while [ $# -gt 0 ]; do
+    case $1 in
+        --workspace) workspace=$2; shift 2 ;;
+        --ghidra) ghidra=1; shift ;;
+        --ghidra-export) export=${2:?--ghidra-export needs an object}; shift 2; break ;;
+        --syscalls) tool=scripts/syscall_table.py; shift; break ;;
+        --syssgi) tool=scripts/syssgi_selectors.py; shift; break ;;
+        --) shift; break ;;
+        -h|--help) sed -n '2,/^set -eu/{/^set -eu/!p;}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) break ;;
+    esac
+done
+if [ ! -d "$workspace" ]; then
+    printf 're-run: workspace %s is not a directory\n' "$workspace" >&2
+    exit 2
+fi
+workspace=$(cd "$workspace" && pwd -P)
+
+if [ -n "$export" ]; then
+    [ "$workspace" = "$repo" ] || { printf 're-run: --ghidra-export runs on this repository itself\n' >&2; exit 2; }
+    case $export in "$repo"/*) export=${export#"$repo"/} ;; /*)
+        printf 're-run: --ghidra-export: %s is outside the repository\n' "$export" >&2; exit 2 ;; esac
+    job=.cache/ghidra-export/$(date +%Y%m%d-%H%M%S)-$$
+    mkdir -p "$repo/$job"
+    export RE_NOTTY=1
+    "$0" -- python3 tools/ghidra-export.py prepare --job "$job" "$@" "$export" || exit $?
+    "$0" --ghidra -- sh "$job/ghidra.sh" || exit $?
+    exec "$0" -- python3 tools/ghidra-export.py finish --job "$job"
+fi
+
+if [ -n "$ghidra" ]; then
+    file=$shared/tools/Containerfile.ghidra; name=re-ghidra
+else
+    file=$shared/tools/Containerfile; name=re-toolchain
+fi
+# The Ghidra image also holds ghidra/scripts of the submodule, so they are part of its tag.
+if [ -n "$ghidra" ]; then
+    tag=$name:$(cat "$file" "$shared"/ghidra/scripts/* | sha256sum | cut -c1-12)
+else
+    tag=$name:$(sha256sum "$file" | cut -c1-12)
+fi
+if ! $engine image exists "$tag" >/dev/null 2>&1; then
+    printf 're-run: building %s from %s\n' "$tag" "${file#"$repo"/}" >&2
+    $engine build -q -t "$tag" -f "$file" "$shared" >/dev/null
+fi
+
+# A symlinked root/ gets its target bind-mounted where the link points.
+mounts=
+if [ -L "$workspace/root" ]; then
+    target=$(readlink "$workspace/root")
+    real=$(cd "$workspace/root" && pwd -P)
+    case $target in /*) dest=$target ;; *) dest=$(realpath -m --no-symlinks "/work/$target") ;; esac
+    case $real$dest in *[[:space:]]*|*:*|*,*)
+        printf 're-run: root/ paths with spaces, colons or commas are not supported\n' >&2; exit 2 ;;
+    esac
+    case $dest in
+        /work/*) ;;                          # already inside the workspace mount
+        /|/bin|/bin/*|/boot|/boot/*|/dev|/dev/*|/etc|/etc/*|/lib*|/proc|/proc/*|/run|/run/*|/sbin|/sbin/*|/sys|/sys/*|/tmp|/tmp/*|/usr|/usr/*|/var|/var/*)
+           printf 're-run: root/ points at %s, which would shadow container files; make root/ a real directory or link it elsewhere\n' "$dest" >&2
+           exit 2 ;;
+        *) mounts="-v $real:$dest:ro" ;;
+    esac
+fi
+
+[ -z "$tool" ] || set -- python3 "$tool" "$@"
+[ $# -gt 0 ] || set -- bash
+tty=
+if [ -z "${RE_NOTTY:-}" ] && [ -t 0 ] && [ -t 1 ]; then tty=-it; fi
+# --userns=keep-id maps you to the same id inside, label=disable lets bind
+# mounts work on SELinux hosts.
+# shellcheck disable=SC2086
+exec $engine run --rm $tty --userns=keep-id --security-opt label=disable \
+    -v "$workspace:/work" $mounts -w /work -e HOME=/tmp -e XDG_CONFIG_HOME=/tmp/.config "$tag" "$@"

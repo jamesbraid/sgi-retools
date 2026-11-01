@@ -1,0 +1,46 @@
+#!/bin/sh
+# Check that this workspace uses the shared tooling as pinned.
+#
+#   tools/check-shared                  verify the retools submodule against its pin
+#   tools/check-shared DIR...           also compare the pin with each other workspace DIR
+#                                       (for example .cache/siblings/*)
+#
+# The shared tooling lives in the retools submodule; the files under tools/, scripts/ and
+# ghidra/ that every workspace uses are links into it. This checks that
+#   - retools is checked out at the commit the workspace pins (no local edits or drift);
+#   - the submodule has no uncommitted changes;
+#   - every link into retools resolves.
+# Change shared tooling in the sgi-retools repository, then update the pin here
+# (git add retools) and commit it.
+set -eu
+cd "$(dirname "$0")/.."
+bad=0
+if [ ! -e retools/.git ]; then
+    printf 'retools is not checked out: git submodule update --init retools\n' >&2
+    exit 1
+fi
+st=$(git submodule status retools | cut -c1)
+case $st in
+    ' ') ;;
+    '+') printf 'retools is at a commit other than the pinned one\n' >&2; bad=1 ;;
+    *)   printf 'retools is not initialised cleanly (status %s)\n' "$st" >&2; bad=1 ;;
+esac
+if [ -n "$(git -C retools status --porcelain)" ]; then
+    printf 'retools has uncommitted changes\n' >&2
+    bad=1
+fi
+for l in $(git ls-files -s tools scripts ghidra | awk '$1==120000{print $4}'); do
+    case $(readlink "$l") in
+        *retools/*) [ -e "$l" ] || { printf 'dangling link into retools: %s\n' "$l" >&2; bad=1; } ;;
+    esac
+done
+pin=$(git rev-parse :retools)
+for dir in "$@"; do
+    other=$(git -C "$dir" rev-parse :retools 2>/dev/null || true)
+    if [ "$other" != "$pin" ]; then
+        printf 'differs from %s: retools pin %s, here %s\n' "$dir" "${other:-none}" "$pin" >&2
+        bad=1
+    fi
+done
+[ $bad -eq 0 ] && printf 'retools matches its pin (%s)\n' "$(printf %.12s "$pin")"
+exit $bad

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The engine has no stack and no calling convention: routines share the
+     register file, the memories and the delay lines, and a routine's results
+     are the words it writes there. SP is a placeholder Ghidra requires. -->
+<compiler_spec>
+  <data_organization>
+    <pointer_size value="2"/>
+    <float_size value="4"/>
+    <double_size value="8"/>
+  </data_organization>
+  <global>
+    <range space="code"/>
+    <range space="vreg"/>
+    <range space="pmem"/>
+    <range space="cmem"/>
+    <range space="inp"/>
+    <range space="outw"/>
+  </global>
+  <stackpointer register="SP" space="pmem"/>
+  <returnaddress>
+    <register name="NEXT"/>
+  </returnaddress>
+  <default_proto>
+    <prototype name="__ucode" extrapop="0" stackshift="0">
+      <input/>
+      <output/>
+      <unaffected>
+        <register name="SP"/>
+      </unaffected>
+    </prototype>
+  </default_proto>
+</compiler_spec>

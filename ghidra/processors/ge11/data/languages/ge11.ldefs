@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Geometry-engine microcode of SGI IMPACT (GE11): 72-bit words, the
+     instruction set the InfiniteReality (KONA) engine shares. See
+     ghidra/README.md. -->
+<language_definitions>
+  <language processor="GE11"
+            endian="big"
+            size="32"
+            variant="default"
+            version="1.0"
+            slafile="ge11.sla"
+            processorspec="ge11.pspec"
+            id="GE11:BE:32:default">
+    <description>SGI IMPACT GE11 geometry-engine microcode (72-bit words, decoded record in context)</description>
+    <compiler name="default" spec="ge11.cspec" id="default"/>
+  </language>
+</language_definitions>

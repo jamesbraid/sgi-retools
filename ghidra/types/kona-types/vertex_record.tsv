@@ -1,0 +1,16 @@
+# The geometry engines' vertex record: 32-bit words, offsets in words, as ucode/ge_compute.md
+# reads them from the engine code (IRIX 6.5.30m ge.u). The record continues past the last row;
+# its length is not documented. Rows that share an offset become a union.
+offset	type	name	status	source
+0x00	float[4]	obj_pos	established	object position x, y, z, w (input), read by every transform module
+0x04	float[4]	colour	established	input colour r, g, b, a
+0x08	float[3]	obj_normal	established	object normal (input)
+0x0b	float[4]	tex	established	texture coordinates s, t, r, q; texture generation writes them
+0x0f	float[3]	eye_normal	established	eye-space normal (output of the normal transforms)
+0x0f	float[4]	proj_tex	established	projected texture results of the textured window transform
+0x13	float[4]	eye_pos	established	eye-space position (output of the eye transforms)
+0x17	float[4]	clip_pos	established	clip-space position (output of the clip transforms)
+0x1b	float[4]	out_colour	established	lit or clamped output colour
+0x1f	float[4]	out_tex	established	the four words after the colour that mmo_SaveRasterPos fills with transformed texture coordinates
+0x23	float[3]	win_pos	established	window x, y, z
+0x26	u32	edge_word	established	the edge-flag word the triangle output moves and shifts

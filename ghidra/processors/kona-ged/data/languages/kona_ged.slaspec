@@ -1,0 +1,221 @@
+# SLEIGH spec for the distributor program of SGI InfiniteReality (KONA),
+# usr/gfx/ucode/KONA/ged1b.u. The word format is ucode/ged.md "Word format":
+# the IR diagnostic irsaudit packs a 13-field structure into one 32-bit word
+# (Compact_GED_Ucode), and bits 31-30 pick one of four types. The decode
+# matches scripts/ged_disasm.py field for field; mnemonics are that script's
+# labels for the word types, not hardware names.
+#
+# Semantics. Only what ucode/ged.md reads from the program is modelled, and
+# its status is given at each constructor:
+#  - transfers jump to the 10-bit word target after one delay slot (inferred);
+#    op 0 is unconditional (inferred), the other ops test a condition whose
+#    kind is unknown, so the test is the opaque pcodeop ged_cond;
+#  - load op 0 sets a register to the immediate, op 2 copies the register
+#    the immediate names (inferred); other load ops are opaque;
+#  - fetch (bit 26) and release (bit 12) are the opaque pcodeops ged_fetch
+#    and ged_release (established names, inferred effect);
+#  - control fields x, y, r, a, b, c, z and n go to the opaque pcodeop
+#    ged_control with the word; their meaning is open (ged.md).
+#
+# Addresses are bytes: program word i is at 4 x i, so a transfer target t
+# is address 4 x t. The import script (ghidra_scripts/KonaGEDImport.java)
+# maps the program at 0 and the two tables at 0x1000 (word 0x400).
+
+define endian=big;
+define alignment=4;
+
+define space ram type=ram_space size=4 default;
+define space register type=register_space size=4;
+
+# Distributor registers by number (r48 class, r49 state, r50/r51 counters,
+# r53-r60 the one-hot registers, r62 and r69-r72 handlers; ucode/ged.md
+# "Registers"). The load form reaches 128 numbers, the transfer form 256.
+define register offset=0 size=4 [ r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 r13 r14 r15 r16 r17 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31 r32 r33 r34 r35 r36 r37 r38 r39 r40 r41 r42 r43 r44 r45 r46 r47 r48 r49 r50 r51 r52 r53 r54 r55 r56 r57 r58 r59 r60 r61 r62 r63 r64 r65 r66 r67 r68 r69 r70 r71 r72 r73 r74 r75 r76 r77 r78 r79 r80 r81 r82 r83 r84 r85 r86 r87 r88 r89 r90 r91 r92 r93 r94 r95 r96 r97 r98 r99 r100 r101 r102 r103 r104 r105 r106 r107 r108 r109 r110 r111 r112 r113 r114 r115 r116 r117 r118 r119 r120 r121 r122 r123 r124 r125 r126 r127 r128 r129 r130 r131 r132 r133 r134 r135 r136 r137 r138 r139 r140 r141 r142 r143 r144 r145 r146 r147 r148 r149 r150 r151 r152 r153 r154 r155 r156 r157 r158 r159 r160 r161 r162 r163 r164 r165 r166 r167 r168 r169 r170 r171 r172 r173 r174 r175 r176 r177 r178 r179 r180 r181 r182 r183 r184 r185 r186 r187 r188 r189 r190 r191 r192 r193 r194 r195 r196 r197 r198 r199 r200 r201 r202 r203 r204 r205 r206 r207 r208 r209 r210 r211 r212 r213 r214 r215 r216 r217 r218 r219 r220 r221 r222 r223 r224 r225 r226 r227 r228 r229 r230 r231 r232 r233 r234 r235 r236 r237 r238 r239 r240 r241 r242 r243 r244 r245 r246 r247 r248 r249 r250 r251 r252 r253 r254 r255 ];
+define register offset=0x1000 size=4 [ PC SP ];
+define register offset=0x2000 size=4 contextreg;
+
+# Set per word by the import script: 1 when the next word is itself a
+# transfer. Ghidra cannot put a transfer in a delay slot, so such a
+# transfer is given none.
+define context contextreg
+  nodly = (0,0) noflow
+;
+
+define token word(32)
+  ty    = (30,31)
+  op    = (27,29) dec
+  sub   = (27,29) dec
+  fetch = (26,26)
+  cx    = (24,25)
+  cy    = (23,23)
+  cr    = (17,22)
+  ca    = (16,16)
+  cb    = (15,15)
+  cc    = (13,13)
+  rel   = (12,12)
+  cz    = (10,11)
+  cn    = (0,9)
+  tp    = (25,25) dec
+  tq    = (24,24) dec
+  treg  = (16,23)
+  tregn = (16,23) dec
+  tval  = (10,15) dec
+  ttgt  = (0,9)
+  lx    = (24,25) dec
+  ly    = (23,23)
+  lreg  = (16,22)
+  limm  = (0,15)
+  limhi = (7,15)
+  limlo = (0,6)
+  w32   = (0,31)
+;
+
+attach variables treg [ r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 r13 r14 r15 r16 r17 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31 r32 r33 r34 r35 r36 r37 r38 r39 r40 r41 r42 r43 r44 r45 r46 r47 r48 r49 r50 r51 r52 r53 r54 r55 r56 r57 r58 r59 r60 r61 r62 r63 r64 r65 r66 r67 r68 r69 r70 r71 r72 r73 r74 r75 r76 r77 r78 r79 r80 r81 r82 r83 r84 r85 r86 r87 r88 r89 r90 r91 r92 r93 r94 r95 r96 r97 r98 r99 r100 r101 r102 r103 r104 r105 r106 r107 r108 r109 r110 r111 r112 r113 r114 r115 r116 r117 r118 r119 r120 r121 r122 r123 r124 r125 r126 r127 r128 r129 r130 r131 r132 r133 r134 r135 r136 r137 r138 r139 r140 r141 r142 r143 r144 r145 r146 r147 r148 r149 r150 r151 r152 r153 r154 r155 r156 r157 r158 r159 r160 r161 r162 r163 r164 r165 r166 r167 r168 r169 r170 r171 r172 r173 r174 r175 r176 r177 r178 r179 r180 r181 r182 r183 r184 r185 r186 r187 r188 r189 r190 r191 r192 r193 r194 r195 r196 r197 r198 r199 r200 r201 r202 r203 r204 r205 r206 r207 r208 r209 r210 r211 r212 r213 r214 r215 r216 r217 r218 r219 r220 r221 r222 r223 r224 r225 r226 r227 r228 r229 r230 r231 r232 r233 r234 r235 r236 r237 r238 r239 r240 r241 r242 r243 r244 r245 r246 r247 r248 r249 r250 r251 r252 r253 r254 r255 ];
+attach variables [ lreg limlo ] [ r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 r13 r14 r15 r16 r17 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31 r32 r33 r34 r35 r36 r37 r38 r39 r40 r41 r42 r43 r44 r45 r46 r47 r48 r49 r50 r51 r52 r53 r54 r55 r56 r57 r58 r59 r60 r61 r62 r63 r64 r65 r66 r67 r68 r69 r70 r71 r72 r73 r74 r75 r76 r77 r78 r79 r80 r81 r82 r83 r84 r85 r86 r87 r88 r89 r90 r91 r92 r93 r94 r95 r96 r97 r98 r99 r100 r101 r102 r103 r104 r105 r106 r107 r108 r109 r110 r111 r112 r113 r114 r115 r116 r117 r118 r119 r120 r121 r122 r123 r124 r125 r126 r127 ];
+
+define pcodeop ged_fetch;
+define pcodeop ged_release;
+define pcodeop ged_control;
+define pcodeop ged_cond;
+define pcodeop ged_load;
+
+# ---- shared pieces
+
+FE: "+fetch" is fetch=1 { ged_fetch(); }
+FE: is fetch=0 { }
+
+# ---- type 0, control: 29-27 sub, 26 fetch, 25-24 x, 23 y, 22-17 r, 16 a,
+# 15 b, 13 c, 12 release, 11-10 z, 9-0 n (established positions).
+
+CX: "x="^cx is cx { }
+CX: is cx=0 { }
+CY: "y="^cy is cy { }
+CY: is cy=0 { }
+CR: "r="^cr is cr { }
+CR: is cr=0 { }
+CA: "a="^ca is ca { }
+CA: is ca=0 { }
+CB: "b="^cb is cb { }
+CB: is cb=0 { }
+CC: "c="^cc is cc { }
+CC: is cc=0 { }
+CZ: "z="^cz is cz { }
+CZ: is cz=0 { }
+CN: "n="^cn is cn { }
+CN: is cn=0 { }
+REL: "release" is rel=1 { ged_release(); }
+REL: is rel=0 { }
+SUB: "sub="^sub is sub { }
+SUB: is sub=0 { }
+
+:nop is w32=0 { }
+
+:ctl FE CX CY CR CA CB CC CZ CN REL SUB is ty=0 & FE & CX & CY & CR & CA & CB & CC & CZ & CN & REL & SUB & w32 {
+	build FE;
+	local w:4 = w32;
+	ged_control(w);
+	build REL;
+}
+
+# ---- type 1, transfer: 29-27 op, 26 fetch, 25 p, 24 q, 23-16 register
+# (one-hot byte for ops 5 and 7: bit k names register 53 + k), 15-10 value
+# (ops 1-3 only), 9-0 target (established positions).
+
+TP: "p="^tp is tp { }
+TP: is tp=0 { }
+TQ: "q="^tq is tq { }
+TQ: is tq=0 { }
+
+# One-hot register of ops 5 and 7 (GEDencodeOneHotRegisterAddress).
+OH: "r53" is treg=0x01 { export r53; }
+OH: "r54" is treg=0x02 { export r54; }
+OH: "r55" is treg=0x04 { export r55; }
+OH: "r56" is treg=0x08 { export r56; }
+OH: "r57" is treg=0x10 { export r57; }
+OH: "r58" is treg=0x20 { export r58; }
+OH: "r59" is treg=0x40 { export r59; }
+OH: "r60" is treg=0x80 { export r60; }
+OH: treg is treg { export treg; }
+
+TREG: OH is op=5 & OH { export OH; }
+TREG: OH is op=7 & OH { export OH; }
+TREG: treg is treg { export treg; }
+
+TV: "v="^tval is op=1 & tval { export *[const]:1 tval; }
+TV: "v="^tval is op=2 & tval { export *[const]:1 tval; }
+TV: "v="^tval is op=3 & tval { export *[const]:1 tval; }
+TV: is tval { export 0:1; }
+
+TGT: "-> "^dest is ttgt [ dest = ttgt * 4; ] { export *:4 dest; }
+
+XOP: "1" is op=1 { }
+XOP: "2" is op=2 { }
+XOP: "3" is op=3 { }
+XOP: "4" is op=4 { }
+XOP: "5" is op=5 { }
+XOP: "6" is op=6 { }
+XOP: "7" is op=7 { }
+
+# Op 0: no register operand, unconditional (inferred).
+:xfer0 FE TP TQ TREG TV TGT is ty=1 & op=0 & nodly=0 & FE & TP & TQ & TREG & TV & TGT {
+	build FE;
+	delayslot(1);
+	goto TGT;
+}
+
+:xfer0 FE TP TQ TREG TV TGT is ty=1 & op=0 & nodly=1 & FE & TP & TQ & TREG & TV & TGT {
+	build FE;
+	goto TGT;
+}
+
+# Ops 1-7: a test of the register (and value) whose kind is unknown, so
+# the whole word and the operands go to the opaque ged_cond.
+:xfer^XOP FE TP TQ TREG TV TGT is ty=1 & XOP & nodly=0 & FE & TP & TQ & TREG & TV & TGT & w32 {
+	build FE;
+	local w:4 = w32;
+	local c:1 = ged_cond(w, TREG, TV);
+	delayslot(1);
+	if (c != 0) goto TGT;
+}
+
+:xfer^XOP FE TP TQ TREG TV TGT is ty=1 & XOP & nodly=1 & FE & TP & TQ & TREG & TV & TGT & w32 {
+	build FE;
+	local w:4 = w32;
+	local c:1 = ged_cond(w, TREG, TV);
+	if (c != 0) goto TGT;
+}
+
+# ---- type 2, load: 29-27 op, 26 fetch, 25-24 x, 23 y, 22-16 register,
+# 15-0 immediate (ops 0 and 2 only; established positions).
+
+LX: "x="^lx is lx { }
+LX: is lx=0 { }
+LY: "y" is ly=1 { }
+LY: is ly=0 { }
+
+:move FE LX LY lreg "<-" limlo is ty=2 & op=2 & FE & LX & LY & lreg & limhi=0 & limlo {
+	build FE;
+	lreg = limlo;
+}
+
+:load0 FE LX LY lreg, limm is ty=2 & op=0 & FE & LX & LY & lreg & limm {
+	build FE;
+	lreg = limm;
+}
+
+LOP: "1" is op=1 { }
+LOP: "3" is op=3 { }
+LOP: "4" is op=4 { }
+LOP: "5" is op=5 { }
+LOP: "6" is op=6 { }
+LOP: "7" is op=7 { }
+
+:load^LOP FE LX LY lreg, limm is ty=2 & LOP & FE & LX & LY & lreg & limm & w32 {
+	build FE;
+	local w:4 = w32;
+	lreg = ged_load(w, lreg);
+}
+
+# ---- type 3: the packer sets only bits 31-30; ged1b.u has none.
+
+:type3 w32 is ty=3 & w32 { }
