@@ -1735,17 +1735,19 @@ def functions_of(img, elf, path):
     for name, addr in mdebug_procs(elf, img['data']):
         defs['mdebug'][name].append((addr, 0, '.text'))
     for name in debug_funcnames(elf):
-        defs['funcnames'][name].append((0, 0, ''))
+        defs['funcnames'][name].append((None, 0, ''))
     if elf.get_section_by_name('.debug_info') is not None:
         for name, lo, hi in dwarf_subprograms(path):
+            if not lo and elf['e_type'] != 'ET_REL':
+                continue
             defs['dwarf'][name].append((lo, (hi - lo) if hi > lo else 0, '.text'))
     symbols = collections.defaultdict(list)
     for src in ('symtab', 'dynsym'):
         for name, ds in defs[src].items():
             symbols[name] += ds
-    sym_addrs = {n: {a for a, _, _ in ds if a} for n, ds in symbols.items()}
+    sym_addrs = {n: {a for a, _, _ in ds if a is not None} for n, ds in symbols.items()}
     stale = any(da and sym_addrs.get(n) and not da <= sym_addrs[n]
-                for n, da in ((n, {a for a, _, _ in ds if a}) for n, ds in defs['dwarf'].items()))
+                for n, da in ((n, {a for a, _, _ in ds if a is not None}) for n, ds in defs['dwarf'].items()))
     names = set()
     for src in defs:
         names |= set(defs[src])
@@ -1753,7 +1755,7 @@ def functions_of(img, elf, path):
     for name in names:
         tiers = [('symtab' if name in defs['symtab'] else 'dynsym', symbols.get(name, [])),
                  ('mdebug', defs['mdebug'].get(name, [])), ('dwarf', [] if stale else defs['dwarf'].get(name, []))]
-        src, ds = next(((sr, [d for d in dd if d[0]]) for sr, dd in tiers if any(d[0] for d in dd)), ('', []))
+        src, ds = next(((sr, [d for d in dd if d[0] is not None]) for sr, dd in tiers if any(d[0] is not None for d in dd)), ('', []))
         srcs = {sr for sr in defs if name in defs[sr] and not (stale and sr == 'dwarf' and ds)}
         if ds:
             used.add(src)
@@ -1764,11 +1766,11 @@ def functions_of(img, elf, path):
             if len({d[0] for d in ds}) > 1:
                 multi.add(name)
         else:
-            addr, size, sec = 0, 0, ''
+            addr, size, sec = None, 0, ''
         funcs[name] = [sec, addr, size, srcs]
     at = collections.defaultdict(set)
     for name, e in funcs.items():
-        if e[1]:
+        if e[1] is not None:
             at[(e[0], e[1])].add(name)
     shared = {n for ns in at.values() if len(ns) > 1 for n in ns}
     label = '+'.join(x for x in ('symtab', 'dynsym', 'mdebug', 'dwarf') if x in used) or 'none'
@@ -1777,14 +1779,15 @@ def functions_of(img, elf, path):
     # a missing size runs to the next function of the same section
     by = collections.defaultdict(list)
     for name, e in funcs.items():
-        by[e[0]].append(e[1])
+        if e[1] is not None:
+            by[e[0]].append(e[1])
     ends = {}
     for sec in by:
         by[sec] = sorted(set(by[sec]))
         s = elf.get_section_by_name(sec) if sec else None
         ends[sec] = (s['sh_addr'] + s['sh_size']) if s is not None else None
     for name, e in funcs.items():
-        if not e[2] and e[1]:
+        if not e[2] and e[1] is not None:
             a = by[e[0]]
             i = bisect.bisect_right(a, e[1])
             nxt = a[i] if i < len(a) else ends.get(e[0])
@@ -1801,7 +1804,7 @@ def functions_of(img, elf, path):
             off = e[1] - sec['sh_addr']
             if 0 <= off and off + e[2] <= len(secdata[e[0]]):
                 sha = hashlib.sha256(secdata[e[0]][off:off + e[2]]).hexdigest()[:12]
-        elif sec is None and e[1] and e[2]:
+        elif sec is None and e[1] is not None and e[2]:
             # no section headers: find the loadable segment that holds the address
             if segs is None:
                 segs = [(sg['p_vaddr'], sg['p_filesz'], sg.data()) for sg in elf.iter_segments()
@@ -1897,7 +1900,7 @@ def split_runs(runs, table):
     slow path, so its accesses keep the routine's state."""
     starts, ends = {}, {}
     for name, e in sorted(table.items()):
-        if e[1]:
+        if e[1] is not None:
             starts.setdefault(e[1], name)
             if e[2]:
                 ends[name] = e[1] + e[2]
@@ -3513,8 +3516,9 @@ def build(cfg, a, tmp):
         lab = img['label']
         g = img['group']
         fl = funcs.get(lab, {})
-        for name in sorted(fl, key=lambda n: (fl[n][1], n)):
+        for name in sorted(fl, key=lambda n: (fl[n][1] or 0, n)):
             sec, addr, size, srcs, csha = fl[name]
+            addr = 0 if addr is None else addr
             row = {'binary': lab, 'role': g['role'], 'abi': abi.get(lab, '-'), 'elf_section': sec,
                    'address': '0x%x' % addr, 'size': size or '', 'name': name, 'source': '+'.join(sorted(srcs)),
                    'code_sha': csha}
