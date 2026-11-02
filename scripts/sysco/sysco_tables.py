@@ -44,9 +44,11 @@ RELEASES = ['6.4', '6.4-origin', '6.5', '6.5.2', '6.5.5', '6.5.6', '6.5.7', '6.5
 EXTRA = ('usr/cpu/firmware/', 'usr/etc/', 'usr/cpu/sysgen/', 'sbin/', 'usr/include/', 'usr/share/catman/')
 FW = 'usr/cpu/firmware/sysco/'
 CRAMFS_LE, CRAMFS_BE = b'\x45\x3d\xcd\x28', b'\x28\xcd\x3d\x45'
-# Xilinx IDCODEs with the revision nibble dropped (OpenOCD xcf.c, Xilinx DS123 and DS026). An SVF
+# Xilinx IDCODEs with the revision nibble dropped. XCF parts from OpenOCD xcf.c and Xilinx DS123;
+# XC18V parts from Xilinx DS026 (XC18V00 Series, v6.1, February 5, 2019), Table 5, page 7. An SVF
 # names its target by the IDCODE it reads, so a match names the part; anything else stays unnamed.
-SVF_TARGETS = {0x5044093: 'XCF01S', 0x5045093: 'XCF02S', 0x5059093: 'XCF32P',
+SVF_TARGETS = {0x5044093: 'XCF01S', 0x5045093: 'XCF02S', 0x5046093: 'XCF04S', 0x5059093: 'XCF32P',
+               0x5025093: 'XC18V02', 0x5035093: 'XC18V02',
                0x5026093: 'XC18V04', 0x5036093: 'XC18V04'}
 
 

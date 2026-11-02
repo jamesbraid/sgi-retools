@@ -24,9 +24,12 @@ class SvfTarget(unittest.TestCase):
         self.assertEqual(sysco_tables.svf_target(svf('f5059093')), 'XCF32P')
         self.assertEqual(sysco_tables.svf_target(svf('f5036093', '0ffeffff')), 'XC18V04')
         self.assertEqual(sysco_tables.svf_target(svf('05026093')), 'XC18V04')
+        self.assertEqual(sysco_tables.svf_target(svf('f5046093')), 'XCF04S')
+        self.assertEqual(sysco_tables.svf_target(svf('f5035093')), 'XC18V02')
+        self.assertEqual(sysco_tables.svf_target(svf('05025093')), 'XC18V02')
 
     def test_unmatched_id_stays_unnamed(self):
-        self.assertEqual(sysco_tables.svf_target(svf('f5035093')), '')
+        self.assertEqual(sysco_tables.svf_target(svf('f5030093')), '')
         self.assertEqual(sysco_tables.svf_target(svf('f6c5f093', '0fff8fff')), '')
 
     def test_no_idcode_read(self):
