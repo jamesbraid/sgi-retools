@@ -300,6 +300,15 @@ class FirmwareFacts(unittest.TestCase):
         load=next(a for a in fs['accesses'] if a['address']=='0x1009')
         self.assertEqual(load['origin_offset'],-0x1003)
 
+    def test_indirect_x86_jump_reports_pointer_read_and_incomplete_coverage(self):
+        # mov eax,0x3000; jmp [eax]; mov eax,7; ret
+        fs,text=self.analyze('x86-32','b800300000ff20b807000000c3')
+        load=next(a for a in fs['accesses'] if a['address']=='0x1005')
+        self.assertEqual(load['absolute'],'0x3000')
+        self.assertEqual(load['kind'],'load')
+        self.assertEqual(fs['coverage']['unresolved_transfers'],['0x1005'])
+        self.assertIn('known edges only',text)
+
     def test_cli_requires_load_for_non_mips_flat_image(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             hostfacts.main(['missing', '0x1000', '--arch', 'arm', '--flat', '--size', '4'])

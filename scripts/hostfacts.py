@@ -755,6 +755,8 @@ class FirmwareRoutine:
             st.flags = None
             st.memory.clear()
             return old.merged(st) if conditional else st
+        if self.x86 and kind == 'jump' and op and op[0].type == 3:
+            self.operand(st,ins,op[0],events)
         if kind in ('conditional', 'jump', 'return', 'conditional-return') and not (self.arm and (mn.startswith('pop') or mn.startswith('ldr') or mn.startswith('ldm'))):
             if self.x86 and mn.startswith('loop'):
                 self.setreg(st, 'cx' if ins.addr_size==2 else 'ecx', None)
@@ -1035,7 +1037,8 @@ class FirmwareRoutine:
                           'size': self.size, 'arch': self.arch, 'abi': self.img.abi,
                           'kind': self.img.kind, 'load': hex(self.img.load), 'size_source': self.source},
               'accesses': [], 'calls': [], 'blocks': [], 'exits': [], 'constants': [],
-              'instructions': [], 'immediates': [], 'unreached': [], 'warnings': [], 'sections': self.img.sections}
+              'instructions': [], 'immediates': [], 'unreached': [], 'warnings': [], 'sections': self.img.sections,
+              'coverage': {'unresolved_transfers': []}}
         predecessors = collections.defaultdict(list)
         for n, edges in self.edges.items():
             for label, successor in edges:
@@ -1056,6 +1059,8 @@ class FirmwareRoutine:
             if kind.startswith('conditional'):
                 block['taken_when'], block['falls_through_when'] = self.branch_words(self.in_states[n], ins, cc)
             fs['blocks'].append(block)
+            if kind in ('jump','conditional') and target is None:
+                fs['coverage']['unresolved_transfers'].append(hex(ins.address))
             if kind in ('return','conditional-return'):
                 fs['exits'].append({'address': hex(ins.address), 'register': self.retreg,
                                     'value': self.R(self.getreg(out, self.retreg)),
@@ -1066,6 +1071,8 @@ class FirmwareRoutine:
             for op in ins.operands:
                 if op.type == 2:
                     fs['immediates'].append({'address': hex(ins.address), 'value': hex(op.imm & ((1 << self.img.bits)-1))})
+        if fs['coverage']['unresolved_transfers']:
+            self.warnings.add('unresolved indirect transfers: access, call and return lists cover known edges only')
         fs['warnings'] = sorted(self.warnings)
         return fs
 
@@ -1104,7 +1111,7 @@ class FirmwareRoutine:
         lines += ['immediates']
         lines += ['  %s at %s' % (c['value'],c['address']) for c in fs['immediates']]
         lines += ['instructions']
-        lines += ['  %s %s %s %s%s' % (hex(i['addr']),i['bytes'],i['mn'],i['ops'],' (not reached)' if hex(i['addr']) in fs['unreached'] else '') for i in fs['instructions']]
+        lines += ['  %s %s %s %s%s' % (hex(i['addr']),i['bytes'],i['mn'],i['ops'],' (not reached by known edges)' if hex(i['addr']) in fs['unreached'] else '') for i in fs['instructions']]
         return '\n'.join(lines)+'\n'
 
 
