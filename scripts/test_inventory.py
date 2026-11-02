@@ -5,10 +5,17 @@ function boundaries of the register-access scan and the credit of same-named fun
 
 Run from the repository root: python3 scripts/test_inventory.py
 """
+import hashlib
 import importlib.util
+import io
 import os
 import re
 import unittest
+
+try:
+    from elftools.elf.elffile import ELFFile
+except ImportError:      # the toolchain image has pyelftools; a bare host may not
+    ELFFile = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location('inventory', os.path.join(HERE, 'inventory.py'))
@@ -250,6 +257,50 @@ class Unverified(unittest.TestCase):
 
     def test_an_entry_below_located_stays_there(self):
         self.assertEqual(inv.classify('`odsy_EdidCksum` checksums. Unverified.', self.SUBJ)[0], 'named-only')
+
+
+@unittest.skipIf(ELFFile is None, 'pyelftools is not installed')
+class AddressZero(unittest.TestCase):
+    """A relocatable object's first function is at address 0; that is an address, not a missing one."""
+
+    @staticmethod
+    def relocatable(code, funcs):
+        """A big-endian 32-bit MIPS ET_REL image with one .text and a .symtab of (name, value, size) FUNC symbols."""
+        import struct
+        names = b'\0' + b''.join(n.encode() + b'\0' for n, _, _ in funcs)
+        offs, o = [], 1
+        for n, _, _ in funcs:
+            offs.append(o)
+            o += len(n) + 1
+        syms = struct.pack('>IIIBBH', 0, 0, 0, 0, 0, 0)
+        for (n, v, sz), no in zip(funcs, offs):
+            syms += struct.pack('>IIIBBH', no, v, sz, 0x12, 0, 1)     # GLOBAL FUNC in section 1
+        shstr = b'\0.text\0.symtab\0.strtab\0.shstrtab\0'
+        parts = [(b'', 0, 0, 0, 0, 0, 0, 0), (code, 1, 1, 6, 4, 0, 0, 0), (syms, 7, 2, 0, 4, 3, 2, 16),
+                 (names, 15, 3, 0, 1, 0, 0, 0), (shstr, 23, 3, 0, 1, 0, 0, 0)]
+        # parts: (data, name offset, type, flags, align, link, info, entsize)
+        shdrs, off = b'', 52
+        for data, nm, ty, fl, al, link, info, ent in parts:
+            if ty == 0:
+                shdrs += struct.pack('>10I', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                continue
+            shdrs += struct.pack('>10I', nm, ty, fl, 0, off, len(data), link, info, al, ent)
+            off += len(data)
+        body = b''.join(d for d, *_ in parts[1:])
+        ehdr = b'\x7fELF\x01\x02\x01' + b'\0' * 9 + struct.pack('>HHIIIIIHHHHHH', 1, 8, 1, 0, 0, 52 + len(body), 0x20000000,
+                                                                  52, 0, 0, 40, 5, 4)
+        return ehdr + body + shdrs
+
+    def test_first_function_keeps_section_size_and_hash(self):
+        code = bytes(range(64))
+        data = self.relocatable(code, [('first', 0, 16), ('second', 16, 48)])
+        elf = ELFFile(io.BytesIO(data))
+        funcs, info = inv.functions_of({'group': {}, 'data': data, 'label': 'x.o'}, elf, '/nonexistent')
+        sec, addr, size, srcs, sha = funcs['first']
+        self.assertEqual((sec, addr, size), ('.text', 0, 16))
+        self.assertEqual(sha, hashlib.sha256(code[:16]).hexdigest()[:12])
+        self.assertEqual(funcs['second'][1:3], [16, 48])
+        self.assertEqual(info['address_source'], 'symtab')
 
 
 if __name__ == '__main__':
