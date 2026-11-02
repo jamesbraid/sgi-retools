@@ -44,10 +44,20 @@ RELEASES = ['6.4', '6.4-origin', '6.5', '6.5.2', '6.5.5', '6.5.6', '6.5.7', '6.5
 EXTRA = ('usr/cpu/firmware/', 'usr/etc/', 'usr/cpu/sysgen/', 'sbin/', 'usr/include/', 'usr/share/catman/')
 FW = 'usr/cpu/firmware/sysco/'
 CRAMFS_LE, CRAMFS_BE = b'\x45\x3d\xcd\x28', b'\x28\xcd\x3d\x45'
+# Xilinx IDCODEs with the revision nibble dropped (OpenOCD xcf.c, Xilinx DS123 and DS026). An SVF
+# names its target by the IDCODE it reads, so a match names the part; anything else stays unnamed.
+SVF_TARGETS = {0x5044093: 'XCF01S', 0x5045093: 'XCF02S', 0x5059093: 'XCF32P',
+               0x5026093: 'XC18V04', 0x5036093: 'XC18V04'}
 
 
 def sha(b):
     return hashlib.sha256(b).hexdigest()
+
+
+def svf_target(d):
+    """The part named by the first IDCODE read in an SVF file, or '' when the table has no match."""
+    m = re.search(rb'SDR 32 TDI \(00000000\)[^;]*?TDO \(([0-9a-fA-F]{8})\)', d)
+    return SVF_TARGETS.get(int(m.group(1), 16) & 0x0FFFFFFF, '') if m else ''
 
 
 def tsv_read(path):
@@ -385,7 +395,8 @@ def build():
         elif name == 'pbay.bin':
             rec.update(kind='power-bay controller image', arch='unknown', version='', detail='')
         elif name.endswith('.svf'):
-            rec.update(kind='CPLD JTAG vectors', arch='-', version='', detail='')
+            part = svf_target(d)
+            rec.update(kind='SVF JTAG vectors', arch='-', version='', detail='IDCODE matches %s' % part if part else '')
         elif d[:4] == b'\x7fELF':
             rec.update(kind='IRIX host tool', arch='MIPS N32 big-endian', version='', detail='')
         else:
