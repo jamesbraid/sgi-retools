@@ -224,5 +224,59 @@ class AtLocator(unittest.TestCase):
         self.assertEqual(self.verdicts(rep), [('width-narrow', 'mismatch'), ('offset', 'ok')])
 
 
+class InsnAddressList(unittest.TestCase):
+    """"`sw` at 0xA, 0xB and 0xC" names three instructions; each is judged against the mnemonic."""
+
+    INSNS = {0x1100: 'sw a0,0(s0)', 0x1104: 'sll zero,zero,0x0', 0x1108: 'lw a1,4(s0)', 0x110c: 'dsll32 t0,t1,0x2',
+             0x1110: 'beq a0,zero,0x1200', 0x1114: 'beq zero,zero,0x1200', 0x1118: 'or a0,s1,zero', 0x111c: 'sw a2,8(s0)',
+             0x1120: 'sw a3,12(s0)'}
+
+    def verdicts(self, text):
+        e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='f', status='established')
+        rep = []
+        check_claims.Checker(e, FakeCtx(self.INSNS), rep, None, None).insn_address()
+        return [(r['claim'], r['verdict']) for r in rep]
+
+    def test_every_member_of_a_comma_list_is_checked(self):
+        v = self.verdicts('The stores are `sw` at 0x1100, 0x111c, 0x1120.')
+        self.assertEqual([x[1] for x in v], ['ok', 'ok', 'ok'])
+
+    def test_wrong_second_address_mismatches(self):
+        v = self.verdicts('The stores are `sw` at 0x1100, 0x1108.')
+        self.assertEqual([x[1] for x in v], ['ok', 'mismatch'])
+        self.assertIn('0x1108', v[1][0])
+
+    def test_and_and_or_separate_members(self):
+        self.assertEqual([x[1] for x in self.verdicts('`sw` at 0x1100, 0x111c and 0x1108.')], ['ok', 'ok', 'mismatch'])
+        self.assertEqual([x[1] for x in self.verdicts('`sw` at 0x1100 or 0x1104.')], ['ok', 'mismatch'])
+        self.assertEqual([x[1] for x in self.verdicts('`sw` at 0x1100, and 0x1120.')], ['ok', 'ok'])
+
+    def test_parenthesised_list(self):
+        self.assertEqual([x[1] for x in self.verdicts('Stores (`sw` at 0x1100, 0x1108) follow.')], ['ok', 'mismatch'])
+
+    def test_list_stops_at_the_end_of_the_clause(self):
+        # the second clause is another claim, judged on its own; 0x1108 is not a `sw` member
+        v = self.verdicts('`sw` at 0x1100; then 0x1108 is reloaded, and `lw` at 0x1108.')
+        self.assertEqual([x[1] for x in v], ['ok', 'ok'])
+
+    def test_range_is_not_a_list_member(self):
+        self.assertEqual([x[1] for x in self.verdicts('`sw` at 0x1100, 0x1108 to 0x1110.')], ['ok'])
+
+    def test_addresses_outside_the_routine_are_ignored(self):
+        self.assertEqual([x[1] for x in self.verdicts('`sw` at 0x1100, 0x9000.')], ['ok'])
+
+    def test_aliases_match_in_later_positions(self):
+        v = self.verdicts('Nops at `nop` at 0x1104, 0x1104; `dsll` at 0x110c; `b` at 0x1114; `beqz` at 0x1110; `move` at 0x1118.')
+        self.assertTrue(v and all(x[1] == 'ok' for x in v), v)
+        self.assertEqual([x[1] for x in self.verdicts('`nop` at 0x1104, 0x1118.')], ['ok', 'mismatch'])
+        self.assertEqual([x[1] for x in self.verdicts('`b` at 0x1114, 0x1110.')], ['ok', 'mismatch'])
+        self.assertEqual([x[1] for x in self.verdicts('`beqz` at 0x1110, 0x1114.')], ['ok', 'ok'])    # beq zero,zero is also beqz
+        self.assertEqual([x[1] for x in self.verdicts('`move` at 0x1118, 0x1100.')], ['ok', 'mismatch'])
+
+    def test_kind_list(self):
+        v = self.verdicts('The stores at 0x1100, 0x111c and 0x1108 follow.')
+        self.assertEqual([x[1] for x in v], ['ok', 'ok', 'mismatch'])
+
+
 if __name__ == '__main__':
     unittest.main()

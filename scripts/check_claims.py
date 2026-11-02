@@ -443,6 +443,8 @@ def canon(text):
         out.add('bal')
     if mn == 'bgezall' and ops and ops[0] == 'zero':
         out.add('bgezall')
+    if mn in ('dsll32', 'dsrl32', 'dsra32'):
+        out.add(mn[:-2])      # "dsll" for a shift of 32 or more: the assembler picks the 32 form
     if mn in ('subu', 'dsubu') and len(ops) == 3 and ops[1] == 'zero':
         out.add('negu' if mn == 'subu' else 'dnegu')
     out.add(mn)
@@ -473,6 +475,23 @@ def norm_insn(s):
 
 def num_tokens(s):
     return [int(x) for x in re.findall(r'(?<![\w.+-])(\d+)(?![\w.])', s)]
+
+
+LIST_MORE = re.compile(r'\s*(?:,\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+)(' + HEX + r')\b')
+
+
+def address_list(t, pos, first):
+    """[(address, end)] for an address and the ones a list continues with after it ("at 0xA, 0xB and 0xC").
+
+    The list ends at the first separator not followed by an address (so at the end of the clause), and a
+    member that opens a range ("0xB to 0xC") is not part of it."""
+    out, end = [(first, pos)], pos
+    while True:
+        m = LIST_MORE.match(t, end)
+        if not m or re.match(r'\s*(?:to|-|\.\.)\s*0x', t[m.end():m.end() + 8]):
+            return out
+        out.append((int(m.group(1), 16), m.end()))
+        end = m.end()
 
 
 class Ctx:
@@ -1618,65 +1637,77 @@ class Checker:
             a = int(m.group(2) or m.group(3), 16)
             if re.match(r'\s*(?:to|-|\.\.)\s*0x', t[m.end():m.end() + 8]) or re.search(r'` and `[^`]*$', t[max(0, m.start() - 30):m.start() + 1]):
                 continue
-            if not (c.addr <= a < c.end):
-                continue
             if not re.match(r'(?:[a-z][a-z0-9]*(?:\.[a-z0-9]+)*)(?:\s+\$?[a-z0-9]+(?:,|\s*$|\()|\s*$)', ins) or \
                     ins.split()[0] not in MNEMONICS:
                 continue    # a symbol, a string or a C expression, not an instruction
-            got = c.insn_at.get(a)
-            if got is None:
-                self.mismatch('insn-address', m.group(0), 'not an instruction start', 'address inside the routine is not an instruction')
-                continue
             n = norm_insn(ins)
-            forms = {norm_insn(z) for z in canon(got)}
-            if n in forms or n.split()[0] in forms or any(f.startswith(n) for f in forms):
-                self.ok('insn-address', m.group(0))
-            else:
-                near = [x for x in (a - 4, a + 4, a - 8, a + 8) if x in c.insn_at and
-                        (n in {norm_insn(z) for z in canon(c.insn_at[x])} or n.split()[0] in {norm_insn(z) for z in canon(c.insn_at[x])})]
-                self.mismatch('insn-address', m.group(0), '0x%x holds %s%s' % (a, got, (' (the instruction is at 0x%x)' % near[0]) if near else ''),
-                              'the stated address holds another instruction')
+            members = address_list(t, m.end(), a) if m.group(1) else [(a, m.end())]
+            for k, (a, _) in enumerate(members):
+                if not (c.addr <= a < c.end):
+                    continue
+                claim = m.group(0) if not k else '%s ... 0x%x' % (m.group(0), a)
+                got = c.insn_at.get(a)
+                if got is None:
+                    self.mismatch('insn-address', claim, 'not an instruction start', 'address inside the routine is not an instruction')
+                    continue
+                forms = {norm_insn(z) for z in canon(got)}
+                if n in forms or n.split()[0] in forms or (' ' in n and any(f.startswith(n) for f in forms)):
+                    self.ok('insn-address', claim)
+                else:
+                    near = [x for x in (a - 4, a + 4, a - 8, a + 8) if x in c.insn_at and
+                            (n in {norm_insn(z) for z in canon(c.insn_at[x])} or n.split()[0] in {norm_insn(z) for z in canon(c.insn_at[x])})]
+                    self.mismatch('insn-address', claim, '0x%x holds %s%s' % (a, got, (' (the instruction is at 0x%x)' % near[0]) if near else ''),
+                                  'the stated address holds another instruction')
         # "call at 0xA" / "compare at 0xA" / "store at 0xA"
         for m in re.finditer(r'\b(call|jump|store|load|compare|branch)(?:es|s)? (?:\w+ ){0,2}at (' + HEX + r')\b', t):
-            kind, a = m.group(1), int(m.group(2), 16)
-            if not (c.addr <= a < c.end) or re.search(r'delay|slot|target|path|block|case', m.group(0)) or \
+            kind = m.group(1)
+            if re.search(r'delay|slot|target|path|block|case', m.group(0)) or \
                     re.match(r'\s*(?:to|-|\.\.)\s*0x', t[m.end():m.end() + 8]):
                 continue
-            got = c.insn_at.get(a)
-            if got is None:
-                self.mismatch('insn-address', m.group(0), 'not an instruction start', 'address inside the routine is not an instruction')
-                continue
-            mn = got.split()[0]
-            named = re.match(r'\s*\(`?([a-z][a-z0-9.]*)`?\)', t[m.end():m.end() + 14])
-            if named and named.group(1) in MNEMONICS:
-                if insn_match(named.group(1), got):
-                    self.ok('insn-address', m.group(0) + named.group(0))
-                else:
-                    self.mismatch('insn-address', m.group(0) + named.group(0), '0x%x holds %s' % (a, got),
-                                  'the stated address holds another instruction')
-                continue
-            seq = [c.insn_at.get(a + 4 * k, '').split(' ')[0] for k in range(1, 4)]
-            near_branch = any(facts.is_branch(c.insn_at.get(a + 4 * k, 'x').split(' ')[0]) or
-                              c.insn_at.get(a + 4 * k, 'x').startswith(('slt', 'c.')) for k in (-2, -1, 1, 2))
-            okk = {'call': mn in facts.CALLS or mn in ('jr', 'j') or (mn in ('lw', 'ld') and ' t9,' in got and
-                                                                      any(x in facts.CALLS | {'jr'} for x in seq)),
-                   'jump': facts.is_branch(mn),
-                   'store': mn in facts.STORES, 'load': mn in facts.LOADS or 'li' in canon(got) or mn == 'lui',
-                   'compare': mn.startswith('c.') or mn.startswith('slt') or facts.is_branch(mn) or mn in ('xor', 'subu', 'dsubu', 'xori')
-                   or near_branch,
-                   'branch': facts.is_branch(mn)}[kind]
-            if okk:
-                self.ok('insn-address', m.group(0))
+            members = address_list(t, m.end(), int(m.group(2), 16))
+            named = re.match(r'\s*\(`?([a-z][a-z0-9.]*)`?\)', t[members[-1][1]:members[-1][1] + 14])
+            for a, _ in members:
+                if not (c.addr <= a < c.end):
+                    continue
+                claim = m.group(0) if a == members[0][0] else '%s ... 0x%x' % (m.group(0), a)
+                self.call_kind(kind, a, claim, named)
+
+    def call_kind(self, kind, a, claim, named):
+        c, t = self.c, self.text
+        got = c.insn_at.get(a)
+        if got is None:
+            self.mismatch('insn-address', claim, 'not an instruction start', 'address inside the routine is not an instruction')
+            return
+        mn = got.split()[0]
+        if named and named.group(1) in MNEMONICS:
+            if insn_match(named.group(1), got):
+                self.ok('insn-address', claim + named.group(0))
             else:
-                near = [x for x in (a - 4, a + 4) if x in c.insn_at and (
-                    (kind == 'call' and c.insn_at[x].split()[0] in facts.CALLS) or
-                    (kind == 'store' and c.insn_at[x].split()[0] in facts.STORES) or
-                    (kind == 'load' and c.insn_at[x].split()[0] in facts.LOADS) or
-                    (kind in ('compare', 'branch', 'jump') and facts.is_branch(c.insn_at[x].split()[0])))]
-                if kind == 'call' and a - 4 in c.insn_at and c.insn_at[a - 4].split()[0] in facts.CALLS:
-                    near = [a - 4]
-                self.mismatch('insn-address', m.group(0), '0x%x holds %s%s' % (a, got, (' (the %s is at 0x%x)' % (kind, near[0])) if near else ''),
-                              'the stated address holds no %s' % kind)
+                self.mismatch('insn-address', claim + named.group(0), '0x%x holds %s' % (a, got),
+                              'the stated address holds another instruction')
+            return
+        seq = [c.insn_at.get(a + 4 * j, '').split(' ')[0] for j in range(1, 4)]
+        near_branch = any(facts.is_branch(c.insn_at.get(a + 4 * j, 'x').split(' ')[0]) or
+                          c.insn_at.get(a + 4 * j, 'x').startswith(('slt', 'c.')) for j in (-2, -1, 1, 2))
+        okk = {'call': mn in facts.CALLS or mn in ('jr', 'j') or (mn in ('lw', 'ld') and ' t9,' in got and
+                                                                  any(x in facts.CALLS | {'jr'} for x in seq)),
+               'jump': facts.is_branch(mn),
+               'store': mn in facts.STORES, 'load': mn in facts.LOADS or 'li' in canon(got) or mn == 'lui',
+               'compare': mn.startswith('c.') or mn.startswith('slt') or facts.is_branch(mn) or mn in ('xor', 'subu', 'dsubu', 'xori')
+               or near_branch,
+               'branch': facts.is_branch(mn)}[kind]
+        if okk:
+            self.ok('insn-address', claim)
+        else:
+            near = [x for x in (a - 4, a + 4) if x in c.insn_at and (
+                (kind == 'call' and c.insn_at[x].split()[0] in facts.CALLS) or
+                (kind == 'store' and c.insn_at[x].split()[0] in facts.STORES) or
+                (kind == 'load' and c.insn_at[x].split()[0] in facts.LOADS) or
+                (kind in ('compare', 'branch', 'jump') and facts.is_branch(c.insn_at[x].split()[0])))]
+            if kind == 'call' and a - 4 in c.insn_at and c.insn_at[a - 4].split()[0] in facts.CALLS:
+                near = [a - 4]
+            self.mismatch('insn-address', claim, '0x%x holds %s%s' % (a, got, (' (the %s is at 0x%x)' % (kind, near[0])) if near else ''),
+                          'the stated address holds no %s' % kind)
 
     def sections(self):
         c, t = self.c, self.text
