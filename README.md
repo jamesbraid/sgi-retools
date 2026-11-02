@@ -40,9 +40,24 @@ config, root manifests, the list of IRIX files, `scripts/copy-check-allow.txt`, 
 
 ## The leak check
 
-`scripts/check-leaks.sh` carries no term list. It reads `scripts/leak-terms.txt` of the
-workspace (or `.re-leak-terms`, `~/.config/re-leak-terms`, or the file named by
-`RE_LEAK_TERMS`) and fails when there is none. The file format is in the script's header.
+`scripts/check-leaks.sh` checks what a push adds: the lines of the range and its commit messages
+(`--all` audits the whole tree). The base patterns are in
+[scripts/leak-patterns.txt](scripts/leak-patterns.txt), one regular expression per line, a single
+file other tools (a server-side hook) can read too. Terms that must not be written into a shared
+tool are read from the workspace's `.re-leak-terms` (git-ignored) or the host's
+`~/.config/re-leak-terms`; with neither the check warns and uses the base patterns. A string that
+matches but is fine goes in the workspace's `scripts/leak-allow.txt` as `STRING<TAB>REASON`,
+exact text only. Exit status is 0 clean, 1 hit, 2 tool error; `check-leaks.sh --self-test` runs it
+against planted hits.
+
+## Pushing
+
+`tools/setup-clone.sh` sets the clone's push URL to a placeholder, so a plain `git push` fails at
+once (`--no-verify` too) and names `retools/re-push`. `re-push` runs the stages of
+`scripts/pre-push` (leak check, claim checker on the changed entries, copy check) on
+`origin/main..HEAD`, refuses on any failure or tool error, and pushes with the real URL given for
+that one command. It has no option to skip a stage. `retools/re-push --install [DIR...]` prepares
+existing clones. The pre-push hook stays as the early warning for anything else.
 
 ## Licence
 

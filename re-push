@@ -1,0 +1,97 @@
+#!/bin/sh
+# Push a workspace's commits to the forge, after the same checks scripts/pre-push runs.
+#
+#   retools/re-push [--dest BRANCH] [REF]     check what REF adds to origin/BRANCH, then push it
+#   retools/re-push --install [DIR...]        prepare clones (default: this one) to push through here
+#
+# REF is a commit or branch (default HEAD); BRANCH defaults to main. The push must be a
+# fast-forward of origin/BRANCH: when it is not, fetch and rebase first.
+#
+# The checks run on the range origin/BRANCH..REF: the leak check (lines the range adds and
+# its commit messages), the claim checker on the entries it changes, and the copy check; see
+# scripts/pre-push, which this runs. A failed check, a check that cannot run and a tool
+# error all refuse the push, and there is no option to skip one: CHECK_CLAIMS=off and
+# COPY_CHECK=off in the environment are ignored here. On success the push goes to the
+# real URL given on the command line for that one command.
+#
+# --install sets this clone's push URL (remote.origin.pushurl) to a placeholder that no
+# git command can reach, so a plain `git push`, with or without --no-verify, fails at once
+# and says to use re-push. Fetching keeps the real URL. It also adds post-checkout,
+# post-merge and post-rewrite hooks that check the retools submodule out after a pull
+# or rebase brings in its pin, unless the clone already has a hook of that name. Only the
+# clone's own config and hooks are touched, never a user-level git config.
+set -eu
+placeholder='/blocked: use retools/re-push, not git push'
+zero=0000000000000000000000000000000000000000
+here=$(dirname "$(readlink -f "$0")")
+
+install_one() {
+    d=$1
+    if ! git -C "$d" rev-parse --git-dir >/dev/null 2>&1; then
+        printf 're-push: %s is not a git checkout\n' "$d" >&2; return 1
+    fi
+    if ! git -C "$d" remote get-url origin >/dev/null 2>&1; then
+        printf 're-push: %s has no origin remote\n' "$d" >&2; return 1
+    fi
+    git -C "$d" config remote.origin.pushurl "$placeholder"
+    hooks=$(cd "$d" && cd "$(git rev-parse --git-path hooks)" && pwd)
+    for h in post-checkout post-merge post-rewrite; do
+        [ -e "$hooks/$h" ] && continue
+        cat > "$hooks/$h" <<'HOOK'
+#!/bin/sh
+# Keep the retools submodule checked out when a pull, rebase or checkout brings in its pin.
+git ls-files --stage -- retools | grep -q '^160000' && git submodule update -q --init retools 2>/dev/null
+exit 0
+HOOK
+        chmod +x "$hooks/$h"
+    done
+    printf 're-push: %s: push URL blocked; push with retools/re-push\n' "$d"
+}
+
+if [ "${1:-}" = --install ]; then
+    shift
+    [ $# -gt 0 ] || set -- .
+    rc=0
+    for d in "$@"; do install_one "$d" || rc=1; done
+    exit $rc
+fi
+
+dest=main
+while [ $# -gt 0 ]; do
+    case $1 in
+        --dest) dest=${2:?--dest needs a branch}; shift 2 ;;
+        -h|--help) sed -n '2,/^set -eu/{/^set -eu/!p;}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --) shift; break ;;
+        -*) printf 're-push: unknown option %s (there is no option to skip a check)\n' "$1" >&2; exit 2 ;;
+        *) break ;;
+    esac
+done
+[ $# -le 1 ] || { printf 're-push: at most one REF\n' >&2; exit 2; }
+ref=${1:-HEAD}
+
+top=$(git rev-parse --show-toplevel) || exit 2
+cd "$top"
+[ -x scripts/pre-push ] || { printf 're-push: %s has no scripts/pre-push\n' "$top" >&2; exit 2; }
+url=$(git config --get remote.origin.url) || { printf 're-push: no origin remote\n' >&2; exit 2; }
+lsha=$(git rev-parse --verify -q "$ref^{commit}") || { printf 're-push: %s is not a commit\n' "$ref" >&2; exit 2; }
+
+git fetch -q origin || { printf 're-push: could not fetch origin\n' >&2; exit 2; }
+rsha=$(git rev-parse --verify -q "refs/remotes/origin/$dest^{commit}" || echo $zero)
+if [ "$rsha" != $zero ] && ! git merge-base --is-ancestor "$rsha" "$lsha"; then
+    printf 're-push: %s is not a fast-forward of origin/%s; rebase onto it first (git pull --rebase)\n' "$ref" "$dest" >&2
+    exit 1
+fi
+if [ "$rsha" = "$lsha" ]; then
+    printf 're-push: origin/%s already has %s\n' "$dest" "$(printf %.12s "$lsha")"; exit 0
+fi
+
+for v in CHECK_CLAIMS COPY_CHECK; do
+    eval "val=\${$v:-}"
+    if [ "$val" = off ]; then printf 're-push: ignoring %s=off\n' "$v" >&2; unset "$v"; fi
+done
+printf 'refs/heads/%s %s refs/heads/%s %s\n' "$dest" "$lsha" "$dest" "$rsha" | scripts/pre-push || {
+    printf 're-push: not pushed: a check failed (above)\n' >&2; exit 1; }
+
+# The checks above are the hook's; run them once, not again inside git push.
+git push --no-verify "$url" "$lsha:refs/heads/$dest"
+git fetch -q origin

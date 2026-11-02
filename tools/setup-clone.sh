@@ -6,7 +6,8 @@
 # Run it from inside the clone. It
 #   - clones the sibling repositories named in scripts/inventory-siblings.json
 #     into .cache/siblings/, each at the commit pinned there;
-#   - initialises the retools submodule (the shared tooling) at the pinned commit;
+#   - initialises the retools submodule (the shared tooling) at the pinned commit and blocks a
+#     plain `git push` in this clone: push with retools/re-push, which runs the push checks;
 #   - initialises the public-source submodules the tools read (m2c, spimdisasm
 #     and ogl-sample, where this repository has them; --submodules picks others,
 #     `all` takes every one, which is several gigabytes);
@@ -42,6 +43,9 @@ cd "${top:-$here/..}"
 if [ -f .gitmodules ] && git ls-files --stage -- retools | grep -q '^160000'; then
     git submodule update -q --init retools
 fi
+
+# Pushes go through retools/re-push (checks, then the real URL). Make a plain `git push` fail.
+[ -x retools/re-push ] && retools/re-push --install
 
 pins=scripts/inventory-siblings.json
 if [ -f "$pins" ]; then
