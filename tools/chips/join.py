@@ -49,7 +49,13 @@ def covers(e, slot):
         return slot >= 0x10000 and e['lo'] <= slot <= e['hi']
     if slot >= 0x10000:
         return e['lo'] <= slot <= e['hi']
-    return e['lo'] <= slot <= e['hi']
+    if not e['lo'] <= slot <= e['hi']:
+        return False
+    # a family ("0x108 + 64xn") covers only the offsets one stride apart, not every slot between its ends
+    stride = e.get('stride', 8)
+    if stride > 8 and e['hi'] > e['lo']:
+        return (slot - e['lo']) % stride == 0
+    return True
 
 
 def find(entries, slot):
