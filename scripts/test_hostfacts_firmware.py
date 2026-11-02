@@ -294,6 +294,12 @@ class FirmwareFacts(unittest.TestCase):
         self.assertEqual(accesses[0]['kind'],'store')
         self.assertEqual(accesses[0]['origin_offset'],-4)
 
+    def test_x86_add_negative_immediate_keeps_a_signed_origin_offset(self):
+        # mov eax,[esp+4]; add eax,-0x1003; mov ecx,[eax]; ret
+        fs,_=self.analyze('x86-32','8b44240405fdefffff8b08c3')
+        load=next(a for a in fs['accesses'] if a['address']=='0x1009')
+        self.assertEqual(load['origin_offset'],-0x1003)
+
     def test_cli_requires_load_for_non_mips_flat_image(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             hostfacts.main(['missing', '0x1000', '--arch', 'arm', '--flat', '--size', '4'])

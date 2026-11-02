@@ -947,6 +947,9 @@ class FirmwareRoutine:
                         b = facts.C(b[1] & mask) if facts.is_c(b) else None
             v = None
             if base.startswith(('add', 'sub')):
+                if self.x86 and op[-1].type == 2 and facts.is_c(b):
+                    bits = self.width(ins,dest) * 8
+                    b = facts.C(sc(b[1] & ((1 << bits)-1),bits))
                 if base.startswith('sub'):
                     b = facts.C(-b[1]) if facts.is_c(b) else None
                 v = self.plus(a, b)
