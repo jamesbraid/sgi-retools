@@ -9,7 +9,8 @@
 #
 # The checks run on the range origin/BRANCH..REF: the leak check (lines the range adds and
 # its commit messages), the claim checker on the entries it changes, and the copy check; see
-# scripts/pre-push, which this runs. A failed check, a check that cannot run and a tool
+# scripts/pre-push, which this runs. A failed check, a check that cannot run (no copy-check
+# tool, no container engine or image, no root/, a baseline that cannot be built) and a tool
 # error all refuse the push, and there is no option to skip one: CHECK_CLAIMS=off and
 # COPY_CHECK=off in the environment are ignored here. On success the push goes to the
 # real URL given on the command line for that one command.

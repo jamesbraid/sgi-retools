@@ -56,7 +56,14 @@ against planted hits.
 once (`--no-verify` too) and names `retools/re-push`. `re-push` runs the stages of
 `scripts/pre-push` (leak check, claim checker on the changed entries, copy check) on
 `origin/main..HEAD`, refuses on any failure or tool error, and pushes with the real URL given for
-that one command. It has no option to skip a stage. `retools/re-push --install [DIR...]` prepares
+that one command. It has no option to skip a stage, and the copy check fails closed: no
+tool, a missing `root/`, an unavailable container engine or image, missing indexes and a tool
+error all refuse the push with a message naming the cause and the fix. A missing or stale symbol
+baseline (the per-repository index of names the shipped binaries carry, keyed by the digest of
+`scripts/inventory-root.sha256`) is built with the tool's build option and the check
+runs again; if the build fails, or the tool is still not ready, the push is refused. Only the bare
+hook keeps `COPY_CHECK=off` and `CHECK_CLAIMS=off`, as emergency overrides that print a warning
+that the push is unchecked; `re-push` ignores both. `retools/re-push --install [DIR...]` prepares
 existing clones. The pre-push hook stays as the early warning for anything else.
 
 ## The union root
