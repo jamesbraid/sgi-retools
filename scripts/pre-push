@@ -20,6 +20,10 @@
 # pushes with the real URL; a clone prepared by tools/setup-clone.sh has a push URL
 # that only re-push gets around, so this hook is the early warning for the other cases.
 #
+# Entries the push changes that carry a status but name no routine, or a routine or binary the
+# checker cannot find, are listed as a notice after the report ("notice: N claim entries ...").
+# They were not checked; the push is not refused for them.
+#
 # Copy check: a second stage compares the documentation, tables, listings and
 # Python the push changes with a reference source tree, for prose or code
 # copied from it and for lone names that only the reference holds. It needs a
@@ -119,7 +123,7 @@ while read -r lref lsha rref rsha; do
         status=1
         break
     fi
-    "$@" --status all --quiet --blocking --changed "$base" </dev/null >&2
+    "$@" --status all --quiet --list-unresolved --blocking --changed "$base" </dev/null >&2
     rc=$?
     if [ $rc -eq 1 ]; then
         echo "pre-push: a blocking claim mismatch (above) in a changed entry; fix the entry, or push with CHECK_CLAIMS=off in an emergency" >&2

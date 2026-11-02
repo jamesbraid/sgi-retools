@@ -62,7 +62,13 @@ BLOCKING = ('address', 'size', 'got', 'duplicate', 'delay-slot', 'insn-address',
 
 DEFAULT_DOCS = ['docs/*.md', 'chips/*/README.md']
 STATUS_RE = re.compile(r'\b(Established|Inferred|Unverified)\b\.?\**\s*$', re.I)
-PATH_RE = re.compile(r'((?:builds/[\w.+-]+/)?(?:usr|sbin|stand|unix|var)(?:/[\w.+-]+)+(?:\([\w.+-]+\))?)')
+# A path may carry the release it was read from (6.5.30/usr/sbin/l1cmd); keep it, so that a name shipped in many
+# releases resolves to the one the entry means. Binaries.resolve_path falls back to the unqualified path.
+RELEASE_PREFIX_RE = re.compile(r'^\d+(?:\.\d+)+(?:-[\w.]+)?/')
+RELEASE_RE = re.compile(r'(?<![\w.])(6\.\d+(?:\.\d+)?)(?!\w|\.\d)')
+# a table with none of these columns lists something other than routines (options, requests, registers)
+NAME_COLUMNS = ('routine', 'function', 'name', 'symbol')
+PATH_RE = re.compile(r'((?:\d+(?:\.\d+)+(?:-[\w.]+)?/|builds/[\w.+-]+/)?(?:usr|sbin|stand|unix|var)(?:/[\w.+-]+)+(?:\([\w.+-]+\))?)')
 HEX = r'0x[0-9a-fA-F]+'
 ORD = {'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'sixth': 6, 'seventh': 7, 'eighth': 8,
        'ninth': 9, 'tenth': 10, 'eleventh': 11, 'twelfth': 12}
@@ -180,6 +186,9 @@ class Binaries:
                 for f in files:
                     if f.endswith(('.o', '.so', '.a')) or f in ('unix',) or f.endswith(('.img', '.bin', '.image')):
                         self.keys.add(os.path.relpath(os.path.join(d, f), top))
+        self._index()
+
+    def _index(self):
         self.by_base = collections.defaultdict(set)
         for k in self.keys:
             b = k.rsplit('/', 1)[-1]
@@ -188,6 +197,13 @@ class Binaries:
             if m:
                 self.by_base[m.group(1)].add(k)
                 self.by_base[k.rsplit('/', 1)[-1].split('(')[0] + '(' + m.group(1) + ')'].add(k)
+
+    def resolve_path(self, ref, hints):
+        """Resolve a path as written first; a release-qualified one that names nothing falls back to its plain path."""
+        found = self.resolve(ref, hints)
+        if found is None and RELEASE_PREFIX_RE.match(ref):
+            found = self.resolve(RELEASE_PREFIX_RE.sub('', ref, count=1), hints)
+        return found
 
     def resolve(self, ref, hints):
         ref = ref.strip('`').strip()
@@ -204,6 +220,11 @@ class Binaries:
             cands = set(self.by_base.get(base, ()))
             if '/' in ref:
                 cands = {k for k in cands if ref.split('/')[0] in k}
+        if len(cands) != 1:
+            # a file the inventory does not list, named with its release
+            for h in hints:
+                if RELEASE_PREFIX_RE.match(h) and os.path.exists(os.path.join(REPO, 'root', h + ref)):
+                    return h + ref
         if len(cands) == 1:
             return cands.pop()
         if cands:
@@ -219,8 +240,15 @@ class Binaries:
         return None
 
 
+def entry_hints(text, hints):
+    """The document's hints, led by the release the entry names, when it names exactly one."""
+    rel = set(RELEASE_RE.findall(text))
+    return ['%s/' % r for r in rel] + hints if len(rel) == 1 else hints
+
+
 def identify(e, bins, hints, default_bin):
     t = e.text
+    hints = entry_hints(t, hints)
     row = e.table
     if row:
         name = next((row[k] for k in row if k in ('routine', 'function', 'name', 'symbol')), '')
@@ -232,7 +260,7 @@ def identify(e, bins, hints, default_bin):
         ref = bm.group(1) if bm else b.strip('` ')
         if sub and not ref.startswith('builds/'):
             ref = sub.group(1) + '/' + ref
-        e.binary = bins.resolve(ref, hints) if ref else None
+        e.binary = bins.resolve_path(ref, hints) if ref else None
         a = next((row[k] for k in row if k in ('address', 'addr')), '')
         am = re.search(HEX, a)
         e.address = int(am.group(0), 16) if am else None
@@ -264,7 +292,7 @@ def identify(e, bins, hints, default_bin):
         sub = re.search(r'\((builds/[\w.+-]+)\)', lead)
         if sub and not ref.startswith('builds/'):
             ref = sub.group(1) + '/' + ref
-        e.binary = bins.resolve(ref, hints)
+        e.binary = bins.resolve_path(ref, hints)
     elif default_bin:
         e.binary = default_bin
     am = re.search(r'^\s*`[^`]+`\s*\((?:[^()]|\([^()]*\))*?(' + HEX + r')', t) or \
@@ -1623,7 +1651,7 @@ def hints_of(doc, preamble):
 def default_binary(preamble, bins):
     paths = PATH_RE.findall(preamble)
     if len(set(paths)) == 1:
-        return bins.resolve(paths[0], [])
+        return bins.resolve_path(paths[0], [])
     return None
 
 
@@ -1867,10 +1895,13 @@ def main(argv=None):
     ap.add_argument('--jobs', type=int, default=1)
     ap.add_argument('--quiet', action='store_true', help='print only mismatches and the summary')
     ap.add_argument('--text-from', help='read the documents from this directory instead (same relative paths)')
+    ap.add_argument('--list-unresolved', action='store_true',
+                    help='with --quiet, still list the entries that carry a status but name no routine or binary found')
     ap.add_argument('--changed', metavar='REV', help='only entries whose lines differ from REV (git diff)')
     a = ap.parse_args(argv)
     bins = Binaries()
     work = []
+    claimed = set()
     dups = []
     changed = changed_lines(a.changed) if a.changed else None
     chip_results, chip_entries = [], 0
@@ -1887,6 +1918,8 @@ def main(argv=None):
         dflt = default_binary(pre, bins)
         seen = collections.defaultdict(list)
         for e in entries:
+            if e.table and not any(k in e.table for k in NAME_COLUMNS):
+                continue
             identify(e, bins, hints, dflt)
             if e.name and e.binary and e.address is not None:
                 seen[(e.binary, e.address, e.name)].append(e)
@@ -1901,6 +1934,8 @@ def main(argv=None):
             if changed is not None and not touched(changed, e):
                 continue
             work.append(e)
+            if st:
+                claimed.add(e.id)
         for k, es in seen.items():
             if len(es) > 1 and (changed is None or any(touched(changed, x) for x in es)):
                 for e in es:
@@ -1928,6 +1963,13 @@ def main(argv=None):
     for r in mism:
         print('MISMATCH\t%s\t%s\t%s\t%s\tclaim: %s\tfact: %s\t%s' % (r['class'], r['entry'], r['routine'], r['binary'],
                                                                   r['claim'], r['fact'], r['reason']))
+    if a.quiet and a.list_unresolved:
+        claims = [u for u in unresolved if u[1] in claimed]
+        if claims:
+            print('notice: %d claim entries could not be resolved to a routine and a binary, so they were not '
+                  'checked:' % len(claims))
+            for u in claims:
+                print('UNRESOLVED\t%s\t%s\t%s\t%s' % (u[1], u[2], u[3], u[4]))
     if not a.quiet:
         for r in unchk:
             print('UNCHECKED\t%s\t%s\t%s\tclaim: %s\t%s' % (r['class'], r['entry'], r['routine'], r['claim'], r['reason']))
