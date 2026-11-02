@@ -85,6 +85,9 @@ def main():
                 key0 = (s['variant'], slot)
                 call = ins.mn in scan.CALLS
                 rt = 2 if call and s['rw'] == 'r' else 4 if call else scan.reg(ins.ops[0])
+                if s['rw'] == 'r' and rt == 0:
+                    # a load into $0 discards its value; the code after it (a nop is sll $0,$0,0) is not a field
+                    continue
                 found = []
                 if s['rw'] == 'r':
                     live = {rt}
