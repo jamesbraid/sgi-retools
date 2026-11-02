@@ -13,7 +13,12 @@
 # The report is printed for every class; the push is refused for a mismatch in
 # a class with near-zero false positives (BLOCKING in scripts/check_claims.py)
 # on an entry the push changes. A repository's scripts/check-leaks.sh, when
-# present, runs first and its failure also refuses the push.
+# present, runs first, on the lines and commit messages this push adds, and its
+# failure also refuses the push.
+#
+# retools/re-push runs these same stages on the range it is about to push and then
+# pushes with the real URL; a clone prepared by tools/setup-clone.sh has a push URL
+# that only re-push gets around, so this hook is the early warning for the other cases.
 #
 # Copy check: a second stage compares the documentation, tables, listings and
 # Python the push changes with a reference source tree, for prose or code
@@ -35,10 +40,11 @@
 top=$(git rev-parse --show-toplevel) || exit 1
 cd "$top" || exit 1
 status=0
-if [ -x scripts/check-leaks.sh ]; then
-    scripts/check-leaks.sh >&2 || status=1
-fi
 refs=$(cat)
+# The leak check reads what this push adds (and its commit messages); a tool error (2) refuses too.
+if [ -x scripts/check-leaks.sh ]; then
+    printf '%s\n' "$refs" | scripts/check-leaks.sh --push >&2 || status=1
+fi
 z=0000000000000000000000000000000000000000
 # push_base REMOTE_SHA LOCAL_SHA: the commit the push is measured from.
 push_base() {
