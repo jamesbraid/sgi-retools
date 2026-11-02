@@ -371,8 +371,28 @@ class FirmwareRoutine:
         self.sp = 'a7' if self.m68k else 'sp' if self.arm else 'sp' if img.bits == 16 else 'esp'
         self.retreg = 'd0' if self.m68k else 'r0' if self.arm else 'ax' if img.bits == 16 else 'eax'
         self.insns = []
+        self.warnings = set()
+        raw = img.read(addr, size)
+        if self.arch == 'arm':
+            # ARM words have fixed boundaries. A literal can be undecodable even
+            # when a direct branch reaches valid code later in the same span.
+            decoded = []
+            gaps = []
+            for off in range(0, size, 4):
+                word = raw[off:off + 4]
+                ins = next(img.md.disasm(word, addr + off), None) if len(word) == 4 else None
+                if ins is not None:
+                    decoded.append(ins)
+                elif gaps and gaps[-1][1] == addr + off:
+                    gaps[-1][1] += len(word)
+                else:
+                    gaps.append([addr + off, addr + off + len(word)])
+            for first, end in gaps:
+                self.warnings.add('undecodable bytes at 0x%x-0x%x; fall-through stops at this range' % (first, end))
+        else:
+            decoded = img.md.disasm(raw, addr)
         # Linear decoding supplies instruction boundaries only; reachability is computed below.
-        for i in img.md.disasm(img.read(addr, size), addr):
+        for i in decoded:
             self.insns.append({'addr': i.address, 'size': i.size, 'mn': i.mnemonic,
                                'ops': i.op_str, 'bytes': i.bytes.hex(), '_cs': i})
         self.at = {i['addr']: n for n, i in enumerate(self.insns)}
@@ -380,9 +400,8 @@ class FirmwareRoutine:
         self.out_states = {}
         self.edges = {}
         self.conditions = {}
-        self.warnings = set()
         end = self.insns[-1]['addr'] + self.insns[-1]['size'] if self.insns else addr
-        if end != addr + size:
+        if self.arch != 'arm' and end != addr + size:
             self.warnings.add('decoder stopped at 0x%x; remaining bytes are not instructions' % end)
         if self.arch == 'coldfire':
             self.warnings.add('ColdFire uses the 68040 decoder for the common ISA subset; unsupported opcodes are unknown')

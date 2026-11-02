@@ -36,6 +36,23 @@ class FirmwareFacts(unittest.TestCase):
         self.assertEqual(fs['calls'][0]['target'], '0x2000')
         self.assertEqual(fs['calls'][0]['args'][0]['value'], '0x7')
 
+    def test_arm_branch_reaches_code_after_undecodable_word(self):
+        # b 0x1008; unallocated word; mov r0,#7; str r0,[r1]; bx lr
+        fs, text = self.analyze('arm', '000000eaffff00000700a0e3000081e51eff2fe1')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store']
+        self.assertEqual([(a['address'], a['origin'], a['value']) for a in stores],
+                         [('0x100c', 'r1', '0x7')])
+        self.assertEqual(fs['exits'][0]['address'], '0x1010')
+        self.assertTrue(any('0x1004' in w for w in fs['warnings']))
+
+    def test_arm_does_not_fall_through_undecodable_word(self):
+        # mov r0,#7; unallocated word; str r0,[r1]; bx lr
+        fs, _ = self.analyze('arm', '0700a0e3ffff0000000081e51eff2fe1')
+        self.assertEqual([a for a in fs['accesses'] if a['kind'] == 'store'], [])
+        self.assertEqual(fs['exits'], [])
+        self.assertIn(0x1008, [i['addr'] for i in fs['instructions']])
+        self.assertIn('0x1008', fs['unreached'])
+
     def test_arm_literal_base_load_and_aapcs_arguments(self):
         # ldr r4,[pc,#12]; mov r0,#7; strb r0,[r4,#2]; bl 0x2000; bx lr; literal
         fs, text = self.analyze('arm', '0c409fe50700a0e30200c4e5fb0300eb1eff2fe100000010')
