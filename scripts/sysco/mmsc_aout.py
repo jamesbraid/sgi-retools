@@ -23,7 +23,7 @@ data size, bss size, symbol bytes, entry, relocation sizes) and from the table:
   names  after the records, led by a four-byte length that counts itself
 
 The loader needs no relocation: the two relocation-size words are not sizes
-(one holds a ROM signature constant, the other is zero) and the image is
+(the first holds the constant 0x5aa5a55a, the second is zero) and the image is
 linked at its load address. The self-check measures the claims that follow
 from that; it does not take them on the header's word.
 
