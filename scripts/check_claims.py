@@ -603,6 +603,7 @@ class Checker:
             v for k, v in entry.table.items() if k not in ('routine', 'binary', 'address', 'size', 'label', 'status',
                                                           'function-table hash', 'words compared'))
         self.text = mask_foreign(text, abi_of_binary(entry.binary, ctx.img))
+        self.located = set()    # text positions of "+N" claims judged against an instruction the entry cites
 
     def out(self, cls, verdict, claim, fact='', reason=''):
         self.report.append({'entry': self.e.id, 'routine': self.e.name, 'binary': self.e.binary, 'class': cls,
@@ -717,6 +718,8 @@ class Checker:
             if re.search(r'\b(?:float|single|double|pair|two|three|four|eight|several|\d+)\s*$', pre) or \
                     re.search(r'\b(no|not|never|without)\b[^.;]{0,25}$', pre):
                 continue
+            if self._at_locator(m, want, v):
+                continue
             acc = [a for a in c.offsets_access.get(v, []) if 'width' in a and not a.get('stack')]
             if not acc:
                 acc = [a for a in c.raw_offsets.get(v, []) if not a.get('stack')]
@@ -741,6 +744,76 @@ class Checker:
             acc = c.abs_loads.get(v, [])
             if acc:
                 self._judge_width(m, kind, want, acc, 'absolute 0x%x' % v, absolute=True)
+
+    MEMOPS = {'lb': 1, 'lbu': 1, 'lh': 2, 'lhu': 2, 'lw': 4, 'lwu': 4, 'ld': 8, 'll': 4, 'lld': 8, 'lwc1': 4,
+              'ldc1': 8, 'sb': 1, 'sh': 2, 'sw': 4, 'sd': 8, 'sc': 4, 'scd': 8, 'swc1': 4, 'sdc1': 8}
+    # primary opcodes of the same instructions, for a word the disassembly list lacks
+    MEMOP_CODES = {0x20: 'lb', 0x21: 'lh', 0x23: 'lw', 0x24: 'lbu', 0x25: 'lhu', 0x27: 'lwu', 0x37: 'ld', 0x30: 'll',
+                   0x34: 'lld', 0x31: 'lwc1', 0x35: 'ldc1', 0x28: 'sb', 0x29: 'sh', 0x2b: 'sw', 0x3f: 'sd',
+                   0x38: 'sc', 0x3c: 'scd', 0x39: 'swc1', 0x3d: 'sdc1'}
+    LOCATOR = re.compile(r'`?\b(' + '|'.join(sorted(MEMOPS, key=len, reverse=True)) + r')\b(?:\s+[^`\s,)]+\([a-z0-9]+\))?`?'
+                         r'\s+at\s+(' + HEX + r')\b')
+
+    def _memop_at(self, a):
+        """(mnemonic, displacement, base, text) of the instruction at address a, or None when it cannot be
+        read. Decodes the word itself when the routine's instruction list lacks it (code the flow walk never
+        reached). The displacement is None when the instruction is not a load or store."""
+        c = self.c
+        t = c.insn_at.get(a)
+        if t is not None:
+            m = re.match(r'(\w+)\s+[^,]+,\s*(-?(?:0x[0-9a-f]+|\d+))\((\w+)\)', t)
+            if m and m.group(1) in self.MEMOPS:
+                return m.group(1), int(m.group(2), 0), m.group(3), t
+            return t.split()[0], None, None, t
+        raw = c.img.read(a, 4) if c.img is not None and c.addr <= a < c.end and a % 4 == 0 else None
+        if raw is None or len(raw) != 4:
+            return None
+        w = int.from_bytes(raw, 'big')
+        mn = self.MEMOP_CODES.get(w >> 26)
+        if mn is None:
+            return '?', None, None, '0x%08x' % w
+        disp = w & 0xffff
+        disp -= 0x10000 if disp & 0x8000 else 0
+        base = {29: 'sp', 28: 'gp'}.get((w >> 21) & 31, 'r%d' % ((w >> 21) & 31))
+        return mn, disp, base, '%s r%d,%d(%s)' % (mn, (w >> 16) & 31, disp, base)
+
+    def _at_locator(self, m, want, v):
+        """A claim "the word at +N" followed by the instruction that makes the access ("`lw` at 0x23b0"): judge
+        the width and displacement against the instruction at that address, stack-relative or not, reached by
+        the flow walk or not. True when the entry cites such an instruction and the claim is settled here."""
+        t = self.text
+        stops = [len(t), m.end() + 200]
+        for x in (t.find('. ', m.end()),):
+            if x >= 0:
+                stops.append(x)
+        nxt = re.search(r'\+(?:0x[0-9a-f]+|\d+)\b', t[m.end():])
+        if nxt:
+            stops.append(m.end() + nxt.start())
+        cls = 'width' if want >= 4 else 'width-narrow'
+        handled = False
+        for loc in self.LOCATOR.finditer(t, m.end(), min(stops)):
+            a = int(loc.group(2), 16)
+            got = self._memop_at(a)
+            if got is None:
+                continue
+            was, handled = handled, True
+            mn, disp, base, text = got
+            claim = m.group(0) + ' ... ' + loc.group(0).strip('`')
+            if disp is None:
+                self.mismatch(cls, claim, '0x%x holds %s' % (a, text), 'the cited address holds no load or store')
+            elif self.MEMOPS[mn] != want:
+                self.mismatch(cls, claim, '0x%x holds %s (width %d)' % (a, text, self.MEMOPS[mn]),
+                              'the access at the cited address is not a %s' % m.group(1).lower())
+            elif disp != v:
+                # an entry also cites the other half of a copy (the load of +16, then the store to a port):
+                # that instruction is not the access of this claim, so it neither confirms nor refutes it
+                handled = was
+                continue
+            else:
+                self.ok(cls, claim, '0x%x %s' % (a, text))
+        if handled:
+            self.located.add(m.start(2) - 1)
+        return handled
 
     def _judge_width(self, m, kind, want, acc, where, absolute=False):
         t = self.text
@@ -1416,6 +1489,8 @@ class Checker:
         c, t = self.c, self.text
         for m in re.finditer(r'(?<![\w.])(?:context |record |array |object |leaf |branch |vertex |texture |pointer |block |entry |struct |table )?\+(0x[0-9a-fA-F]+|\d+)\b(?![\w.]*\()', t):
             v = int(m.group(1), 0)
+            if m.start(1) - 1 in self.located:
+                continue    # judged against the instruction the entry cites
             pre = t[max(0, m.start() - 90):m.start()]
             post = t[m.end():m.end() + 20]
             if re.search(r'\b(public|N32|64-bit|o32|original|other build|sibling|IP35|IP30|IP27|in the N32|N32:)\b(?:[^.;]|\.\w)*$', pre) or \

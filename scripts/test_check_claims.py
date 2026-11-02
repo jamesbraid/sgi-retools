@@ -4,6 +4,7 @@ import io
 import os
 import sys
 import tempfile
+import types
 import unittest
 
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -133,6 +134,94 @@ class Notice(unittest.TestCase):
 
     def test_option_rows_are_not_counted_as_entries(self):
         self.assertIn('summary: 0 entries checked, 2 unresolved', self.run_main(self.DOC))
+
+
+class FakeImg:
+    abi = None
+
+    def __init__(self, words):
+        self.words = words
+
+    def read(self, addr, width):
+        return self.words[addr].to_bytes(4, 'big') if addr in self.words else None
+
+
+class FakeCtx:
+    """The parts of Ctx that the width and offset checks read."""
+
+    def __init__(self, insns, accesses=(), addresses=(), img=None):
+        self.insn_at, self.img, self.addr, self.end = dict(insns), img, 0x1000, 0x3000
+        self.offsets_access, self.raw_offsets, self.offsets_addr, self.abs_loads = {}, {}, {}, {}
+        self.numbers, self.fs = set(), {'loops': []}
+        for a in accesses:     # the non-stack accesses the flow walk found: (offset, width, text)
+            rec = {'offset': a[0], 'origin_offset': a[0], 'width': a[1], 'text': a[2]}
+            self.offsets_access.setdefault(a[0], []).append(rec)
+            self.raw_offsets.setdefault(a[0], []).append(rec)
+        for a in addresses:
+            self.offsets_addr.setdefault(a[0], []).append({'offset': a[0], 'text': a[1]})
+
+
+class AtLocator(unittest.TestCase):
+    def run_checks(self, text, ctx):
+        e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='f', status='established')
+        rep = []
+        chk = check_claims.Checker(e, ctx, rep, None, None)
+        chk.width()
+        chk.offsets()
+        return rep
+
+    def verdicts(self, rep):
+        return [(r['class'], r['verdict']) for r in rep]
+
+    def test_stack_access_at_the_locator_holds(self):
+        # the only non-stack thing at +56 is an address formed with daddiu: the old reading
+        ctx = FakeCtx({0x23b0: 'lw t1,56(sp)', 0x2410: 'sw t1,56(sp)'}, addresses=[(56, 'daddiu a0,v0,56')])
+        rep = self.run_checks('The header word at +56 (of the copied request: `lw` at 0x23b0, `sw` at 0x2410) is set.', ctx)
+        self.assertEqual(self.verdicts(rep), [('width', 'ok'), ('width', 'ok')])
+
+    def test_narrow_stack_access_at_the_locator_holds(self):
+        ctx = FakeCtx({0x11dc: 'lhu a6,8(sp)'}, accesses=[(8, 8, 'ld a1,-30712(gp)')])
+        rep = self.run_checks('It needs the slot halfword at +8 (`lhu` at 0x11dc) below 16.', ctx)
+        self.assertEqual(self.verdicts(rep), [('width-narrow', 'ok')])
+
+    def test_wrong_width_at_the_locator_mismatches(self):
+        ctx = FakeCtx({0x11dc: 'lw a6,8(sp)'})
+        rep = self.run_checks('It needs the slot halfword at +8 (`lw` at 0x11dc) below 16.', ctx)
+        self.assertEqual(self.verdicts(rep), [('width-narrow', 'mismatch')])
+
+    def test_other_displacement_at_the_locator_is_not_this_access(self):
+        # "the word at +16 is loaded (...) and stored (`sw` at 0xd95911c)": the store goes to a port, not +16
+        ctx = FakeCtx({0x11dc: 'sw t6,16384(zero)'}, accesses=[(16, 4, 'lw t6,16(a0)')])
+        rep = self.run_checks('The word at +16 is loaded and stored later (`sw` at 0x11dc).', ctx)
+        self.assertEqual(self.verdicts(rep), [('width', 'ok'), ('offset', 'ok')])
+
+    def test_locator_on_a_non_memory_instruction_mismatches(self):
+        ctx = FakeCtx({0x11dc: 'addu a0,a1,a2'})
+        rep = self.run_checks('It needs the slot halfword at +8 (`lhu` at 0x11dc) below 16.', ctx)
+        self.assertEqual(self.verdicts(rep), [('width-narrow', 'mismatch')])
+
+    def test_unreached_instruction_is_decoded_from_the_image(self):
+        lhu_s1_0 = (0x25 << 26) | (17 << 21) | (8 << 16)      # lhu t0,0(s1)
+        ctx = FakeCtx({}, accesses=[(0, 8, 'ld v0,-30720(gp)')], img=FakeImg({0x25a8: lhu_s1_0}))
+        rep = self.run_checks('It selects by the request halfword at +0 (`lhu` at 0x25a8) and stops.', ctx)
+        self.assertEqual(self.verdicts(rep), [('width-narrow', 'ok')])
+
+    def test_unreadable_locator_leaves_the_old_check(self):
+        ctx = FakeCtx({}, accesses=[(0, 8, 'ld v0,-30720(gp)')])
+        rep = self.run_checks('It selects by the request halfword at +0 (`lhu` at 0x25a8) and stops.', ctx)
+        self.assertEqual(self.verdicts(rep), [('width-narrow', 'mismatch'), ('offset', 'ok')])
+
+    def test_locator_of_the_next_claim_is_not_borrowed(self):
+        ctx = FakeCtx({0x100: 'lw a0,12(sp)'}, accesses=[(8, 2, 'lhu a1,8(a0)')])
+        rep = self.run_checks('The halfword at +8 and the word at +12 (`lw` at 0x100) are read.', ctx)
+        self.assertIn(('width-narrow', 'ok'), self.verdicts(rep))
+        self.assertIn(('width', 'ok'), self.verdicts(rep))
+        self.assertNotIn('mismatch', [v for _, v in self.verdicts(rep)])
+
+    def test_no_locator_keeps_the_old_behaviour(self):
+        ctx = FakeCtx({0x11dc: 'lhu a6,8(sp)'}, accesses=[(8, 8, 'ld a1,-30712(gp)')])
+        rep = self.run_checks('It needs the slot halfword at +8 below 16.', ctx)
+        self.assertEqual(self.verdicts(rep), [('width-narrow', 'mismatch'), ('offset', 'ok')])
 
 
 if __name__ == '__main__':
