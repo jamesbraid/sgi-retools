@@ -252,6 +252,76 @@ class FirmwareFacts(unittest.TestCase):
         self.assertEqual(fs['accesses'][0]['width'],1)
         self.assertEqual(fs['accesses'][0]['kind'],'load')
 
+    def test_m68k_register_bit_test_uses_modulo32_and_preserves_base(self):
+        # movea.l #0x2000,a0; move.l #0x2000,d6; btst #45,d6;
+        # bne exit; clr.b (a0); exit: rts
+        fs,text=self.analyze('m68k','207c000020002c3c000020000806002d660242104e75')
+        store=next(a for a in fs['accesses'] if a['kind']=='store')
+        self.assertEqual(store['absolute'],'0x2000')
+        self.assertIn('taken when (0x2000 & 0x2000) != 0x0',text)
+        self.assertIn('falls through when (0x2000 & 0x2000) == 0x0',text)
+
+    def test_m68k_memory_bit_test_wraps_bit_and_advances_base_once(self):
+        # movea.l #0x2000,a0; btst #9,(a0)+; bne exit;
+        # move.b d0,(a0); exit: rts
+        fs,text=self.analyze('m68k','207c0000200008180009660210804e75')
+        accesses=[a for a in fs['accesses'] if not a.get('implicit')]
+        self.assertEqual([(a['kind'],a['width'],a['absolute']) for a in accesses],
+                         [('load',1,'0x2000'),('store',1,'0x2001')])
+        self.assertIn('& 0x2) != 0x0',text)
+
+    def test_m68k_unknown_bit_number_preserves_registers(self):
+        # movea.l #0x2000,a0; moveq #7,d1; btst d0,(a0);
+        # beq exit; move.b d1,(a0); exit: rts
+        fs,text=self.analyze('m68k','207c0000200072070110670210814e75')
+        self.assertEqual(next(a for a in fs['accesses'] if a['kind']=='load')['width'],1)
+        store=next(a for a in fs['accesses'] if a['kind']=='store')
+        self.assertEqual((store['absolute'],store['value']),('0x2000','0x7'))
+        self.assertIn('taken when Z == 1',text)
+        self.assertNotIn('taken when 0x7',text)
+
+    def test_m68k_dynamic_memory_bit_test_uses_byte_width(self):
+        # movea.l #0x2000,a0; moveq #63,d1; btst d1,EA;
+        # bne exit; move.b d0,(a0); exit: rts
+        # Capstone prints .l for these memory forms, but their access is a byte.
+        for opcode,load_address,store_address in (
+                ('0320','0x1fff','0x1fff'),  # -(a0)
+                ('0318','0x2000','0x2001'),  # (a0)+
+                ('0310','0x2000','0x2000')): # (a0)
+            with self.subTest(opcode=opcode):
+                fs,text=self.analyze('m68k','207c00002000723f'+opcode+'660210804e75')
+                accesses=[a for a in fs['accesses'] if not a.get('implicit')]
+                self.assertEqual([(a['kind'],a['width'],a['absolute']) for a in accesses],
+                                 [('load',1,load_address),('store',1,store_address)])
+                self.assertIn('& 0x80) != 0x0',text)
+
+    def test_m68k_bit_test_does_not_supply_signed_comparison_flags(self):
+        # moveq #1,d0; btst #0,d0; bge exit; rts; exit: rts
+        fs,text=self.analyze('m68k','7001080000006c024e754e75')
+        self.assertTrue(all(x['value']=='0x1' for x in fs['exits']))
+        self.assertIn('ge flags condition (operands unknown)',text)
+
+    def test_m68k_bit_test_preserves_saved_call_argument(self):
+        # move.l #7,-(sp); btst #0,d1; jsr 0x2000; rts
+        fs,_=self.analyze('m68k','2f3c00000007080100004eb9000020004e75')
+        self.assertEqual(fs['calls'][0]['args'][0]['value'],'0x7')
+
+    def test_m68k_bit_test_keeps_loop_invariant_pointer(self):
+        # movea.l #0x2000,a5; moveq #0,d7;
+        # loop: clr.b (a5); btst #5,(a5); addq.l #1,d7;
+        # cmpi.l #3,d7; blt loop; rts
+        fs,_=self.analyze('coldfire','2a7c000020007e0042150815000552870c87000000036df04e75')
+        accesses=[a for a in fs['accesses'] if not a.get('implicit')]
+        self.assertEqual([(a['kind'],a['absolute']) for a in accesses],
+                         [('store','0x2000'),('load','0x2000')])
+
+    def test_m68k_bit_test_predecrement_keeps_stack_byte_alignment(self):
+        # btst #0,-(sp); move.l #7,-(sp); jsr 0x2000; rts
+        fs,_=self.analyze('m68k','082700002f3c000000074eb9000020004e75')
+        load=next(a for a in fs['accesses'] if a['kind']=='load')
+        self.assertEqual((load['width'],load['origin'],load['origin_offset']),(1,'sp',-2))
+        self.assertEqual(fs['calls'][0]['args'][0]['value'],'0x7')
+
     def test_m68k_move_byte_sets_flags_from_the_byte(self):
         _,text=self.analyze('m68k','203c00000100120067024e754e75')
         self.assertIn('taken when 0x0 == 0x0',text)

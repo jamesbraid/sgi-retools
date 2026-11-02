@@ -472,6 +472,10 @@ class FirmwareRoutine:
         if self.x86:
             return op.size if op is not None and op.size else self.word
         if self.m68k:
+            if ins.mnemonic.split('.')[0] == 'btst' and len(ins.operands) == 2:
+                # Dynamic memory forms may decode with .l; only data-register
+                # destinations use a longword, memory always uses a byte.
+                return 4 if ins.operands[1].type == 1 else 1
             return {'.b': 1, '.w': 2, '.l': 4, '.s': 4, '.d': 8}.get(ins.mnemonic[-2:], 4)
         mn = ins.mnemonic
         if mn.startswith(('ldrb', 'ldrsb', 'strb')):
@@ -863,6 +867,13 @@ class FirmwareRoutine:
                 else:
                     self.setreg(st, reg, self.memory(st, ins, a, 4, events, base=self.sp, disp=4 * n, implicit=True))
             self.setreg(st, self.sp, start if mn == 'push' else facts.add(sp, 4 * len(regs)))
+            modeled = True
+        elif self.m68k and mn.split('.')[0] == 'btst' and len(op) == 2:
+            bit, value = read(op[0]), read(op[1])
+            width = self.width(ins, op[1])
+            # BTST changes only Z. The test tuple supplies equality conditions only;
+            # it must not imply the carry or signed-comparison flags of CMP.
+            st.flags = ('test', value, facts.C(1 << (bit[1] % (width * 8))), width) if facts.is_c(bit) else None
             modeled = True
         elif (self.x86 and mn in ('cmp', 'test')) or (self.m68k and mn.split('.')[0] in ('cmp','cmpi','cmpa','tst')) or (self.arm and ins.insn_name() in ('cmp','tst')):
             if len(op) == 2:
