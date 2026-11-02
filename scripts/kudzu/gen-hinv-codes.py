@@ -160,6 +160,16 @@ def const_write(mn, ops):
 def trace(ins, idx, branch_targets, reg, depth=0):
     """Constant the register holds at ins[idx]: ('const', value, addr), or a status string."""
     site = ins[idx][0]
+    # The instruction in a call's delay slot runs before the callee does, so a write to the
+    # register there is the value the callee sees.
+    if depth == 0 and idx + 1 < len(ins):
+        dest, info = const_write(ins[idx + 1][1], ins[idx + 1][2])
+        if dest and dest != 'CALL' and dest.lstrip('$') == reg:
+            if info[0] == 'const':
+                return ('const', info[1], ins[idx + 1][0])
+            if info[0] == 'move' and info[1] == 'zero':
+                return ('const', 0, ins[idx + 1][0])
+            return 'variable'
     j = idx - 1
     while j >= 0 and idx - j < 120:
         a, mn, ops = ins[j]
@@ -207,7 +217,8 @@ def add_sites(path):
             elif a < syms[fi][0] + syms[fi][1]:
                 fname = syms[fi][2]
             else:
-                fname = f'{syms[fi][2]}+{hex(a - syms[fi][0])}'
+                # a routine with no symbol: name the symbol before it and how far past its end
+                fname = f'no symbol, {hex(a - syms[fi][0] - syms[fi][1])} past the end of {syms[fi][2]}'
             vals = {}
             for n, r in enumerate(['a0', 'a1', 'a2', 'a3', 'a4']):
                 vals[r] = trace(ins, i, targets, r)
