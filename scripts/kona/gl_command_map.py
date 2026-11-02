@@ -77,8 +77,10 @@ MANUAL = {
                         'first word is KONA_HP_BEGIN_POINTS (0x057) plus the mode in a0, for modes 0 to 9 (sltiu against 10 at 0xd94dbb0); other modes branch to the error path at 0xd94dbd4, which stores 0xe4 and 0x500',
                         '0xd94dbc4:a0+87 (0x57 plus the mode); 0xd94dbc8:0x0; 0xd94dbd4:0xe4; 0xd94dbe0:0x500'),
 }
-# Rect senders: BEGIN_RECT, then a vertex-format word, then four vertex calls, then END.
-# The format word is 22 for double, 14 for float and int, 10 for short (GE.h, KONA_HP_BEGIN_RECT).
+# Rect senders: BEGIN_RECT, then a count word, then four vertex calls, then END.
+# The count is the number of command words the vertices and the END send after it: 22 for
+# double (4 x 5 + 2), 14 for float and int (4 x 3 + 2), 10 for short (4 x 2 + 2); GE.h,
+# KONA_HP_BEGIN_RECT.
 # Its value collides with other token numbers (22 is KONA_HP_TEXBIND, 14 KONA_HP_TEXPARAMETERI,
 # 10 KONA_HP_LIGHTMODELI), so the row's words are read by position, not by token name.
 RECT_FORMAT = {
@@ -221,8 +223,8 @@ def build_rows(binary, tokens):
             if target_name(names, target) in SENDER_NOTES:
                 row['note'] += '; ' + SENDER_NOTES[target_name(names, target)]
             if target_name(names, target) in RECT_FORMAT:
-                row['note'] += ('; the second word is the vertex format (%d), not a command; '
-                                'the four vertex calls between it and the END send their own words'
+                row['note'] += ('; the second word is the count of command words that follow (%d), not a command; '
+                                'the four vertex calls between it and the END send those words'
                                 % RECT_FORMAT[target_name(names, target)])
         else:
             row['grade'] = 'established'
