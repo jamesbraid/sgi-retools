@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Mechanical facts for one MIPS routine, readable as text, with no container.
+"""Mechanical facts for one routine, readable as text, with no container.
 
 Usage: scripts/hostfacts.py BINARY[:MEMBER] ROUTINE [--size N] [--flat --load ADDR [--isa mips3|mips4]]
-                            [--offset N] [--json]
+                            [--arch mips|m68k|coldfire|arm|thumb|x86-16|x86-32]
+                            [--offset N] [--abi NAME] [--json]
 
   uv run --with capstone --with pyelftools \\
       python -I retools/scripts/hostfacts.py root/usr/lib32/libGLcore.so CISendFc
 
-Same inputs and arguments as scripts/facts.py, and the same analysis: this script replaces
+For MIPS, the same inputs and arguments as scripts/facts.py, and the same analysis: this script replaces
 only the disassembler. It decodes the routine with Capstone instead of the MIPS objdump that
 facts.py runs in the toolchain container, builds the instruction list facts.py builds, and lets
 facts.py's Routine track registers (lui/addiu/daddiu/ori/or/move/addu/shifts, stack slots, GOT
@@ -31,6 +32,12 @@ Sections of the output:
             sits in its delay slot and whether a branch-likely annuls it
   returns   each return, the blocks that reach it and v0 on the way in
   constants every constant a register holds after it is built, immediates, literal-pool loads
+
+Non-MIPS flat firmware requires an explicit --load and --size. MMSC a.out images use
+scripts/sysco/mmsc_aout.py for their mapped segments and symbols; their size can come from
+the next symbol (inferred). Architecture adapters share the symbolic value representation,
+worklist, path merging and output format inside this module. Calling conventions are assumed
+and argument counts are unknown. Unsupported effects are invalidated and reported.
 
 A value this tool cannot follow is shown as `?` or `(unknown)`; it never guesses one.
 """
@@ -231,13 +238,871 @@ def host_image(path, member=None, flat=False, load=0, isa='mips4'):
     return HostImage(path, member, flat, load, isa)
 
 
-def routine_for(path, routine, member=None, size=None, flat=False, load=0, isa='mips4', errors=None):
+def routine_for(path, routine, member=None, size=None, flat=False, load=0, isa='mips4', errors=None,
+                arch='mips', offset=0, abi=None):
+    if arch != 'mips':
+        if member:
+            raise ValueError('non-MIPS firmware does not support archive members')
+        img = FirmwareImage(path, arch, load, offset, abi)
+        name, addr, size, source = img.find(routine, size)
+        return FirmwareRoutine(img, name, addr, size, source)
     img = host_image(path, member, flat, load, isa)
     name, addr, sz, sec, src = img.find(routine, size)
     if flat and not sz:
         sz = facts.scan_size(img, addr)
         src = 'scanned to the last reachable return'
     return facts.Routine(img, name, addr, sz, sec if not flat else None, src, errors or facts.DEFAULT_ERRORS)
+
+
+# ===================================================================== non-MIPS firmware
+
+class FirmwareImage:
+    """Flat firmware or the existing MMSC a.out reader's mapped segments."""
+
+    def __init__(self, path, arch, load, offset=0, abi=None):
+        import capstone as cs
+        self.path, self.arch, self.load = path, arch, load
+        with open(path, 'rb') as stream:
+            self.data = stream.read()
+        self.kind, self.elf, self.flat = 'flat', None, True
+        self.offset, self.symbols, self.aout = offset, {}, None
+        self.bits = 16 if arch == 'x86-16' else 32
+        self.endian = 'big' if arch in ('m68k', 'coldfire') else 'little'
+        self.abi = abi or {'m68k': 'm68k-sysv', 'coldfire': 'm68k-sysv', 'arm': 'arm-aapcs',
+                           'thumb': 'arm-aapcs', 'x86-32': 'cdecl32', 'x86-16': 'unknown'}[arch]
+        expected = 'm68k-sysv' if arch in ('m68k','coldfire') else 'arm-aapcs' if arch in ('arm','thumb') else 'cdecl16' if arch=='x86-16' else 'cdecl32'
+        if self.abi not in ('unknown',expected):
+            raise ValueError('ABI %s is incompatible with %s' % (self.abi,arch))
+        if offset < 0 or offset > len(self.data):
+            raise ValueError('--offset is outside the file')
+        modes = {'m68k': (cs.CS_ARCH_M68K, cs.CS_MODE_BIG_ENDIAN | cs.CS_MODE_M68K_040),
+                 'coldfire': (cs.CS_ARCH_M68K, cs.CS_MODE_BIG_ENDIAN | cs.CS_MODE_M68K_040),
+                 'arm': (cs.CS_ARCH_ARM, cs.CS_MODE_ARM | cs.CS_MODE_LITTLE_ENDIAN),
+                 'thumb': (cs.CS_ARCH_ARM, cs.CS_MODE_THUMB | cs.CS_MODE_LITTLE_ENDIAN),
+                 'x86-16': (cs.CS_ARCH_X86, cs.CS_MODE_16), 'x86-32': (cs.CS_ARCH_X86, cs.CS_MODE_32)}
+        self.md = cs.Cs(*modes[arch])
+        self.md.detail = True
+        self.sections = [{'name': 'flat', 'address': hex(load), 'offset': hex(offset),
+                          'size': len(self.data) - offset, 'flags': 'AX'}]
+        # The header and nlist are not mapped into the controller's address space.
+        if arch.startswith('x86') and len(self.data) >= 32 and self.data[:4] == b'\x07\x01\x00\x00':
+            from sysco import mmsc_aout
+            self.aout = mmsc_aout.Image(self.data)
+            if offset:
+                raise ValueError('--offset cannot be combined with an MMSC a.out image')
+            if load != self.aout.entry:
+                raise ValueError('--load must match the MMSC a.out entry address')
+            self.kind = 'a.out'
+            self.sections = [{'name': s.name, 'address': hex(s.addr), 'offset': hex(s.fileoff),
+                              'size': s.size, 'flags': 'AX' if s.name == 'text' else 'AW'}
+                             for s in self.aout.segments]
+            for s in self.aout.symbols:
+                if s.kind == 'text' and not s.marker:
+                    self.symbols.setdefault(s.name, []).append((s.value, s.size))
+
+    def read(self, addr, size):
+        if size < 0:
+            return None
+        if self.aout:
+            for s in self.aout.segments:
+                if s.fileoff >= 0 and s.addr <= addr and addr + size <= s.addr + s.size:
+                    off = s.fileoff + addr - s.addr
+                    return self.data[off:off + size]
+            return None
+        off = addr - self.load + self.offset
+        if self.offset <= off and off + size <= len(self.data):
+            return self.data[off:off + size]
+        return None
+
+    def find(self, routine, size):
+        if routine.startswith('0x'):
+            addr = int(routine, 16)
+            names = [(n, z) for n, hits in self.symbols.items() for a, z in hits if a == addr]
+            name, inferred = names[0] if names else ('', None)
+        else:
+            hits = self.symbols.get(routine, [])
+            if len({a for a, _ in hits}) != 1:
+                raise ValueError('routine is absent or ambiguous; use 0xADDR --size N')
+            name, (addr, inferred) = routine, hits[0]
+        size = size if size is not None else inferred
+        if not size or size < 0:
+            raise ValueError('flat firmware requires --size; no routine boundary is guessed')
+        if self.read(addr, size) is None:
+            raise ValueError('routine range lies outside the mapped image')
+        return name, addr, size, 'given' if not inferred else 'next a.out symbol (inferred)'
+
+    def name_at(self, addr):
+        names = sorted(n for n, hits in self.symbols.items() if any(a == addr for a, _ in hits))
+        return names[0] if len(names) == 1 else None
+
+
+class FirmwareState:
+    def __init__(self, regs=None, memory=None, flags=None):
+        self.regs, self.memory, self.flags = regs or {}, memory or {}, flags
+
+    def copy(self):
+        return FirmwareState(dict(self.regs), dict(self.memory), self.flags)
+
+    def merged(self, other):
+        # A disagreement is unknown. Do not pick whichever predecessor ran last.
+        regs = {k: v for k, v in self.regs.items() if v == other.regs.get(k)}
+        memory = {k: v for k, v in self.memory.items() if v == other.memory.get(k)}
+        return FirmwareState(regs, memory, self.flags if self.flags == other.flags else None)
+
+    def key(self):
+        return self.regs, self.memory, self.flags
+
+
+class FirmwareRoutine:
+    """Architecture adapters share one worklist, symbolic values and fact-sheet format.
+
+    Only modelled instructions preserve their results. Other instructions invalidate their
+    written registers and flags; undecodable bytes end a path rather than bridging a gap.
+    """
+
+    def __init__(self, img, name, addr, size, source):
+        self.img, self.name, self.addr, self.size, self.source = img, name, addr, size, source
+        self.R = facts.Render(img)
+        self.arch = img.arch
+        self.m68k = self.arch in ('m68k', 'coldfire')
+        self.arm = self.arch in ('arm', 'thumb')
+        self.x86 = self.arch.startswith('x86')
+        self.word = 2 if img.bits == 16 else 4
+        self.sp = 'a7' if self.m68k else 'sp' if self.arm else 'sp' if img.bits == 16 else 'esp'
+        self.retreg = 'd0' if self.m68k else 'r0' if self.arm else 'ax' if img.bits == 16 else 'eax'
+        self.insns = []
+        # Linear decoding supplies instruction boundaries only; reachability is computed below.
+        for i in img.md.disasm(img.read(addr, size), addr):
+            self.insns.append({'addr': i.address, 'size': i.size, 'mn': i.mnemonic,
+                               'ops': i.op_str, 'bytes': i.bytes.hex(), '_cs': i})
+        self.at = {i['addr']: n for n, i in enumerate(self.insns)}
+        self.in_states = {}
+        self.out_states = {}
+        self.edges = {}
+        self.conditions = {}
+        self.warnings = set()
+        end = self.insns[-1]['addr'] + self.insns[-1]['size'] if self.insns else addr
+        if end != addr + size:
+            self.warnings.add('decoder stopped at 0x%x; remaining bytes are not instructions' % end)
+        if self.arch == 'coldfire':
+            self.warnings.add('ColdFire uses the 68040 decoder for the common ISA subset; unsupported opcodes are unknown')
+        if self.img.bits == 16:
+            self.warnings.add('16-bit addresses are segment offsets; segment bases are unknown')
+
+    def reg(self, ins, rid):
+        name = ins.reg_name(rid)
+        if self.arm:
+            return {'fp': 'r11', 'ip': 'r12', 'sb': 'r9', 'sl': 'r10'}.get(name, name)
+        if self.m68k:
+            return 'a7' if name == 'sp' else name
+        return name
+
+    def fullreg(self, name):
+        if not self.x86:
+            return name
+        for family in ('a', 'b', 'c', 'd'):
+            if name in (family + 'l', family + 'h', family + 'x', 'e' + family + 'x'):
+                return 'e' + family + 'x'
+        for family in ('si', 'di', 'bp', 'sp'):
+            if name in (family, 'e' + family):
+                return 'e' + family
+        return name
+
+    def getreg(self, st, name):
+        if name in st.regs:
+            return st.regs[name]
+        full = self.fullreg(name)
+        v = st.regs.get(full)
+        if name == full:
+            return v
+        bits = 8 if name.endswith(('h', 'l')) else 16
+        shift = 8 if name.endswith('h') else 0
+        if v is None and bits == 8:
+            v = st.regs.get(full[1:])
+        if facts.is_c(v):
+            return facts.C((v[1] >> shift) & ((1 << bits) - 1))
+        return None
+
+    def setreg(self, st, name, value, width=None):
+        full = self.fullreg(name)
+        alias_value = value
+        if self.x86:
+            old = st.regs.get(full)
+            for alias in list(st.regs):
+                if self.fullreg(alias) == full:
+                    del st.regs[alias]
+            if name != full:
+                bits = 8 if name.endswith(('h', 'l')) else 16
+                shift = 8 if name.endswith('h') else 0
+                if facts.is_c(alias_value):
+                    alias_value = facts.C(alias_value[1] & ((1 << bits) - 1))
+                if facts.is_c(old) and facts.is_c(alias_value):
+                    mask = ((1 << bits) - 1) << shift
+                    value = facts.C((old[1] & ~mask) | ((alias_value[1] << shift) & mask))
+                else:
+                    value = None
+                if alias_value is not None:
+                    st.regs[name] = facts.cap(alias_value)
+        elif self.m68k and name.startswith('d') and width and width < 4:
+            old = st.regs.get(full)
+            if facts.is_c(old) and facts.is_c(value):
+                mask = (1 << (width * 8)) - 1
+                value = facts.C((old[1] & ~mask) | (value[1] & mask))
+            else:
+                value = None
+        if facts.is_c(value):
+            value = facts.C(value[1] & 0xffffffff)
+        value = facts.cap(value)
+        if value is None:
+            st.regs.pop(full, None)
+        else:
+            st.regs[full] = value
+
+    @staticmethod
+    def plus(a, b):
+        if a is None or b is None:
+            return None
+        if facts.is_c(b):
+            return facts.add(a, b[1])
+        if facts.is_c(a):
+            return facts.add(b, a[1])
+        return facts.cap(('op', '+', a, b))
+
+    def width(self, ins, op=None):
+        if self.x86:
+            return op.size if op is not None and op.size else self.word
+        if self.m68k:
+            return {'.b': 1, '.w': 2, '.l': 4, '.s': 4, '.d': 8}.get(ins.mnemonic[-2:], 4)
+        mn = ins.mnemonic
+        if mn.startswith(('ldrb', 'ldrsb', 'strb')):
+            return 1
+        if mn.startswith(('ldrh', 'ldrsh', 'strh')):
+            return 2
+        if mn.startswith(('ldrd', 'strd')):
+            return 8
+        return 4
+
+    def effective(self, st, ins, op):
+        """Return effective address, base name, displacement; no implicit updates here."""
+        if self.m68k:
+            from capstone import m68k_const as c
+            mode = op.address_mode
+            if mode in (c.M68K_AM_ABSOLUTE_DATA_SHORT, c.M68K_AM_ABSOLUTE_DATA_LONG):
+                a = op.imm
+                if mode == c.M68K_AM_ABSOLUTE_DATA_SHORT:
+                    a = sc(a & 0xffff)
+                return facts.C(a & 0xffffffff), 'absolute', 0
+            rid = op.mem.base_reg
+            if not rid and mode in (c.M68K_AM_REGI_ADDR, c.M68K_AM_REGI_ADDR_POST_INC, c.M68K_AM_REGI_ADDR_PRE_DEC):
+                rid = op.reg
+            base = self.reg(ins, rid) if rid else ''
+            disp = op.mem.disp
+            if mode in (c.M68K_AM_PCI_DISP, c.M68K_AM_PCI_INDEX_8_BIT_DISP):
+                v, base = facts.C(ins.address + 2), 'pc'
+            else:
+                v = self.getreg(st, base)
+            if mode == c.M68K_AM_REGI_ADDR_PRE_DEC:
+                step = 2 if base == 'a7' and self.width(ins, op) == 1 else self.width(ins, op)
+                v = facts.add(v, -step)
+            if op.mem.index_reg:
+                idx = self.getreg(st, self.reg(ins, op.mem.index_reg))
+                if op.mem.index_size == 0:
+                    idx = facts.C(sc(idx[1] & 0xffff)) if facts.is_c(idx) else None
+                scale = op.mem.scale or 1
+                idx = facts.C(idx[1] * scale) if facts.is_c(idx) else idx if scale == 1 else None
+                v = self.plus(v, idx)
+            # Full 68020 memory-indirect modes need an extra memory read; never flatten them.
+            supported = {c.M68K_AM_REGI_ADDR, c.M68K_AM_REGI_ADDR_POST_INC, c.M68K_AM_REGI_ADDR_PRE_DEC,
+                         c.M68K_AM_REGI_ADDR_DISP, c.M68K_AM_AREGI_INDEX_8_BIT_DISP,
+                         c.M68K_AM_PCI_DISP, c.M68K_AM_PCI_INDEX_8_BIT_DISP}
+            if mode not in supported:
+                return None, base, disp
+            return facts.add(v, disp), base, disp
+        mem = op.mem
+        base = self.reg(ins, mem.base) if mem.base else ''
+        idx = self.reg(ins, mem.index) if mem.index else ''
+        if self.arm and base == 'pc':
+            v = facts.C((ins.address + (4 if self.arch == 'thumb' else 8)) & ~3)
+        elif base:
+            v = self.getreg(st, base)
+        else:
+            v = facts.C(0)
+        if self.x86 and mem.segment:
+            # FS/GS and explicit real-mode segment overrides have no known base.
+            return None, base, mem.disp
+        if idx:
+            iv = self.getreg(st, idx)
+            scale = mem.scale or 1
+            if self.arm:
+                shift = getattr(op, 'shift', None)
+                if shift and shift.type:
+                    # ARM shift ids are not x86 scale factors.
+                    from capstone.arm_const import ARM_SFT_LSL
+                    iv = facts.C(iv[1] << shift.value) if shift.type == ARM_SFT_LSL and facts.is_c(iv) else None
+                if getattr(op, 'subtracted', False):
+                    iv = facts.C(-iv[1]) if facts.is_c(iv) else None
+            elif scale != 1:
+                iv = facts.C(iv[1] * scale) if facts.is_c(iv) else None
+            v = self.plus(v, iv)
+        return facts.add(v, mem.disp), base, mem.disp
+
+    def access(self, events, ins, kind, width, address, base, disp, value=None, implicit=False):
+        a = {'address': hex(ins.address), 'mnemonic': ins.mnemonic, 'text': ins.mnemonic + ' ' + ins.op_str,
+             'kind': kind, 'width': width, 'base': base, 'offset': disp, 'value': self.R(value),
+             'implicit': implicit}
+        if facts.is_c(address):
+            bits = ins.addr_size * 8 if self.x86 else self.img.bits
+            a['absolute'] = hex(address[1] & ((1 << bits) - 1))
+        elif address is not None:
+            origin, off = facts.split(address)
+            a['origin'], a['origin_offset'] = self.R(origin), off
+        events['accesses'].append(a)
+
+    def memory(self, st, ins, address, width, events, store=False, value=None, base='', disp=0, implicit=False):
+        if store and facts.is_c(value):
+            value = facts.C(value[1] & ((1 << (width * 8)) - 1))
+        self.access(events, ins, 'store' if store else 'load', width, address, base, disp, value, implicit)
+        root, off = facts.split(address)
+        stack = root is not None and root[0] == 'sp0'
+        key = (address, width)
+        if store:
+            # An arbitrary store can alias earlier stack saves. Unknown addresses discard them.
+            if not stack:
+                st.memory.clear()
+            else:
+                for (a, n) in list(st.memory):
+                    ar, ao = facts.split(a)
+                    if ar == root and off < ao + n and ao < off + width:
+                        del st.memory[(a, n)]
+                if value is not None:
+                    st.memory[key] = value
+            return value
+        if stack and key in st.memory:
+            return st.memory[key]
+        if base == 'pc' and facts.is_c(address):
+            raw = self.img.read(address[1], width)
+            if raw is not None:
+                return facts.C(int.from_bytes(raw, self.img.endian))
+        if address is None:
+            return None
+        return facts.cap(('ld', root, off, width))
+
+    def operand(self, st, ins, op, events, address_only=False, store=False, value=None):
+        typ = op.type
+        if typ == 1:
+            name = self.reg(ins, op.reg)
+            if store:
+                self.setreg(st, name, value, self.width(ins, op))
+                return value
+            v = self.getreg(st, name)
+            if self.arm and op.shift.type:
+                from capstone import arm_const as ac
+                if not facts.is_c(v) or op.shift.type != ac.ARM_SFT_LSL or not 0 <= op.shift.value < 32:
+                    return None
+                v = facts.C((v[1] << op.shift.value) & 0xffffffff)
+            if self.arm and op.subtracted:
+                v = facts.C(-v[1]) if facts.is_c(v) else None
+            return v
+        if typ == 2:
+            return facts.C(-op.imm if self.arm and op.subtracted else op.imm)
+        if typ == 3:
+            a, base, disp = self.effective(st, ins, op)
+            if address_only:
+                return a
+            v = self.memory(st, ins, a, self.width(ins, op), events, store, value, base, disp)
+            if self.m68k:
+                from capstone import m68k_const as c
+                if op.address_mode in (c.M68K_AM_REGI_ADDR_POST_INC, c.M68K_AM_REGI_ADDR_PRE_DEC):
+                    step = 2 if base == 'a7' and self.width(ins, op) == 1 else self.width(ins, op)
+                    self.setreg(st, base, facts.add(a, step) if op.address_mode == c.M68K_AM_REGI_ADDR_POST_INC else a)
+            return v
+        return None
+
+    def control(self, ins):
+        """kind, direct target, condition code. Architectures here have no delay slots."""
+        mn, op = ins.mnemonic, ins.operands
+        if self.m68k:
+            shortmn = mn.split('.')[0]
+            target = None
+            if op:
+                if op[0].type == 8:
+                    target = (ins.address + 2 + op[0].br_disp.disp) & 0xffffffff
+                elif op[0].type == 3 and op[0].address_mode in (16, 17):
+                    target = (sc(op[0].imm & 0xffff) if op[0].address_mode == 16 else op[0].imm) & 0xffffffff
+            if shortmn in ('rts', 'rte', 'rtr', 'rtd'):
+                return 'return', None, None
+            if shortmn in ('jsr', 'bsr'):
+                return 'call', target, None
+            if shortmn in ('jmp', 'bra'):
+                return 'jump', target, None
+            if shortmn.startswith('db'):
+                branch = next((o for o in op if o.type == 8), None)
+                target = (ins.address + 2 + branch.br_disp.disp) & 0xffffffff if branch else None
+                return 'conditional', target, 'unknown decrement-and-branch condition'
+            if shortmn.startswith('b') and shortmn not in ('bset', 'bclr', 'bchg', 'btst', 'bfextu', 'bfexts'):
+                return 'conditional', target, shortmn[1:]
+        elif self.arm:
+            from capstone.arm_const import ARM_CC_AL, ARM_CC_INVALID
+            cc = ins.cc
+            conditional = cc not in (ARM_CC_AL, ARM_CC_INVALID)
+            cond = {1: 'eq', 2: 'ne', 3: 'hs', 4: 'lo', 5: 'mi', 6: 'pl', 7: 'vs', 8: 'vc',
+                    9: 'hi', 10: 'ls', 11: 'ge', 12: 'lt', 13: 'gt', 14: 'le'}.get(cc)
+            if ins.id in (__import__('capstone').arm_const.ARM_INS_BL, __import__('capstone').arm_const.ARM_INS_BLX):
+                return 'conditional-call' if conditional else 'call', op[0].imm if op[0].type == 2 else None, cond
+            if mn.startswith('bx') or (mn.startswith('mov') and len(op) > 1 and op[0].type == 1 and self.reg(ins, op[0].reg) == 'pc'):
+                reg = self.reg(ins, op[-1].reg) if op[-1].type == 1 else ''
+                return ('conditional-return' if conditional else 'return') if reg == 'lr' else ('conditional' if conditional else 'jump'), None, cond
+            if mn.startswith(('pop', 'ldm')) and any(o.type == 1 and self.reg(ins, o.reg) == 'pc' for o in op):
+                return 'conditional-return' if conditional else 'return', None, cond
+            from capstone import arm_const as ac
+            if ins.id in (ac.ARM_INS_LDR, ac.ARM_INS_LDRB, ac.ARM_INS_LDRH) and op[0].type == 1 and self.reg(ins,op[0].reg) == 'pc':
+                return 'conditional' if conditional else 'jump', None, cond
+            if ins.id == ac.ARM_INS_B:
+                return 'conditional' if conditional else 'jump', op[0].imm, cond
+            if ins.id in (ac.ARM_INS_CBZ, ac.ARM_INS_CBNZ):
+                return 'conditional', op[-1].imm, 'cbz' if ins.id == ac.ARM_INS_CBZ else 'cbnz'
+        else:
+            if mn.startswith(('ret', 'iret')):
+                return 'return', None, None
+            if mn in ('call', 'lcall'):
+                return 'call', op[0].imm if op and op[0].type == 2 else None, None
+            if mn in ('jmp', 'ljmp'):
+                return 'jump', op[0].imm if op and op[0].type == 2 else None, None
+            if mn.startswith('j') or mn.startswith('loop'):
+                return 'conditional', op[0].imm if op and op[0].type == 2 else None, mn[1:]
+        return 'normal', None, None
+
+    def branch_words(self, st, ins, code):
+        if code in ('cbz', 'cbnz'):
+            lhs = self.R(self.getreg(st, self.reg(ins, ins.operands[0].reg)))
+            return (lhs + ' == 0x0', lhs + ' != 0x0') if code == 'cbz' else (lhs + ' != 0x0', lhs + ' == 0x0')
+        pairs = {'eq': ('==', '!='), 'e': ('==', '!='), 'z': ('==', '!='), 'ne': ('!=', '=='),
+                 'nz': ('!=', '=='), 'lt': ('<', '>='), 'l': ('<', '>='), 'ge': ('>=', '<'),
+                 'gt': ('>', '<='), 'g': ('>', '<='), 'le': ('<=', '>'), 'hi': ('>', '<='),
+                 'a': ('>', '<='), 'ls': ('<=', '>'), 'be': ('<=', '>'), 'hs': ('>=', '<'),
+                 'cc': ('>=', '<'), 'ae': ('>=', '<'), 'lo': ('<', '>='), 'cs': ('<', '>='), 'b': ('<', '>=')}
+        if st.flags and code in pairs:
+            kind, lhs, rhs, width = st.flags
+            if kind == 'cmp' or kind == 'test' and code in ('eq','e','z','ne','nz'):
+                a, b = pairs[code]
+                left = self.R(lhs) if kind == 'cmp' else '(%s & %s)' % (self.R(lhs), self.R(rhs))
+                right = self.R(rhs) if kind == 'cmp' else '0x0'
+                signed = 'unsigned' if code in ('hi', 'a', 'ls', 'be', 'hs', 'cc', 'ae', 'lo', 'cs', 'b') else 'signed'
+                suffix = '' if a in ('==', '!=') else ' (%s, %d-bit)' % (signed, width * 8)
+                return '%s %s %s%s' % (left, a, right, suffix), '%s %s %s%s' % (left, b, right, suffix)
+        flags = {'eq': 'Z == 1', 'e': 'Z == 1', 'z': 'Z == 1', 'ne': 'Z == 0', 'nz': 'Z == 0',
+                 'cs': 'C == 1', 'lo': 'C == 1', 'b': 'C == 1', 'cc': 'C == 0', 'hs': 'C == 0',
+                 'ae': 'C == 0', 'mi': 'N == 1', 's': 'N == 1', 'pl': 'N == 0', 'ns': 'N == 0',
+                 'vs': 'V == 1', 'o': 'V == 1', 'vc': 'V == 0', 'no': 'V == 0'}
+        if self.arm:
+            flags.update({'hs': 'C == 1', 'lo': 'C == 0'})
+        condition = flags.get(code, '%s flags condition (operands unknown)' % code)
+        return condition, 'not (%s)' % condition
+
+    def call_args(self, st):
+        args = []
+        if self.img.abi == 'arm-aapcs':
+            for n in range(4):
+                args.append({'location': 'r%d' % n, 'value': self.R(self.getreg(st, 'r%d' % n))})
+        elif self.img.abi in ('cdecl16', 'cdecl32', 'm68k-sysv'):
+            sp = self.getreg(st, self.sp)
+            for n in range(6):
+                at = facts.add(sp, n * self.word)
+                args.append({'location': 'stack arg%d' % n, 'value': self.R(st.memory.get((at, self.word)))})
+        else:
+            args.append({'location': 'calling convention', 'value': '(unknown)'})
+        return args
+
+    def invalidate(self, st, ins):
+        try:
+            writes = [self.reg(ins, n) for n in ins.regs_access()[1]]
+        except Exception:
+            # Capstone's M68K backend has no regs_access implementation.
+            writes = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
+            if any(o.type == 3 and self.reg(ins, o.mem.base_reg) == 'a7' for o in ins.operands):
+                writes.append('a7')
+        for name in writes:
+            self.setreg(st, name, None)
+        st.flags = None
+        st.memory.clear()
+        self.warnings.add('0x%x %s: unsupported effects invalidated' % (ins.address, ins.mnemonic))
+
+    def transfer(self, old, record, events):
+        st = old.copy()
+        ins = record['_cs']
+        mn, op = ins.mnemonic, ins.operands
+        kind, target, cc = self.control(ins)
+        conditional = kind.startswith('conditional')
+        if self.arm:
+            from capstone.arm_const import ARM_CC_AL, ARM_CC_INVALID
+            predicated = ins.cc not in (ARM_CC_AL, ARM_CC_INVALID)
+        else:
+            predicated = False
+        if kind in ('call', 'conditional-call'):
+            if target is None and op:
+                value = self.operand(st, ins, op[0], events, address_only=self.m68k)
+                target = value[1] if facts.is_c(value) else None
+            name = self.img.name_at(target) if target is not None else None
+            call = {'address': hex(ins.address), 'mnemonic': mn, 'target': hex(target) if target is not None else None,
+                    'callee': name, 'args': self.call_args(st), 'conditional': conditional}
+            if conditional:
+                call['taken_when'], call['falls_through_when'] = self.branch_words(old, ins, cc)
+            events['calls'].append(call)
+            clobber = ['d0', 'd1', 'a0', 'a1'] if self.m68k else ['r0', 'r1', 'r2', 'r3', 'r12', 'lr'] if self.arm else ['eax', 'ecx', 'edx'] if self.word == 4 else ['ax', 'cx', 'dx']
+            for reg in clobber:
+                self.setreg(st, reg, None)
+            self.setreg(st, self.retreg, ('ret', name or hex(target) if target is not None else 'unknown'))
+            st.flags = None
+            st.memory.clear()
+            return old.merged(st) if conditional else st
+        if kind in ('conditional', 'jump', 'return', 'conditional-return') and not (self.arm and (mn.startswith('pop') or mn.startswith('ldr') or mn.startswith('ldm'))):
+            if self.x86 and mn.startswith('loop'):
+                self.setreg(st, 'cx' if ins.addr_size==2 else 'ecx', None)
+            if self.m68k and mn.startswith('db') and op and op[0].type == 1:
+                self.setreg(st, self.reg(ins, op[0].reg), None)
+            if conditional:
+                self.conditions[ins.address] = self.branch_words(old, ins, cc)
+            return st
+        read = lambda o: self.operand(st, ins, o, events)
+        write = lambda o, v: self.operand(st, ins, o, events, store=True, value=v)
+        modeled = False
+        # Stack saves use the same memory model as explicit loads/stores.
+        if self.m68k and mn.startswith('movem'):
+            from capstone import m68k_const as mc
+            saving = op[0].type == 6
+            reglist, mem = (op[0], op[1]) if saving else (op[1], op[0])
+            names = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
+            names = [name for n, name in enumerate(names) if reglist.register_bits & (1 << n)]
+            width = self.width(ins)
+            a, base, disp = self.effective(st, ins, mem)
+            if mem.address_mode == mc.M68K_AM_REGI_ADDR_PRE_DEC:
+                a = facts.add(a, -width * (len(names)-1))
+            for n, name in enumerate(names):
+                at = facts.add(a, width*n)
+                if saving:
+                    self.memory(st, ins, at, width, events, True, self.getreg(old, name), base, disp+width*n)
+                else:
+                    v = self.memory(st, ins, at, width, events, base=base, disp=disp+width*n)
+                    if width == 2:
+                        v = facts.C(sc(v[1] & 0xffff)) if facts.is_c(v) else None
+                    self.setreg(st, name, v)
+            if mem.address_mode in (mc.M68K_AM_REGI_ADDR_PRE_DEC, mc.M68K_AM_REGI_ADDR_POST_INC):
+                self.setreg(st, base, a if saving else facts.add(a,width*len(names)))
+            modeled = True
+        elif self.m68k and mn.startswith('pea'):
+            value = self.operand(st,ins,op[0],events,address_only=True)
+            address = facts.add(self.getreg(st,self.sp),-4)
+            self.memory(st,ins,address,4,events,True,value,self.sp,-4,True)
+            self.setreg(st,self.sp,address)
+            modeled = True
+        elif self.x86 and mn in ('in', 'out'):
+            data, port = (op[0],op[1]) if mn == 'in' else (op[1],op[0])
+            pv = read(port)
+            self.access(events, ins, 'load' if mn == 'in' else 'store', self.width(ins,data),
+                        pv, 'port', 0, read(data) if mn == 'out' else None)
+            events['accesses'][-1]['space'] = 'io'
+            if mn == 'in':
+                write(data, None)
+            modeled = True
+        elif self.x86 and mn in ('push', 'pop') and op:
+            width = self.width(ins, op[0])
+            sp = self.getreg(st, self.sp)
+            if mn == 'push':
+                v = read(op[0]); sp = facts.add(sp, -width)
+                self.memory(st, ins, sp, width, events, True, v, self.sp, -width, True)
+                self.setreg(st, self.sp, sp)
+            else:
+                v = self.memory(st, ins, sp, width, events, base=self.sp, implicit=True)
+                self.setreg(st, self.sp, facts.add(sp, width)); write(op[0], v)
+            modeled = True
+        elif self.x86 and mn == 'leave':
+            bp = 'bp' if self.word == 2 else 'ebp'
+            sp = self.getreg(st, bp)
+            v = self.memory(st, ins, sp, self.word, events, base=bp, implicit=True)
+            self.setreg(st, self.sp, facts.add(sp, self.word)); self.setreg(st, bp, v)
+            modeled = True
+        elif self.m68k and mn.startswith('link') and len(op) == 2:
+            reg = self.reg(ins, op[0].reg)
+            v = self.getreg(st, reg); sp = facts.add(self.getreg(st, self.sp), -4)
+            self.memory(st, ins, sp, 4, events, True, v, self.sp, -4, True)
+            frame = sc(op[1].imm & 0xffff) if mn.endswith('.w') else sc(op[1].imm & 0xffffffff, 32)
+            self.setreg(st, reg, sp); self.setreg(st, self.sp, facts.add(sp, frame))
+            modeled = True
+        elif self.m68k and mn == 'unlk':
+            reg = self.reg(ins, op[0].reg); sp = self.getreg(st, reg)
+            v = self.memory(st, ins, sp, 4, events, base=reg, implicit=True)
+            self.setreg(st, self.sp, facts.add(sp, 4)); self.setreg(st, reg, v)
+            modeled = True
+        elif self.arm and ins.insn_name() in ('ldm','ldmda','ldmdb','ldmib','stm','stmda','stmdb','stmib'):
+            loading = ins.insn_name().startswith('ldm')
+            base = self.reg(ins,op[0].reg)
+            names = [self.reg(ins,o.reg) for o in op[1:]]
+            bv = self.getreg(old,base)
+            mode = ins.insn_name()[3:] or 'ia'
+            first = {'ia':0,'ib':4,'da':-4*(len(names)-1),'db':-4*len(names)}[mode]
+            for n,name in enumerate(names):
+                a = facts.add(bv,first+4*n)
+                if loading:
+                    value = self.memory(st,ins,a,4,events,base=base,disp=first+4*n)
+                    self.setreg(st,name,value)
+                else:
+                    self.memory(st,ins,a,4,events,True,self.getreg(old,name),base,first+4*n)
+            if ins.writeback:
+                self.setreg(st,base,None if base in names else facts.add(bv,(-4 if mode.startswith('d') else 4)*len(names)))
+            modeled = True
+        elif self.arm and mn in ('push', 'pop'):
+            regs = [self.reg(ins, o.reg) for o in op]
+            sp = self.getreg(st, self.sp)
+            start = facts.add(sp, -4 * len(regs)) if mn == 'push' else sp
+            for n, reg in enumerate(regs):
+                a = facts.add(start, 4 * n)
+                if mn == 'push':
+                    self.memory(st, ins, a, 4, events, True, self.getreg(st, reg), self.sp, 4 * n, True)
+                else:
+                    self.setreg(st, reg, self.memory(st, ins, a, 4, events, base=self.sp, disp=4 * n, implicit=True))
+            self.setreg(st, self.sp, start if mn == 'push' else facts.add(sp, 4 * len(regs)))
+            modeled = True
+        elif (self.x86 and mn in ('cmp', 'test')) or (self.m68k and mn.split('.')[0] in ('cmp','cmpi','cmpa','tst')) or (self.arm and ins.insn_name() in ('cmp','tst')):
+            if len(op) == 2:
+                lhs, rhs = (read(op[1]), read(op[0])) if self.m68k else (read(op[0]), read(op[1]))
+            else:
+                lhs, rhs = read(op[0]), facts.C(0)
+            width = self.width(ins, op[0])
+            if self.m68k and mn.startswith('cmpa'):
+                rhs = facts.C(sc(rhs[1] & 0xffff) & 0xffffffff) if width == 2 and facts.is_c(rhs) else rhs if width == 4 else None
+                width = 4
+            mask = (1 << (width * 8)) - 1
+            if facts.is_c(lhs): lhs = facts.C(lhs[1] & mask)
+            if facts.is_c(rhs): rhs = facts.C(rhs[1] & mask)
+            if width < self.word:
+                mask = (1 << (width * 8)) - 1
+                lhs = facts.C(lhs[1] & mask) if facts.is_c(lhs) else facts.cap(('op','&',lhs,facts.C(mask))) if lhs is not None else None
+                rhs = facts.C(rhs[1] & mask) if facts.is_c(rhs) else facts.cap(('op','&',rhs,facts.C(mask))) if rhs is not None else None
+            st.flags = ('test' if mn.startswith(('test', 'tst')) and len(op) == 2 else 'cmp', lhs, rhs, width)
+            modeled = True
+        elif len(op) >= 2 and (self.x86 and mn in ('mov', 'movzx', 'movsx', 'lea') or self.m68k and mn.split('.')[0] in ('move','movea','moveq','lea') or self.arm and ins.insn_name() in ('mov','movw','movt','ldr','ldrb','ldrh','ldrsb','ldrsh','str','strb','strh')):
+            if self.m68k:
+                v = self.operand(st, ins, op[0], events, address_only=mn.startswith('lea'))
+                if mn.startswith('moveq'):
+                    v = facts.C(sc(op[0].imm & 0xff, 8))
+                elif mn.startswith('movea') and self.width(ins) == 2:
+                    v = facts.C(sc(v[1] & 0xffff)) if facts.is_c(v) else None
+                if not mn.startswith(('movea','lea')) and self.width(ins) < 4:
+                    mask = (1 << (8*self.width(ins)))-1
+                    v = facts.C(v[1] & mask) if facts.is_c(v) else facts.cap(('op','&',v,facts.C(mask))) if v is not None else None
+                write(op[1], v)
+                if not mn.startswith(('movea', 'lea')):
+                    st.flags = ('cmp', v, facts.C(0), self.width(ins))
+            elif self.x86:
+                v = self.operand(st, ins, op[1], events, address_only=mn == 'lea')
+                if mn == 'movsx':
+                    v = facts.C(sc(v[1] & ((1 << (op[1].size * 8)) - 1), op[1].size * 8)) if facts.is_c(v) else None
+                write(op[0], v)
+            elif mn.startswith('str'):
+                write(op[1], read(op[0]))
+            else:
+                v = read(op[1])
+                if ins.insn_name() == 'movt':
+                    previous = read(op[0])
+                    v = facts.C((previous[1] & 0xffff) | ((v[1] & 0xffff) << 16)) if facts.is_c(previous) and facts.is_c(v) else None
+                if ins.insn_name() in ('ldrsb','ldrsh'):
+                    width = self.width(ins,op[1])
+                    v = facts.C(sc(v[1] & ((1 << (8*width))-1), 8*width)) if facts.is_c(v) else None
+                write(op[0], v)
+            if self.arm and ins.update_flags:
+                st.flags = None
+            if self.arm and ins.writeback:
+                mem = next((o for o in op if o.type == 3), None)
+                if mem:
+                    base = self.reg(ins, mem.mem.base)
+                    # Post-index has a third operand; pre-index uses the effective address.
+                    v = self.effective(old, ins, mem)[0]
+                    if len(op) > 2:
+                        v = self.plus(self.getreg(old, base), read(op[2]))
+                    self.setreg(st, base, v)
+            modeled = True
+        elif self.arm and mn in ('lsl','lsr','asr','ror') and len(op) == 2:
+            # Capstone represents the immediate in the source operand's shift field.
+            write(op[0], read(op[1])); modeled = True
+            if ins.update_flags:
+                st.flags = None
+        elif self.m68k and mn.startswith('clr') and op:
+            write(op[0], facts.C(0)); st.flags = ('cmp', facts.C(0), facts.C(0), self.width(ins)); modeled = True
+        elif len(op) >= 2 and mn.split('.')[0].rstrip('s') in ('add', 'sub', 'and', 'or', 'orr', 'eor', 'xor', 'bic', 'addq', 'subq', 'adda', 'suba', 'lsl', 'lsr', 'shl', 'shr', 'sal', 'sar'):
+            if self.m68k:
+                dest = op[1]; a, b = read(op[1]), read(op[0])
+            elif self.arm and len(op) >= 3:
+                dest = op[0]; a, b = read(op[1]), read(op[2])
+            else:
+                dest = op[0]; a, b = read(op[0]), read(op[1])
+            base = mn.split('.')[0].rstrip('s')
+            if self.m68k:
+                width = self.width(ins)
+                mask = (1 << (8*width))-1
+                if base in ('adda','suba') and width == 2:
+                    b = facts.C(sc(b[1] & 0xffff)) if facts.is_c(b) else None
+                elif width < 4:
+                    a = facts.C(a[1] & mask) if facts.is_c(a) else None
+                    if not base.startswith(('lsl','lsr','shl','shr','sal','sar')):
+                        b = facts.C(b[1] & mask) if facts.is_c(b) else None
+            v = None
+            if base.startswith(('add', 'sub')):
+                if base.startswith('sub'):
+                    b = facts.C(-b[1]) if facts.is_c(b) else None
+                v = self.plus(a, b)
+            elif base in ('xor', 'eor') and op[-1].type == 1 and dest.type == 1 and op[-1].reg == dest.reg and (not self.arm or len(op) > 2 and op[1].reg == dest.reg):
+                v = facts.C(0)
+            elif facts.is_c(a) and facts.is_c(b):
+                funcs = {'and': lambda x,y:x & y, 'or': lambda x,y:x | y, 'orr': lambda x,y:x | y,
+                         'xor': lambda x,y:x ^ y, 'eor': lambda x,y:x ^ y, 'bic': lambda x,y:x & ~y,
+                         'lsl': lambda x,y:x << y, 'shl': lambda x,y:x << y, 'sal': lambda x,y:x << y,
+                         'lsr': lambda x,y:(x & 0xffffffff) >> y, 'shr': lambda x,y:(x & 0xffffffff) >> y}
+                if base in funcs and (base not in ('lsl','shl','sal','lsr','shr') or 0 <= b[1] < 32):
+                    v = facts.C(funcs[base](a[1], b[1]))
+            write(dest, v)
+            if self.x86 or self.m68k and not mn.startswith(('adda', 'suba')) or self.arm and ins.update_flags:
+                st.flags = None
+            modeled = True
+        elif mn in ('nop',):
+            modeled = True
+        if not modeled:
+            # Preserve observable memory operands even when the value transfer is unsupported.
+            for operand in op:
+                if operand.type != 3:
+                    continue
+                address, base, disp = self.effective(old, ins, operand)
+                access = getattr(operand, 'access', 0)
+                kinds = (['load'] if access & 1 else []) + (['store'] if access & 2 else [])
+                if self.arm and ins.insn_name() in ('ldrd','strd'):
+                    kinds = ['load' if ins.insn_name() == 'ldrd' else 'store']
+                if self.m68k and mn.split('.')[0] in ('btst','bset','bclr','bchg'):
+                    kinds = ['load'] if mn.startswith('btst') else ['load','store']
+                for access_kind in kinds or ['unknown']:
+                    self.access(events, ins, access_kind, self.width(ins,operand), address, base, disp)
+            self.invalidate(st, ins)
+        if predicated:
+            self.warnings.add('0x%x predicated effects are merged with the unexecuted path' % ins.address)
+            # Conditional stores must not be presented as unconditional writes.
+            tw, fw = self.branch_words(old, ins, {1:'eq',2:'ne',3:'hs',4:'lo',9:'hi',10:'ls',11:'ge',12:'lt',13:'gt',14:'le'}.get(ins.cc))
+            for access in events['accesses']:
+                access['condition'] = tw
+            return old.merged(st)
+        return st
+
+    def analyze(self):
+        if not self.insns or self.insns[0]['addr'] != self.addr:
+            return
+        regs = {}
+        if self.m68k:
+            names = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
+        elif self.arm:
+            names = ['r%d' % n for n in range(13)] + ['sp','lr']
+        else:
+            names = ['eax','ebx','ecx','edx','esi','edi','ebp','esp'] if self.word == 4 else ['ax','bx','cx','dx','si','di','bp','sp']
+        for name in names:
+            regs[name] = ('in', name)
+        regs[self.sp] = ('sp0', 0)
+        self.in_states = {0: FirmwareState(regs)}
+        work = collections.deque([0])
+        count = 0
+        while work:
+            count += 1
+            if count > max(1000, len(self.insns) * 100):
+                raise ValueError('register tracking did not converge; no partial fact sheet emitted')
+            n = work.popleft(); record = self.insns[n]; ins = record['_cs']
+            st = self.transfer(self.in_states[n], record, {'accesses': [], 'calls': []})
+            self.out_states[n] = st
+            kind, target, cc = self.control(ins)
+            nextaddr = ins.address + ins.size
+            successors = []
+            if kind not in ('jump','return') and nextaddr in self.at:
+                successors.append(('falls through', self.at[nextaddr]))
+            if kind in ('jump','conditional') and target in self.at:
+                successors.append(('taken', self.at[target]))
+            self.edges[n] = successors
+            for _, successor in successors:
+                # Conditional returns only propagate their unexecuted path.
+                merged = self.in_states[successor].merged(st) if successor in self.in_states else st.copy()
+                if successor not in self.in_states or self.in_states[successor].key() != merged.key():
+                    self.in_states[successor] = merged; work.append(successor)
+
+    def facts(self, _unused=False):
+        self.analyze()
+        fs = {'routine': {'file': self.img.path, 'name': self.name, 'address': hex(self.addr),
+                          'size': self.size, 'arch': self.arch, 'abi': self.img.abi,
+                          'kind': self.img.kind, 'load': hex(self.img.load), 'size_source': self.source},
+              'accesses': [], 'calls': [], 'blocks': [], 'exits': [], 'constants': [],
+              'instructions': [], 'immediates': [], 'unreached': [], 'warnings': [], 'sections': self.img.sections}
+        predecessors = collections.defaultdict(list)
+        for n, edges in self.edges.items():
+            for label, successor in edges:
+                predecessors[successor].append((n, label))
+        for n, record in enumerate(self.insns):
+            ins = record['_cs']
+            fs['instructions'].append({k:v for k,v in record.items() if k != '_cs'})
+            if n not in self.in_states:
+                fs['unreached'].append(hex(ins.address)); continue
+            events = {'accesses': [], 'calls': []}
+            out = self.transfer(self.in_states[n], record, events)
+            fs['accesses'].extend(events['accesses']); fs['calls'].extend(events['calls'])
+            kind, target, cc = self.control(ins)
+            block = {'id': 'B%d' % n, 'first': hex(ins.address), 'last': hex(ins.address),
+                     'kind': kind, 'target': hex(target) if target is not None else None,
+                     'preds': ['B%d' % p for p, _ in predecessors[n]],
+                     'successors': [{'kind': k, 'block': 'B%d' % s} for k,s in self.edges.get(n,[])]}
+            if kind.startswith('conditional'):
+                block['taken_when'], block['falls_through_when'] = self.branch_words(self.in_states[n], ins, cc)
+            fs['blocks'].append(block)
+            if kind in ('return','conditional-return'):
+                fs['exits'].append({'address': hex(ins.address), 'register': self.retreg,
+                                    'value': self.R(self.getreg(out, self.retreg)),
+                                    'from': block['preds'], 'condition': block.get('taken_when')})
+            for name, v in out.regs.items():
+                if facts.is_c(v) and v != self.in_states[n].regs.get(name):
+                    fs['constants'].append({'address': hex(ins.address), 'register': name, 'value': self.R(v)})
+            for op in ins.operands:
+                if op.type == 2:
+                    fs['immediates'].append({'address': hex(ins.address), 'value': hex(op.imm & ((1 << self.img.bits)-1))})
+        fs['warnings'] = sorted(self.warnings)
+        return fs
+
+    def render(self, fs):
+        lines = ['routine %s  %s-0x%x  size 0x%x (%d bytes)' % (self.name or '(unnamed)', hex(self.addr), self.addr+self.size, self.size, self.size),
+                 '  file %s  %s  ISA %s  ABI %s  load %s; size from %s' % (self.img.path,self.img.kind,self.arch,self.img.abi,hex(self.img.load),self.source),
+                 '  calling convention: assumed %s; argument count unknown; printed arguments are candidate locations; ? means unknown' % self.img.abi,
+                 '  legend: sp is the stack pointer at entry; [X+N] is a loaded value; ret(F) is a call result']
+        for warning in fs['warnings']:
+            lines.append('  warning: '+warning)
+        lines += ['', 'accesses (%d)' % len(fs['accesses'])]
+        for a in fs['accesses']:
+            target = 'abs '+a['absolute'] if 'absolute' in a else a['origin']+' '+sgn(a['origin_offset']) if 'origin' in a else '? (unknown effective address)'
+            lines.append('  %s %s w%d %s base=%s disp %s => %s%s%s' % (a['address'],a['kind'],a['width'],a['mnemonic'],a['base'] or '?',sgn(a['offset']),target,
+                         ' value '+a['value'] if a['kind']=='store' else '', (' space='+a['space'] if a.get('space') else '')+(' when '+a['condition'] if a.get('condition') else '')))
+        lines += ['', 'calls (%d)' % len(fs['calls'])]
+        for c in fs['calls']:
+            lines.append('  %s %s %s [%s]' % (c['address'],c['mnemonic'],c['callee'] or '(unknown callee)',c['target'] or 'unknown target'))
+            lines.append('      args: '+', '.join(a['location']+'='+a['value'] for a in c['args']))
+            if c.get('conditional'):
+                lines.append('      taken when '+c['taken_when']+'; falls through when '+c['falls_through_when'])
+        lines += ['', 'blocks (%d)' % len(fs['blocks'])]
+        for b in fs['blocks']:
+            lines.append('  %s %s-%s preds: %s' % (b['id'],b['first'],b['last'],', '.join(b['preds']) or ('entry' if b['first']==hex(self.addr) else 'none')))
+            if 'taken_when' in b:
+                lines.append('      taken when %s -> %s' % (b['taken_when'], b['target'] or b['kind']))
+                nexts = [s['block'] for s in b['successors'] if s['kind']=='falls through']
+                lines.append('      falls through when %s -> %s' % (b['falls_through_when'], ', '.join(nexts) or 'outside'))
+            else:
+                lines.append('      %s%s' % (b['kind'], ' -> '+b['target'] if b['target'] else ' -> '+', '.join(s['block'] for s in b['successors']) if b['successors'] else ''))
+        lines += ['', 'returns (%d)' % len(fs['exits'])]
+        for e in fs['exits']:
+            lines.append('  %s: %s = %s; reached from %s%s' % (e['address'],e['register'],e['value'],', '.join(e['from']) or 'entry',' when '+e['condition'] if e.get('condition') else ''))
+        lines += ['', 'constants']
+        lines += ['  %s %s = %s' % (c['address'],c['register'],c['value']) for c in fs['constants']]
+        lines += ['immediates']
+        lines += ['  %s at %s' % (c['value'],c['address']) for c in fs['immediates']]
+        lines += ['instructions']
+        lines += ['  %s %s %s %s%s' % (hex(i['addr']),i['bytes'],i['mn'],i['ops'],' (not reached)' if hex(i['addr']) in fs['unreached'] else '') for i in fs['instructions']]
+        return '\n'.join(lines)+'\n'
 
 
 # ===================================================================== control flow
@@ -388,7 +1253,6 @@ def cond_words(r, blk, i):
             j, x = cmp_
             o = [q for q in x['ops'] if not q.startswith('$fcc')]
             cond = x['mn'].split('.')[1]
-            fmt = x['mn'].split('.')[2] if x['mn'].count('.') > 1 else ''
             sj = r.in_states[j]
 
             def fv(q):
@@ -544,6 +1408,8 @@ def origin_note(r, origin):
 
 
 def render(r, fs):
+    if isinstance(r, FirmwareRoutine):
+        return r.render(fs)
     img = r.img
     asm = facts.Recorder(r).text
     nop = lambda x: 'nop' if x and x['mn'] == 'sll' and x['ops'] == ['$0', '$0', '0x0'] else asm(x)  # noqa: E731
@@ -734,14 +1600,23 @@ def main(argv=None):
     ap.add_argument('binary', help='file, or archive:member')
     ap.add_argument('routine', help='symbol name or 0xADDRESS')
     ap.add_argument('--size', type=lambda s: int(s, 0))
-    ap.add_argument('--flat', action='store_true', help='raw big-endian payload')
-    ap.add_argument('--load', type=lambda s: int(s, 0), default=0)
+    ap.add_argument('--arch', default='mips', choices=('mips', 'm68k', 'coldfire', 'arm', 'thumb', 'x86-16', 'x86-32'))
+    ap.add_argument('--offset', type=lambda s: int(s, 0), default=0, help='flat payload file offset')
+    ap.add_argument('--abi', choices=('unknown', 'm68k-sysv', 'arm-aapcs', 'cdecl32', 'cdecl16'))
+    ap.add_argument('--flat', action='store_true', help='raw payload (MIPS/M68K big-endian; ARM/x86 little-endian)')
+    ap.add_argument('--load', type=lambda s: int(s, 0))
     ap.add_argument('--isa', default='mips4', choices=('mips3', 'mips4'))
     ap.add_argument('--error-routine', action='append')
     ap.add_argument('--json', action='store_true', help='the facts.py JSON instead of text')
     a = ap.parse_args(argv)
+    if a.arch != 'mips' and a.load is None:
+        ap.error('non-MIPS firmware requires an explicit --load ADDR')
     path, member = split_binary(a.binary)
-    r = routine_for(path, a.routine, member, a.size, a.flat, a.load, a.isa, a.error_routine)
+    try:
+        r = routine_for(path, a.routine, member, a.size, a.flat, a.load or 0, a.isa, a.error_routine,
+                        a.arch, a.offset, a.abi)
+    except ValueError as exc:
+        ap.error(str(exc))
     fs = r.facts(False)
     fs['routine']['file'] = a.binary
     sys.stdout.write(json.dumps(fs, indent=1, sort_keys=True) + '\n' if a.json else render(r, fs))

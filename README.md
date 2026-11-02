@@ -144,3 +144,59 @@ descended from the gr4 project keep that project's notice, [scripts/LICENSE-gr4]
 (BSD 3-Clause, copyright Dominik Behr): the adaptations carry a header naming it and the
 original script they derive from. `scripts/gr4/` and `ghidra/processors/ge11/` come from the gr4
 repository under that notice. Keep those headers and that file with any copy of them.
+
+### Flat controller firmware
+
+The same `hostfacts.py` entry point also accepts `--arch coldfire`, `m68k`,
+`arm`, `thumb`, `x86-16` and `x86-32`. These modes require `--load ADDR`.
+For raw images, supply `--size N`. The tool does not infer a routine boundary
+from a linear decoder. `--offset N` skips a container header before mapping
+the payload at the load address.
+
+```sh
+uv run --with capstone --with pyelftools python -I scripts/hostfacts.py \
+    firmware.bin 0xffe10400 --arch coldfire --flat --load 0xffe00000 --size 0x40
+uv run --with capstone --with pyelftools python -I scripts/hostfacts.py \
+    mmscfw.bin _sysNvRamGet --arch x86-32 --load 0x108000
+```
+
+MMSC a.out images use `scripts/sysco/mmsc_aout.py` for their text/data map and
+nlist names. Their routine sizes come from the next symbol and are labelled
+inferred. Headers, symbols and bss are not treated as mapped file contents.
+An explicit load address that disagrees with the a.out header is rejected.
+
+The non-MIPS sections report accesses, calls, control flow, returns,
+constants and an instruction listing. Register values are merged across all
+predecessors. Unsupported effects invalidate affected values and produce
+warnings. Predicated ARM accesses carry their execution condition. There are
+no delay slots in these modes.
+
+The default calling conventions are M68K stack arguments, ARM AAPCS registers
+and x86 cdecl32 stack arguments. Argument counts are unknown: the printed
+locations are candidates, not a declaration that the callee accepts them.
+Use `--abi unknown` when the convention is not established, or `--abi cdecl16`
+for a known 16-bit near-call convention. The default x86-16 ABI is unknown.
+Its addresses are segment offsets, with no inferred segment base. ColdFire
+uses Capstone's 68040 decoder for the common instruction subset. This does
+not establish that every decoded opcode is legal on a ColdFire part.
+
+Run the synthetic regression tests on the host:
+
+```sh
+uv run --with capstone --with pyelftools python -I scripts/test_hostfacts.py
+uv run --with capstone --with pyelftools python -I scripts/test_hostfacts_firmware.py
+```
+
+The [real-image validation table](scripts/hostfacts-firmware-validation.tsv)
+records five routines per extracted image: 60 ColdFire bodies, 20 executable
+ARM segments and 11 MMSC carriers. It preserves the input hashes and mappings.
+These checks compare decoded bytes, emitted locators and required fact-sheet
+sections. The synthetic tests and independent review cover modeled instruction
+effects. Warnings and unknown values remain part of the output.
+
+The CPU families and MMSC mapping follow sysco's `docs/controllers.md` and
+`docs/mmsc/load-map.md`. ColdFire body mappings come from each package header,
+with the layout described in `docs/l1/coldfire-package-sections.md`. ARM
+packages have no load address in their outer headers. The ARM checks use
+executable segments from their userland ELF images and take `p_vaddr` from
+each ELF program header. No outer ARM package load address is assumed.
