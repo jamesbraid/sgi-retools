@@ -37,7 +37,11 @@ OUT = os.path.join(REPO, 'docs', 'inventory')
 if '--out' in sys.argv:
     OUT = os.path.abspath(sys.argv[sys.argv.index('--out') + 1])
 
-RELEASES = ['6.5.20', '6.5.21', '6.5.22', '6.5.23', '6.5.24', '6.5.25', '6.5.26', '6.5.27', '6.5.28', '6.5.29', '6.5.30', 'patches/SG0005762', 'patches/SG0007149']
+RELEASES = ['6.4', '6.4-origin', '6.5', '6.5.2', '6.5.5', '6.5.6', '6.5.7', '6.5.9', '6.5.10', '6.5.12', '6.5.13', '6.5.14', '6.5.15', '6.5.16', '6.5.17', '6.5.18', '6.5.19',
+            '6.5.20', '6.5.21', '6.5.22', '6.5.23', '6.5.24', '6.5.25', '6.5.26', '6.5.27', '6.5.28', '6.5.29', '6.5.30', 'patches/SG0005762', 'patches/SG0007149']
+# Controller files outside the sysco product: the MMSC image and daemons, the Challenge and Onyx controller driver and daemon,
+# the ELSC driver object, and the manual pages of those tools (docs/controllers.md).
+EXTRA = ('usr/cpu/firmware/', 'usr/etc/', 'usr/cpu/sysgen/', 'sbin/', 'usr/include/', 'usr/share/catman/')
 FW = 'usr/cpu/firmware/sysco/'
 CRAMFS_LE, CRAMFS_BE = b'\x45\x3d\xcd\x28', b'\x28\xcd\x3d\x45'
 
@@ -93,6 +97,15 @@ def hexform(a):
 
 
 # ------------------------------------------------------------------ images
+def _old_layout(d):
+    """True when `d` is an L1 container whose package table the later-layout reader cannot parse."""
+    try:
+        l1_packages(d)
+        return False
+    except (struct.error, ValueError, IndexError):
+        return True
+
+
 def find_images():
     files = []
     for rel in RELEASES:
@@ -102,7 +115,8 @@ def find_images():
             for f in sorted(fn):
                 p = os.path.join(dp, f)
                 r = os.path.relpath(p, ROOT)
-                if r.startswith(tuple(x + '/' + FW for x in RELEASES)) or '/usr/sbin/' in '/' + r:
+                if r.startswith(tuple(x + '/' + FW for x in RELEASES)) or '/usr/sbin/' in '/' + r \
+                        or r.startswith(tuple(x + '/' + e for x in RELEASES for e in EXTRA)):
                     files.append(r)
     return sorted(files)
 
@@ -258,9 +272,35 @@ def build():
         p0 = paths[0]
         name = os.path.basename(p0)
         rec = {'sha256': h, 'bytes': len(d), 'path': p0, 'copies': ';'.join(paths[1:])}
-        rel = p0.split('/usr/')[0]
+        rel = next(x for x in sorted(RELEASES, key=len, reverse=True) if p0.startswith(x + '/'))
         rec['release'] = rel
-        if name == 'l1.bin' and d[:8] == b'ESTFBINR':
+        if name == 'mmscfw.bin':
+            vm = re.search(rb'MMSC VERSION (\d+\.\d+)', d)
+            hdr = struct.unpack('<8I', d[:32])
+            rec.update(kind='MMSC firmware image', arch='x86 (486) VxWorks a.out' if hdr[0] == 0o407 else 'unknown',
+                       version=vm.group(1).decode() if vm else '',
+                       detail='a.out OMAGIC, text %d data %d bss %d symbols %d bytes, entry 0x%x' % (hdr[1], hdr[2], hdr[3], hdr[4], hdr[5]))
+        elif name in ('mmscd', 'sysctlrd', 'flashmmsc', 'flash', 'scmsg') and d[:4] == b'\x7fELF':
+            rec.update(kind='IRIX host tool', arch='MIPS ELF big-endian', version='', detail='')
+        elif name in ('elsc.o', 'sysctlr.o') and d[:4] == b'\x7fELF':
+            rec.update(kind='IRIX kernel driver object', arch='MIPS ELF relocatable', version='', detail='')
+        elif name == 'sysctlr.h' or p0.startswith(tuple(x + '/usr/share/catman/' for x in RELEASES)):
+            rec.update(kind='header or manual page', arch='-', version='', detail='')
+        elif name in ('l1.bin', 'l2.bin') and d[:8] == b'ESTFBINR' and not p0[len(rel) + 1:].startswith(FW):
+            # the earlier layout: one image per controller in the base product, before the sysco product
+            vers = collections.Counter(re.findall(rb'(?<![\d.])1\.\d{1,2}\.\d{1,2}(?![\d.])', d))
+            hdr = struct.unpack('>4I', d[8:24])
+            rec.update(kind='%s firmware image (single-image layout)' % name[:2].upper(),
+                       arch='ColdFire (inferred)' if name == 'l1.bin' else 'PowerPC (inferred)',
+                       version=vers.most_common(1)[0][0].decode() if vers else '',
+                       detail='load 0x%08x last 0x%08x' % (hdr[0], hdr[1]))
+        elif name == 'l1.bin' and d[:8] == b'ESTFBINR' and _old_layout(d):
+            vers = collections.Counter(re.findall(rb'(?<![\d.])1\.\d{1,2}\.\d{1,2}(?![\d.])', d))
+            hdr = struct.unpack('>4I', d[8:24])
+            rec.update(kind='L1 firmware image (pre-container layout)', arch='ColdFire (inferred)',
+                       version=vers.most_common(1)[0][0].decode() if vers else '',
+                       detail='load 0x%08x last 0x%08x, package table at 0x2c not in the later layout' % (hdr[0], hdr[1]))
+        elif name == 'l1.bin' and d[:8] == b'ESTFBINR':
             rec['kind'] = 'L1 firmware container'
             ps = l1_packages(d)
             rec['arch'] = 'ColdFire MCF5206e x%d, ARM S3C2410 Linux x%d' % (
@@ -367,7 +407,10 @@ def bodies(pkgs_rows):
         p = os.path.join(ROOT, rel, FW, 'l1.bin')
         if not os.path.exists(p):
             continue
-        for e in l1_packages(open(p, 'rb').read()):
+        raw = open(p, 'rb').read()
+        if _old_layout(raw):
+            continue
+        for e in l1_packages(raw):
             if not e['linux']:
                 out['%s:l1#%d' % (rel, e['index'])] = (e['load'], e['body'])
     return out
