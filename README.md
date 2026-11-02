@@ -22,7 +22,7 @@ tools/check-shared                                   # the pin matches, nothing 
 |---|---|
 | `tools/` | `Containerfile` and `Containerfile.ghidra`, `re-run`, `setup-clone.sh`, `check-shared`, `refresh-union-root`, `ghidra-export.py`, `README-analysis.md` |
 | `tools/chips/` | the register-access census tools (scan, join, report, header generation) |
-| `scripts/` | the code every workspace runs the same way: `inventory.py`, `facts.py`, `check_claims.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `toolchain.py`, `populate-root`, `pre-push`, `check-leaks.sh` and their tests |
+| `scripts/` | the code every workspace runs the same way: `inventory.py`, `facts.py`, `hostfacts.py`, `check_claims.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `toolchain.py`, `populate-root`, `pre-push`, `check-leaks.sh` and their tests |
 | `scripts/<device>/` | extractors, disassemblers and analysis scripts for one device family (`kona`, `odsy`, `crime`, `chips`, `voyager`, `sysco`, `kudzu`, `gr4`); a script two families share sits in the first family's directory and the other links to it |
 | `ghidra/scripts/` | the Ghidra scripts for IRIX MIPS objects and the export helpers (`Re*.java`) |
 | `ghidra/processors/<name>/` | Ghidra processor extensions with their generators and tests (`kona-ge`, `kona-ged`, `odsy-buzz`, `ge11`) |
@@ -31,6 +31,41 @@ tools/check-shared                                   # the pin matches, nothing 
 Tools that name paths of their workspace (`docs/`, `root/`, `scripts/inventory-config.json`)
 find the workspace through the link they were started by, not through this repository, so
 they must be run by the workspace's path.
+
+## For agents without containers
+
+`scripts/facts.py` needs the MIPS objdump from the toolchain container, so an agent whose
+sandbox cannot run Podman has had to read raw disassembly, and that is where offsets, branch
+directions and call arguments go wrong. `scripts/hostfacts.py` gives the same facts on the host. It
+runs facts.py's analysis with a Capstone decoder in place of objdump, so a run needs only
+Python with `capstone` and `pyelftools`:
+
+```sh
+uv run --with capstone --with pyelftools \
+    python -I retools/scripts/hostfacts.py BINARY[:MEMBER] ROUTINE [--size N] [--flat --load ADDR] [--json]
+```
+
+Run it from the workspace root (a clone of this repository elsewhere works too, given by its path) with the same arguments as `facts.py` (ROUTINE is a symbol or
+`0xADDR`; an archive member follows a colon). The text names, for the one routine:
+
+- range, size, ELF class, ABI and ISA;
+- every load and store with its width, base register, the displacement as written and the resolved
+  target, `abs 0xADDR` or `ORIGIN +/-0xOFF`. A displacement from a `lui`-built base keeps its sign,
+  so `lui t0,1; lw t1,-0x6954(t0)` reads as 0x96ac from the origin, not 0x6954;
+- every call with its callee and the argument registers as the callee sees them, after the delay
+  slot (`?` is a register the tool could not follow);
+- basic blocks, each conditional branch with when it is taken and when it falls through, the
+  instruction in its delay slot and whether a branch-likely annuls it, and which blocks reach each
+  return and what v0 holds on the way in;
+- the constants and immediates the routine uses.
+
+Base every offset, condition and argument claim on this output, not on a hand reading of the
+listing. `--json` prints the sheet `facts.py` prints. Its sections match a container run of
+`tools/re-run python3 scripts/facts.py` on the same routine, except where objdump prints a
+64-bit constant load as the pseudo-instruction `dli` (N64 code): facts.py does not follow `dli`, so
+the Capstone run, which decodes it as `ori`, shows constants and call arguments the container
+run lacks. `scripts/test_hostfacts.py` holds the hand-assembled checks (run it with the same
+`uv run --with` line); it skips itself when Capstone is missing.
 
 ## What stays in a workspace
 
