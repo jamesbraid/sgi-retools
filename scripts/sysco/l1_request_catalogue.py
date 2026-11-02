@@ -2,6 +2,10 @@
 """General request codes of the Origin 300 L1 package in every set that carries it.
 
 Usage: tools/re-run python3 scripts/l1_request_catalogue.py [--out docs/version-diffs]
+       tools/re-run python3 scripts/l1_request_catalogue.py --series early
+
+--series early covers the early series (1.0.2 to 1.18.3, version_diff.EARLY_SETS) and writes
+l1-early-request-catalogue.tsv and l1-early-request-changes.tsv; its reference column is 1.18.3.
 
 Writes two TSV files under docs/version-diffs/:
 
@@ -64,10 +68,10 @@ def handler_norm(p, routine_list, target, valid_targets):
     return text
 
 
-def catalogue():
+def catalogue(sets=SETS, package=vd.fuel_package):
     out = collections.OrderedDict()
-    for ver, rel in SETS:
-        p = vd.fuel_package(rel)
+    for ver, rel in sets:
+        p = package(rel)
         routine_list = vd.routines(p)
         unknown, valid = vd.dispatch_catalogue(p)
         vt = sorted(set(valid.values()))
@@ -93,35 +97,35 @@ def relation(x, y):
     return 'text changed'
 
 
-def compare(cat, ver, code):
-    """Relation of a code's handler in ver to the same code in REF."""
+def compare(cat, ver, code, ref=REF):
+    """Relation of a code's handler in ver to the same code in ref."""
     here = cat[ver]['codes'].get(code)
-    there = cat[REF]['codes'].get(code)
+    there = cat[ref]['codes'].get(code)
     if here is None:
         return 'absent'
     if there is None:
-        return 'absent in ' + REF
+        return 'absent in ' + ref
     return relation(there, here) or 'same text'
 
 
-def catalogue_rows(cat):
+def catalogue_rows(cat, sets=SETS, ref=REF):
     rows = [['set', 'release', 'code', 'handler', 'handler_text_sha', 'handler_ram_masked_sha',
-             'handler_lines', 'vs_' + REF]]
-    for ver, _ in SETS:
+             'handler_lines', 'vs_' + ref]]
+    for ver, _ in sets:
         for code in sorted(cat[ver]['codes']):
             target, sha, ram_sha, length = cat[ver]['codes'][code]
             rows.append([ver, cat[ver]['release'], '%04x' % code, '%x' % target, sha[:16], ram_sha[:16],
-                         length, compare(cat, ver, code)])
+                         length, compare(cat, ver, code, ref)])
     return rows
 
 
-def change_rows(cat):
+def change_rows(cat, sets=SETS):
     """Codes added, removed or whose handler text changes between consecutive sets.
 
     A handler that only moved (same text at a new address) is not a change.
     """
     rows = [['from', 'to', 'code', 'change', 'from_handler', 'to_handler']]
-    for (a, _), (b, _) in zip(SETS, SETS[1:]):
+    for (a, _), (b, _) in zip(sets, sets[1:]):
         ca, cb = cat[a]['codes'], cat[b]['codes']
         for code in sorted(set(ca) | set(cb)):
             x, y = ca.get(code), cb.get(code)
@@ -140,7 +144,20 @@ def write_tsv(name, rows):
             f.write('\t'.join(str(c) for c in r) + '\n')
 
 
+def early_main():
+    """The early series (vd.EARLY_SETS, 1.0.2 to 1.18.3). The last set is the reference column."""
+    os.makedirs(OUT, exist_ok=True)
+    sets, ref = vd.EARLY_SETS, vd.EARLY_SETS[-1][0]
+    cat = catalogue(sets, vd.series_package)
+    write_tsv('l1-early-request-catalogue.tsv', catalogue_rows(cat, sets, ref))
+    write_tsv('l1-early-request-changes.tsv', change_rows(cat, sets))
+    counts = collections.Counter(r[3] for r in change_rows(cat, sets)[1:])
+    print(dict(counts))
+
+
 def main():
+    if '--series' in sys.argv and sys.argv[sys.argv.index('--series') + 1:][:1] == ['early']:
+        return early_main()
     os.makedirs(OUT, exist_ok=True)
     cat = catalogue()
     write_tsv('l1-request-catalogue.tsv', catalogue_rows(cat))

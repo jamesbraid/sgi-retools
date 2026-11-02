@@ -2,6 +2,10 @@
 """Compare the controller firmware across the four shipped sets.
 
 Usage: tools/re-run python3 scripts/version_diff.py [--out docs/version-diffs]
+       tools/re-run python3 scripts/version_diff.py --series early
+
+--series early runs the routine diff over the early series, 1.0.2 to 1.18.3 (EARLY_SETS), and
+writes l1-early-routines.tsv. The default run covers the four sets below.
 
 Three measurements, each written as TSV under docs/version-diffs/:
 
@@ -40,6 +44,12 @@ if '--out' in sys.argv:
     OUT = os.path.abspath(sys.argv[sys.argv.index('--out') + 1])
 
 L1_SETS = [('1.24.8', '6.5.22'), ('1.32.15', 'patches/SG0005762'), ('1.44.0', '6.5.30'), ('1.48.1', 'patches/SG0007149')]
+# The early series, 1.0.2 to 1.18.3 (IRIX 6.5.9 to 6.5.19). Each set's package is its ColdFire
+# image: the whole file for 6.5.9 to 6.5.15 (no container table), the 1 MB image of the
+# container for 6.5.16 to 6.5.19 (its label has no product qualifier, so which product
+# package it is was not settled; see docs/version-diffs.md).
+EARLY_SETS = [('1.0.2', '6.5.9'), ('1.1.6', '6.5.10'), ('1.4.1', '6.5.12'), ('1.6.0', '6.5.13'), ('1.8.0', '6.5.14'),
+              ('1.10.0', '6.5.15'), ('1.12.3', '6.5.16'), ('1.14.1', '6.5.17'), ('1.16.0', '6.5.18'), ('1.18.3', '6.5.19')]
 L2_SETS = [('1.24.1', '6.5.22'), ('1.32.4', 'patches/SG0005762'), ('1.44.0', '6.5.30'), ('1.48.0', 'patches/SG0007149')]
 MIRROR = 0x70000          # the body holds the program twice, this far apart
 SPAN = 0x200              # dispatch chain: branches that stay within this many bytes are local
@@ -60,6 +70,22 @@ def fuel_package(rel):
         if not p['linux'] and 'Fuel/PE' in p['label']:
             return p
     raise SystemExit('no Fuel/PE package in ' + rel)
+
+
+def series_package(rel):
+    """The ColdFire package of an early-series set (EARLY_SETS): the whole 6.5.9 to 6.5.15 image,
+    or the 1 MB image of the 6.5.16 to 6.5.19 container."""
+    if rel in ('6.5.9', '6.5.10'):
+        path = os.path.join(st.ROOT, rel, 'usr/cpu/firmware/l1.bin')
+    else:
+        path = os.path.join(st.ROOT, rel, st.FW, 'l1.bin')
+    data = open(path, 'rb').read()
+    if st._old_layout(data):
+        return st.pre_container_package(data)
+    ones = [p for p in st.l1_packages(data) if not p['linux'] and p['label'] == '1MB image']
+    if len(ones) != 1:
+        raise SystemExit('expected one 1MB image in %s, found %d' % (rel, len(ones)))
+    return ones[0]
 
 
 # ---- routines -------------------------------------------------------------------------
@@ -189,11 +215,11 @@ def classify(ra, rb):
     return 'changed'
 
 
-def routine_report(routine_rows):
+def routine_report(routine_rows, sets=L1_SETS):
     tsv = [['step', 'change', 'from_bank', 'from_addr', 'from_len', 'to_bank', 'to_addr', 'to_len',
             'similarity', 'first_difference_from', 'first_difference_to']]
     summary = collections.OrderedDict()
-    for (a, pa), (b, pb) in zip(L1_SETS, L1_SETS[1:]):
+    for (a, pa), (b, pb) in zip(sets, sets[1:]):
         A, B = routine_rows[a], routine_rows[b]
         pairs, removed, added = pair_routines(A, B)
         cnt = collections.Counter()
@@ -217,10 +243,10 @@ def routine_report(routine_rows):
     return tsv, summary
 
 
-def l1_routines():
+def l1_routines(sets=L1_SETS, package=fuel_package):
     rows = {}
-    for ver, rel in L1_SETS:
-        p = fuel_package(rel)
+    for ver, rel in sets:
+        p = package(rel)
         rows[ver] = routines(p)
     return rows
 
@@ -308,6 +334,15 @@ def run_chain(body, base, entry, code):
             rn = reg_index(ops.split(',')[-1])
             d[rn] = (d[rn] & 0xffff0000) | (w & 0xffff)
             Z, N, C, V = (d[rn] & 0xffff) == 0, bool(w & 0x8000), False, False
+        elif bmn == 'movea' and mn.endswith('.l') and '(pc' in ops:
+            # the early sets load the handler address from a longword table, then jump through the register
+            ext = struct.unpack('>H', body[pc - base + 2:pc - base + 4])[0]
+            disp = ext & 0xff
+            disp = disp - 256 if disp >= 128 else disp
+            ea = (pc + 2) + disp + (1 << ((ext >> 9) & 3)) * s32(d[(ext >> 12) & 15])
+            d[reg_index(ops.split(',')[-1])] = struct.unpack('>I', body[ea - base:ea - base + 4])[0]
+        elif bmn == 'jmp' and re.fullmatch(r'\(a[0-7]\)', ops.strip()):
+            return ('handler', d[reg_index(ops.strip()[1:-1])])
         elif bmn == 'jmp' and '(pc' in ops:
             ext = struct.unpack('>H', body[pc - base + 2:pc - base + 4])[0]
             disp = ext & 0xff
@@ -328,7 +363,12 @@ def run_chain(body, base, entry, code):
 
 
 def chain_entries(body, base):
-    """Each compare chain: the request-code load (move.l) before cmp.l #$1003,d0."""
+    """Each compare chain: the request-code load (move.l) before cmp.l #$1003,d0.
+
+    The sets from 6.5.22 on open their chain with #$1003. The early sets open it with #$1001
+    or #$1002, a compare followed by bgt. The early chains are taken only when no #$1003 chain
+    is present, and the earliest one in the body wins.
+    """
     found = []
     pat = bytes.fromhex('b0bc00001003')
     o = body.find(pat)
@@ -341,7 +381,21 @@ def chain_entries(body, base):
                     found.append(c - back)
                     break
         o = body.find(pat, o + 1)
-    return found
+    if found:
+        return found
+    for first in (0x1002, 0x1001):
+        pat = b'\xb0\xbc\x00\x00' + first.to_bytes(2, 'big')
+        o = body.find(pat)
+        while o >= 0:
+            if body[o + 6] == 0x6e:
+                c = base + o
+                for back in (2, 4):
+                    m = next(iter(MD.disasm(body[o - back:o - back + 16], c - back, count=1)), None)
+                    if m and m.address + m.size == c and m.mnemonic.startswith('move.l'):
+                        found.append(c - back)
+                        break
+            o = body.find(pat, o + 1)
+    return sorted(found)
 
 
 def dispatch_catalogue(p):
@@ -350,6 +404,11 @@ def dispatch_catalogue(p):
     if not entries:
         return None, {}
     entry = entries[0]
+    # the run supplies the request code in every register, so a load of the code from memory
+    # (the early sets read it from a6-relative slot) is skipped and the run starts at the compare
+    ins = next(iter(MD.disasm(body[entry - base:entry - base + 16], entry, count=1)), None)
+    if ins and '(' in ins.op_str.split(',')[0]:
+        entry += ins.size
     codes = {}
     for code in range(0, 0x8000):
         r = run_chain(body, base, entry, code)
@@ -460,7 +519,19 @@ def write_tsv(name, rows):
             f.write('\t'.join('' if c is None else str(c) for c in r) + '\n')
 
 
+def early_main():
+    """Routine diff across the early series (EARLY_SETS). Writes l1-early-routines.tsv."""
+    os.makedirs(OUT, exist_ok=True)
+    rows = l1_routines(EARLY_SETS, series_package)
+    rtsv, rsum = routine_report(rows, EARLY_SETS)
+    write_tsv('l1-early-routines.tsv', rtsv)
+    print(json.dumps({'routines': rsum}, indent=1))
+    print('routine rows', len(rtsv) - 1)
+
+
 def main():
+    if '--series' in sys.argv and sys.argv[sys.argv.index('--series') + 1:][:1] == ['early']:
+        return early_main()
     os.makedirs(OUT, exist_ok=True)
     rows = l1_routines()
     rtsv, rsum = routine_report(rows)
