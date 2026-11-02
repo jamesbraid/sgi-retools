@@ -912,7 +912,12 @@ class FirmwareRoutine:
                     v = facts.C(sc(v[1] & ((1 << (op[1].size * 8)) - 1), op[1].size * 8)) if facts.is_c(v) else None
                 write(op[0], v)
             elif mn.startswith('str'):
-                write(op[1], read(op[0]))
+                v = read(op[0])
+                width = self.width(ins, op[1])
+                if width < self.word and v is not None:
+                    mask = (1 << (width * 8)) - 1
+                    v = facts.C(v[1] & mask) if facts.is_c(v) else facts.cap(('op', '&', v, facts.C(mask)))
+                write(op[1], v)
             else:
                 v = read(op[1])
                 if ins.insn_name() == 'movt':

@@ -181,6 +181,20 @@ class FirmwareFacts(unittest.TestCase):
         load = next(a for a in fs['accesses'] if a['address']=='0x100c')
         self.assertEqual(load['absolute'],'0x0')
 
+    def test_arm_symbolic_byte_stack_reload_truncates_argument(self):
+        # strb r0,[sp]; ldrb r0,[sp]; bl 0x2000; bx lr
+        fs, _ = self.analyze('arm', '0000cde50000dde5fc0300eb1eff2fe1')
+        self.assertEqual(fs['calls'][0]['args'][0]['value'], '(r0 & 0xff)')
+        store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+        self.assertEqual(store['value'], '(r0 & 0xff)')
+
+    def test_arm_symbolic_halfword_stack_reload_truncates_argument(self):
+        # strh r0,[sp]; ldrh r0,[sp]; bl 0x2000; bx lr
+        fs, _ = self.analyze('arm', 'b000cde1b000dde1fc0300eb1eff2fe1')
+        self.assertEqual(fs['calls'][0]['args'][0]['value'], '(r0 & 0xffff)')
+        store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+        self.assertEqual(store['value'], '(r0 & 0xffff)')
+
     def test_arm_signed_byte_literal_extends(self):
         fs, _ = self.analyze('arm','d000dfe11eff2fe1ff000000')
         self.assertEqual(fs['exits'][0]['value'],'0xffffffff')
