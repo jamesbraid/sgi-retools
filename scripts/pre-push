@@ -20,9 +20,11 @@
 # pushes with the real URL; a clone prepared by tools/setup-clone.sh has a push URL
 # that only re-push gets around, so this hook is the early warning for the other cases.
 #
-# Entries the push changes that carry a status but name no routine, or a routine or binary the
-# checker cannot find, are listed as a notice after the report ("notice: N claim entries ...").
-# They were not checked; the push is not refused for them.
+# A graded entry (Established or Inferred) that the push adds or edits, and that names no routine or
+# whose routine or binary the checker cannot find, cannot be tested: the push is refused, with the
+# file and line, the reason and the fix (--block-unresolved in scripts/check_claims.py). Graded
+# entries the push does not touch are never refused, however old; Unverified entries, prose with no
+# grade and tables without a routine column are exempt.
 #
 # Copy check: a second stage compares the documentation, tables, listings and
 # Python the push changes with a reference source tree, for prose or code
@@ -163,10 +165,10 @@ while read -r lref lsha rref rsha; do
         status=1
         break
     fi
-    "$@" --status all --quiet --list-unresolved --blocking --changed "$base" </dev/null >&2
+    "$@" --status all --quiet --list-unresolved --blocking --block-unresolved --changed "$base" </dev/null >&2
     rc=$?
     if [ $rc -eq 1 ]; then
-        echo "pre-push: a blocking claim mismatch (above) in a changed entry; fix the entry, or push with CHECK_CLAIMS=off in an emergency" >&2
+        echo "pre-push: a blocking claim mismatch, or a graded entry the claim checker cannot test (above), in a changed entry; fix the entry, or push with CHECK_CLAIMS=off in an emergency" >&2
         status=1
     elif [ $rc -ne 0 ]; then
         echo "pre-push: the claim checker did not run (exit $rc); the push is refused. Push with CHECK_CLAIMS=off in an emergency" >&2

@@ -349,3 +349,102 @@ class OutsideRoutine(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BlockUnresolved(unittest.TestCase):
+    """--block-unresolved refuses a graded entry the range adds or edits that cannot be tested; old ones pass."""
+
+    OLD = ('# Doc\n\n'
+           '| Option | Meaning |\n|---|---|\n| `--l2` | host |\n\n'
+           '- `old` (`usr/sbin/nowhere`, `0x10`, 16 bytes). Established.\n'
+           '- `fine` (`usr/sbin/l1cmd`, `0x10`, 16 bytes). Unverified.\n'
+           '- Closing prose.\n')
+
+    def git(self, td, *a):
+        import subprocess
+        subprocess.run(['git', '-C', td, '-c', 'user.name=t', '-c', 'user.email=t@t', *a], check=True,
+                       capture_output=True)
+
+    def run_range(self, new, *args):
+        """Commit OLD, write NEW in the working tree, run main against the commit; returns (rc, stdout)."""
+        with tempfile.TemporaryDirectory() as td:
+            os.makedirs(os.path.join(td, 'docs', 'inventory'))
+            with open(os.path.join(td, 'docs', 'inventory', 'functions.tsv'), 'w') as f:
+                f.write('binary\tname\nusr/sbin/l1cmd\tg\n')
+            doc = os.path.join(td, 'docs', 't.md')
+            with open(doc, 'w') as f:
+                f.write(self.OLD)
+            self.git(td, 'init', '-q')
+            self.git(td, 'add', '.')
+            self.git(td, 'commit', '-q', '-m', 'base')
+            with open(doc, 'w') as f:
+                f.write(new)
+            old = check_claims.REPO
+            check_claims.REPO = td
+            out = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(out):
+                    rc = check_claims.main(['--status', 'all', '--quiet', '--list-unresolved', '--blocking',
+                                            '--block-unresolved', '--changed', 'HEAD'] + list(args))
+            finally:
+                check_claims.REPO = old
+        return rc, out.getvalue()
+
+    def test_untouched_old_entry_is_not_refused(self):
+        rc, out = self.run_range(self.OLD + '- Another closing line.\n')
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn('REFUSED', out)
+
+    def test_new_graded_entry_with_no_binary_is_refused(self):
+        rc, out = self.run_range(self.OLD + '- `fresh` (`usr/sbin/missing`, `0x20`, 8 bytes). Inferred.\n')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('REFUSED-UNTESTABLE\tdocs/t.md:10\tfresh', out)
+        self.assertNotIn('docs/t.md:7', out)    # the old entry stays allowed
+        self.assertIn('full build path', out)
+
+    def test_editing_an_old_graded_entry_refuses_it(self):
+        rc, out = self.run_range(self.OLD.replace('16 bytes). Established.', '16 bytes; reread. Established.', 1))
+        self.assertEqual(rc, 1, out)
+        self.assertIn('REFUSED-UNTESTABLE\tdocs/t.md:7\told', out)
+
+    def test_entry_with_no_routine_is_refused(self):
+        rc, out = self.run_range(self.OLD + '- The queue holds eight words. Established.\n')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('no routine', out)
+
+    def test_exempt_text_is_not_refused(self):
+        rc, out = self.run_range(self.OLD + '- `a` (`usr/sbin/missing`, `0x20`, 8 bytes). Unverified.\n'
+                                 '- Plain prose with no grade.\n'
+                                 '\n| Option | Meaning |\n|---|---|\n| `--sc` | Established. |\n')
+        self.assertEqual(rc, 0, out)
+
+    def test_pure_deletion_does_not_touch_the_neighbour(self):
+        rc, out = self.run_range(self.OLD.replace('- Closing prose.\n', ''))
+        self.assertEqual(rc, 0, out)
+
+    def test_needs_changed(self):
+        with self.assertRaises(SystemExit):
+            with contextlib.redirect_stderr(io.StringIO()):
+                check_claims.main(['--block-unresolved'])
+
+
+class ChangedLines(unittest.TestCase):
+    def test_deletion_adds_no_line(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            os.makedirs(os.path.join(td, 'docs'))
+            doc = os.path.join(td, 'docs', 'x.md')
+            with open(doc, 'w') as f:
+                f.write('a\nb\nc\nd\n')
+            subprocess.run(['git', '-C', td, 'init', '-q'], check=True)
+            subprocess.run(['git', '-C', td, 'add', '.'], check=True)
+            subprocess.run(['git', '-C', td, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'm'],
+                           check=True)
+            with open(doc, 'w') as f:
+                f.write('a\nc\nd\nnew\n')
+            old = check_claims.REPO
+            check_claims.REPO = td
+            try:
+                self.assertEqual(dict(check_claims.changed_lines('HEAD')), {'docs/x.md': {4}})
+            finally:
+                check_claims.REPO = old

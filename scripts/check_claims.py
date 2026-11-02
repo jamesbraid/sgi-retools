@@ -42,6 +42,11 @@ whose routine or binary cannot be resolved are listed as unresolved.
 Run from the repository root inside the toolchain environment (as scripts/facts.py).
 With --blocking the exit status is 1 when any mismatch falls in a blocking class
 (BLOCKING below); otherwise the run only reports.
+
+--block-unresolved (with --changed) also refuses an entry that carries a grade (Established or
+Inferred; Unverified claims nothing) and that the range adds or edits, when the checker cannot test it
+because no routine or no binary resolves. Graded entries the range does not touch are never refused, so
+the notes that predate the rule stay as they are.
 """
 import argparse
 import collections
@@ -2055,10 +2060,15 @@ def main(argv=None):
     ap.add_argument('--list-unresolved', action='store_true',
                     help='with --quiet, still list the entries that carry a status but name no routine or binary found')
     ap.add_argument('--changed', metavar='REV', help='only entries whose lines differ from REV (git diff)')
+    ap.add_argument('--block-unresolved', action='store_true',
+                    help='with --changed, exit 1 for a graded entry the range adds or edits that cannot be resolved to a '
+                         'routine and a binary (and so cannot be tested)')
     a = ap.parse_args(argv)
+    if a.block_unresolved and not a.changed:
+        ap.error('--block-unresolved needs --changed REV: it judges only the entries a range adds or edits')
     bins = Binaries()
     work = []
-    claimed = set()
+    claimed, graded = set(), set()
     dups = []
     changed = changed_lines(a.changed) if a.changed else None
     chip_results, chip_entries = [], 0
@@ -2093,6 +2103,8 @@ def main(argv=None):
             work.append(e)
             if st:
                 claimed.add(e.id)
+            if st and st != 'unverified':
+                graded.add(e.id)
         for k, es in seen.items():
             if len(es) > 1 and (changed is None or any(touched(changed, x) for x in es)):
                 for e in es:
@@ -2120,7 +2132,17 @@ def main(argv=None):
     for r in mism:
         print('MISMATCH\t%s\t%s\t%s\t%s\tclaim: %s\tfact: %s\t%s' % (r['class'], r['entry'], r['routine'], r['binary'],
                                                                   r['claim'], r['fact'], r['reason']))
-    if a.quiet and a.list_unresolved:
+    refused = [u for u in unresolved if u[1] in graded] if a.block_unresolved else []
+    for u in refused:
+        print('REFUSED-UNTESTABLE\t%s\t%s\t%s\t%s' % (u[1], u[2], u[3], u[4]))
+    if refused:
+        print('refused: %d graded entries this push adds or edits cannot be tested against a binary (above: '
+              'doc:line, routine, binary, why). Fix: make the entry name the routine in backticks and the '
+              'binary by its full build path (for example builds/6.5.30-media/usr/...), with the address '
+              'and size, so the checker can find the routine; or, if the binary is not in root/, populate '
+              'root/. An entry that really cannot be tested is not graded: write it as Unverified or as '
+              'plain prose.' % len(refused))
+    if a.quiet and a.list_unresolved and not a.block_unresolved:
         claims = [u for u in unresolved if u[1] in claimed]
         if claims:
             print('notice: %d claim entries could not be resolved to a routine and a binary, so they were not '
@@ -2147,11 +2169,13 @@ def main(argv=None):
             json.dump({'results': results, 'unresolved': unresolved}, f, indent=1, sort_keys=True)
     if a.blocking and any(r['class'] in BLOCKING for r in mism):
         return 1
+    if refused:
+        return 1
     return 0
 
 
 def changed_lines(rev):
-    """{doc: set of line numbers} that differ from rev in the working tree."""
+    """{doc: set of line numbers} the working tree adds or edits relative to rev."""
     import subprocess
     out = subprocess.run(['git', '-C', REPO, 'diff', '-U0', rev, '--', 'docs'], capture_output=True, text=True).stdout
     res, doc = collections.defaultdict(set), None
@@ -2161,7 +2185,7 @@ def changed_lines(rev):
         m = re.match(r'@@ -\S+ \+(\d+)(?:,(\d+))? @@', ln)
         if m and doc:
             start, n = int(m.group(1)), int(m.group(2) or 1)
-            res[doc] |= set(range(start, start + max(n, 1)))
+            res[doc] |= set(range(start, start + n))   # n == 0 is a pure deletion: no line was added
     return res
 
 

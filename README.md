@@ -66,6 +66,22 @@ hook keeps `COPY_CHECK=off` and `CHECK_CLAIMS=off`, as emergency overrides that 
 that the push is unchecked; `re-push` ignores both. `retools/re-push --install [DIR...]` prepares
 existing clones. The pre-push hook stays as the early warning for anything else.
 
+### Graded entries must be testable
+
+The claim checker can only test an entry that names a routine and a binary it finds in `root/`.
+`re-push` (through `scripts/pre-push`, which passes `--block-unresolved` to
+`scripts/check_claims.py`) refuses a push when an entry carrying a grade, Established or
+Inferred, is added or edited by the pushed range and cannot be resolved: no routine, no binary, or
+a routine the binary does not have. The message gives the `doc:line`, the routine and binary as
+read, the reason and the fix: name the routine in backticks and the binary by its full build path,
+with the address and size, or write the note as Unverified or plain prose.
+
+The rule is judged on the range alone (`git diff -U0` against the remote tip, pure deletions
+ignored), so there is no baseline file and no list of entry ids: a graded note nobody touches stays
+allowed however old, and touching one makes it testable or ungraded. Unverified entries, prose with
+no grade and tables without a routine, function, name or symbol column are exempt, as are the
+register tables of `chips/*/README.md`, which the chip checker reads by its own rules.
+
 ## The union root
 
 `scripts/inventory-root.sha256` is the manifest of a union root store: every workspace's
