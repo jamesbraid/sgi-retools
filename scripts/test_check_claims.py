@@ -262,8 +262,9 @@ class InsnAddressList(unittest.TestCase):
     def test_range_is_not_a_list_member(self):
         self.assertEqual([x[1] for x in self.verdicts('`sw` at 0x1100, 0x1108 to 0x1110.')], ['ok'])
 
-    def test_addresses_outside_the_routine_are_ignored(self):
-        self.assertEqual([x[1] for x in self.verdicts('`sw` at 0x1100, 0x9000.')], ['ok'])
+    def test_address_outside_the_routine_is_not_judged_as_this_routines_instruction(self):
+        # it is reported as insn-outside instead (OutsideRoutine)
+        self.assertEqual([x[1] for x in self.verdicts('`sw` at 0x1100, 0x9000.')], ['ok', 'mismatch'])
 
     def test_aliases_match_in_later_positions(self):
         v = self.verdicts('Nops at `nop` at 0x1104, 0x1104; `dsll` at 0x110c; `b` at 0x1114; `beqz` at 0x1110; `move` at 0x1118.')
@@ -276,6 +277,74 @@ class InsnAddressList(unittest.TestCase):
     def test_kind_list(self):
         v = self.verdicts('The stores at 0x1100, 0x111c and 0x1108 follow.')
         self.assertEqual([x[1] for x in v], ['ok', 'ok', 'mismatch'])
+
+
+class OutsideRoutine(unittest.TestCase):
+    """An instruction address cited in an entry must lie in the entry's routine (FakeCtx: 0x1000-0x3000),
+    unless the clause says it is in another place."""
+
+    INSNS = {0x1100: 'sw a0,0(s0)', 0x1104: 'jal 0x4000', 0x1108: 'lw a1,4(s0)'}
+
+    def results(self, text):
+        e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='f', status='established')
+        rep = []
+        check_claims.Checker(e, FakeCtx(self.INSNS), rep, None, None).insn_address()
+        return [(r['class'], r['verdict'], r['fact']) for r in rep if r['class'] == 'insn-outside']
+
+    def test_in_range_citation_passes(self):
+        self.assertEqual(self.results('The `sw` at 0x1100 stores it and the call at 0x1104 follows.'), [])
+
+    def test_out_of_range_mnemonic_citation_is_flagged_with_the_range(self):
+        r = self.results('The `lw` at 0x9000 loads the length.')
+        self.assertEqual([x[:2] for x in r], [('insn-outside', 'mismatch')])
+        self.assertIn('[0x1000, 0x3000)', r[0][2])
+
+    def test_out_of_range_call_citation_is_flagged(self):
+        self.assertEqual([x[:2] for x in self.results('The call at 0x9004 reports it.')], [('insn-outside', 'mismatch')])
+
+    def test_list_members_are_checked_individually(self):
+        r = self.results('The stores are `sw` at 0x1100, 0x9000 and 0xa000.')
+        self.assertEqual([x[1] for x in r], ['mismatch', 'mismatch'])
+
+    def test_class_blocks(self):
+        self.assertIn('insn-outside', check_claims.BLOCKING)
+
+    def test_explicit_other_routine_phrasing_is_exempt(self):
+        for text in ('The caller reaches it with the `jal` at 0x9000.',
+                     'It is called by the call at 0x9000 in `other_routine`.',
+                     'The `sw` at 0x9000 in `other_routine` stores it.',
+                     'The `jal` at 0x9000 of the `other_routine` handler calls it.',
+                     'The call in other_routine at 0x9000 passes the flag.',
+                     'It returns to 0x9004 after the `jal` at 0x9000.'):
+            r = self.results(text)
+            self.assertEqual([x[1] for x in r], ['ok'] * len(r), text)
+            self.assertTrue(r, text)
+
+    def test_branch_target_outside_the_routine_is_exempt(self):
+        self.assertEqual(self.results('The `bne` at 0x1100 branches to 0x9000 on error.'), [])
+        r = self.results('The `beq` at 0x1100, 0x1104 branches to 0x9000; the `b` at 0x9008 is the target.')
+        self.assertEqual([x[1] for x in r], ['ok'])
+
+    def test_object_of_the_verb_is_not_an_instruction_address(self):
+        # "calls X at A" and "stores the result at A" give the address of the callee or the data
+        for text in ('It calls the loader at 0x9000 with the context.', 'The routine calls it at 0x9000.',
+                     'It stores the result at 0x9000.', 'A 13-entry jump table at 0x9000 decodes it.'):
+            r = self.results(text)
+            self.assertEqual([x[1] for x in r], ['ok'], text)
+
+    def test_call_named_by_its_callee_is_exempt(self):
+        self.assertEqual([x[1] for x in self.results('The body makes two computeMax calls at 0x9000, one per child.')], ['ok'])
+        self.assertEqual([x[1] for x in self.results('The body makes two calls at 0x9000, one per child.')], ['mismatch'])
+
+    def test_other_build_is_exempt_only_near_the_citation(self):
+        self.assertEqual([x[1] for x in self.results('The N32 test is a plain `beq` at 0x9000.')], ['ok'])
+        self.assertEqual([x[1] for x in self.results('The N32 test is plain. The `beq` at 0x9000 tests it.')], ['mismatch'])
+        far = 'The N32 test is a plain branch, ' + 'and a long stretch of text follows ' * 2 + 'before the `beq` at 0x9000 is reached.'
+        self.assertEqual([x[1] for x in self.results(far)], ['mismatch'])
+
+    def test_exemption_does_not_leak_into_the_next_sentence(self):
+        r = self.results('The caller passes a flag. The `lw` at 0x9000 loads the length.')
+        self.assertEqual([x[1] for x in r], ['mismatch'])
 
 
 if __name__ == '__main__':

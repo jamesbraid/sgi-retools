@@ -30,6 +30,8 @@ scripts/facts.py builds for that routine in that build. The claims read are:
   stack        "sp+N", "N(sp)" slots that are never stored, or hold a saved register
   position     "the Nth instruction/word"
   insn-address "`insn` at 0xA" or "call at 0xA" where 0xA holds something else
+  insn-outside "`insn` at 0xA" or "call at 0xA" (and list members) where 0xA lies outside the entry's routine,
+               unless the clause names another place for it (OTHER_PLACE_RE below)
   section      ".mdebug absent", "has no .symtab" and similar
   duplicate    two entries for one routine and address in a document; a repeated clause
 
@@ -57,8 +59,8 @@ sys.path.insert(0, HERE)
 import facts  # noqa: E402
 
 # classes whose mismatches block a push (near-zero false positives on the Established entries)
-BLOCKING = ('address', 'size', 'got', 'duplicate', 'delay-slot', 'insn-address', 'addiu-word', 'branch-likely', 'offset',
-            'width-absolute')
+BLOCKING = ('address', 'size', 'got', 'duplicate', 'delay-slot', 'insn-address', 'insn-outside', 'addiu-word',
+            'branch-likely', 'offset', 'width-absolute')
 
 DEFAULT_DOCS = ['docs/*.md', 'chips/*/README.md']
 STATUS_RE = re.compile(r'\b(Established|Inferred|Unverified)\b\.?\**\s*$', re.I)
@@ -492,6 +494,28 @@ def address_list(t, pos, first):
             return out
         out.append((int(m.group(1), 16), m.end()))
         end = m.end()
+
+
+# A clause that puts an instruction address somewhere other than the entry's routine: a caller, a callee, a
+# return address, a branch or jump target, a fall-through, or "in/of/inside <another routine>". Such a
+# citation is a cross-routine reference, so it need not fall in the routine's range.
+OTHER_PLACE_RE = re.compile(
+    r'\b(?:callers?|callees?|returns? (?:to|at|address)|returning to|return address|resum\w+ at|'
+    r'(?:branch|jump|fall|continu|go|goe|land|transfer|enter|exit)\w*(?: through)? (?:to|at|into|in)|'
+    r'targets?|(?:in|inside|within|of|from|by|into)\s+(?:the\s+)?'
+    r'(?:(?:\w+\s+){0,2}(?:routine|function|handler|helper|stub|thunk|entry|callback)\s+)?`[A-Za-z_][\w.$]*`|'
+    r'(?:the|its|a|another|that|this)\s+(?:\w+\s+){0,2}(?:routine|function|handler|helper|stub|thunk|callback)\s+at)(?!\w)'
+    r'|\b(?:in|inside|within|of|from|by)\s+(?:the\s+)?[A-Za-z_]\w*\s+(?:\(\s*)?at\s+0x', re.I)
+
+
+OTHER_BUILD_RE = re.compile(r'\b(?:[NO]32|N64)\b[^.;]*$')
+
+
+def clause_at(t, pos):
+    """The sentence or semicolon clause of t that holds position pos."""
+    start = max([m.end() for m in re.finditer(r'[.;:]\s|\n\s*\n', t[:pos])] or [0])
+    m = re.compile(r'[.;]\s|\n\s*\n').search(t, pos)
+    return t[start:m.start() if m else len(t)]
 
 
 class Ctx:
@@ -1642,10 +1666,11 @@ class Checker:
                 continue    # a symbol, a string or a C expression, not an instruction
             n = norm_insn(ins)
             members = address_list(t, m.end(), a) if m.group(1) else [(a, m.end())]
-            for k, (a, _) in enumerate(members):
-                if not (c.addr <= a < c.end):
-                    continue
+            for k, (a, mend) in enumerate(members):
                 claim = m.group(0) if not k else '%s ... 0x%x' % (m.group(0), a)
+                if not (c.addr <= a < c.end):
+                    self.outside(claim, a, mend - 1, m.start())
+                    continue
                 got = c.insn_at.get(a)
                 if got is None:
                     self.mismatch('insn-address', claim, 'not an instruction start', 'address inside the routine is not an instruction')
@@ -1659,18 +1684,44 @@ class Checker:
                     self.mismatch('insn-address', claim, '0x%x holds %s%s' % (a, got, (' (the instruction is at 0x%x)' % near[0]) if near else ''),
                                   'the stated address holds another instruction')
         # "call at 0xA" / "compare at 0xA" / "store at 0xA"
-        for m in re.finditer(r'\b(call|jump|store|load|compare|branch)(?:es|s)? (?:\w+ ){0,2}at (' + HEX + r')\b', t):
+        for m in re.finditer(r'\b(call|jump|store|load|compare|branch)(?:es|s)? ((?:\w+ ){0,2})at (' + HEX + r')\b', t):
             kind = m.group(1)
             if re.search(r'delay|slot|target|path|block|case', m.group(0)) or \
                     re.match(r'\s*(?:to|-|\.\.)\s*0x', t[m.end():m.end() + 8]):
                 continue
-            members = address_list(t, m.end(), int(m.group(2), 16))
+            members = address_list(t, m.end(), int(m.group(3), 16))
             named = re.match(r'\s*\(`?([a-z][a-z0-9.]*)`?\)', t[members[-1][1]:members[-1][1] + 14])
-            for a, _ in members:
-                if not (c.addr <= a < c.end):
-                    continue
+            for a, mend in members:
                 claim = m.group(0) if a == members[0][0] else '%s ... 0x%x' % (m.group(0), a)
+                if not (c.addr <= a < c.end):
+                    self.outside(claim, a, mend - 1, m.start(), kind, re.sub(r'\b(?:once|twice|again|directly|also|first|then|later|next|only)\b', '', m.group(2)).strip())
+                    continue
                 self.call_kind(kind, a, claim, named)
+
+    def outside(self, claim, a, pos, start, kind='', obj=''):
+        """An instruction address cited in the entry that lies outside its routine is a mismatch, unless the clause
+        puts it somewhere else, which is recorded as ok: a named caller, callee or target (OTHER_PLACE_RE), another
+        build ("N32 `bgez` at 0xA"), a data address ("jump table at 0xA", "calls X at 0xA" and "stores the result at 0xA"
+        give the address of the object of the verb, not of an instruction) and "<routine> calls at A" (the callee's address)."""
+        c = self.c
+        rng = '[0x%x, 0x%x)' % (c.addr, c.end)
+        why = None
+        mo = OTHER_PLACE_RE.search(clause_at(self.text, pos))
+        if mo:
+            why = 'the clause names another place (%s)' % mo.group(0)
+        elif OTHER_BUILD_RE.search(self.text[max(0, start - 45):start]):
+            why = 'the clause names another build'
+        elif kind == 'call' and re.search(r'\b[a-z]\w*[A-Z_]\w*\s+$', self.text[max(0, start - 40):start]):
+            why = 'the call is named by the routine it calls'
+        elif obj and re.search(r'\b(?:table|flag|counter|word|buffer|array|slot)\b', obj):
+            why = 'a data address (%s)' % obj
+        elif obj and kind in ('call', 'store', 'load', 'jump'):
+            why = 'the address of the object of the verb (%s)' % obj
+        if why:
+            self.ok('insn-outside', claim, '0x%x is outside %s; %s' % (a, rng, why))
+        else:
+            self.mismatch('insn-outside', claim, 'the routine occupies %s' % rng,
+                          'the cited instruction address 0x%x lies outside the routine; name the routine it is in, or fix it' % a)
 
     def call_kind(self, kind, a, claim, named):
         c, t = self.c, self.text
