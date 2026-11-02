@@ -38,7 +38,7 @@ if '--out' in sys.argv:
     OUT = os.path.abspath(sys.argv[sys.argv.index('--out') + 1])
 
 RELEASES = ['6.4', '6.4-origin', '6.5', '6.5.2', '6.5.5', '6.5.6', '6.5.7', '6.5.9', '6.5.10', '6.5.12', '6.5.13', '6.5.14', '6.5.15', '6.5.16', '6.5.17', '6.5.18', '6.5.19',
-            '6.5.20', '6.5.21', '6.5.22', '6.5.23', '6.5.24', '6.5.25', '6.5.26', '6.5.27', '6.5.28', '6.5.29', '6.5.30', 'patches/SG0005762', 'patches/SG0007149']
+            '6.5.20', '6.5.21', '6.5.22', '6.5.23', '6.5.24', '6.5.25', '6.5.26', '6.5.27', '6.5.28', '6.5.29', '6.5.30', 'patches/SG0005762', 'patches/SG0007149', 'patches/SG0002378', 'cd-ist-3.24']
 # Controller files outside the sysco product: the MMSC image and daemons, the Challenge and Onyx controller driver and daemon,
 # the ELSC driver object, and the manual pages of those tools (docs/controllers.md).
 EXTRA = ('usr/cpu/firmware/', 'usr/etc/', 'usr/cpu/sysgen/', 'sbin/', 'usr/include/', 'usr/share/catman/')
