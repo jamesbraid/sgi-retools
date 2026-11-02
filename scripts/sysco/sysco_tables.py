@@ -106,6 +106,47 @@ def _old_layout(d):
         return True
 
 
+def pre_container_body(d):
+    """Offset of the vector table in a pre-container L1 image, where the initial stack pointer sits.
+
+    The header is ESTFBINR, the load and last addresses, then 0xffffffff at 0x20 (absent in the
+    6.5.9 image, where the stack pointer is the word at 0x20) and one or two count-like words.
+    The stack pointer (0x301017fc in every set) is at 0x20, 0x28 or 0x2c, and the reset vector
+    follows it. The offset is measured per image, not assumed.
+    """
+    for off in range(0x20, 0x60, 4):
+        if d[off] == 0x30 and d[off + 4:off + 6] == b'\xff\xe0':
+            return off
+    raise ValueError('no initial stack pointer after the pre-container header')
+
+
+def pre_container_package(d):
+    """The one ColdFire package of a pre-container L1 image: the whole file (see pre_container_body)."""
+    s = pre_container_body(d)
+    body = d[s:]
+    load, last = struct.unpack('>II', d[8:16])
+    stamps = collections.Counter(re.findall(rb'(?<!\d)20\d{12}(?!\d)', d))
+    return {'index': 0, 'offset': 0, 'length': len(d), 'data': d, 'sha': sha(d), 'linux': False,
+            'family': 'ColdFire MCF5206e', 'label': '', 'version': version_of(d),
+            'stamp': stamps.most_common(1)[0][0].decode() if stamps else '', 'load': load, 'last': last,
+            'body': body, 'body_sha': sha(body), 'body_start': s,
+            'reset': '0x%08x 0x%08x' % struct.unpack('>II', body[:8])}
+
+
+def pre_container_rows(rec, d, p0, rel, pkgs, funcs, seen_body):
+    """Add the package row and the candidate routine rows of a pre-container L1 image."""
+    p = pre_container_package(d)
+    key = '%s:l1#%d' % (rel, p['index'])
+    pkgs.append({'image': p0, 'release': rel, 'index': p['index'], 'offset': '0x0', 'length': p['length'],
+                 'sha256': p['sha'], 'family': p['family'], 'label': '', 'version': p['version'],
+                 'build_stamp': p['stamp'], 'key': key, 'copies': '',
+                 'detail': 'load 0x%08x last 0x%08x, vector table at 0x%x, reset sp/pc %s, body sha256 %s' % (
+                     p['load'], p['last'], p['body_start'], p['reset'], p['body_sha'])})
+    if p['body_sha'] not in seen_body:
+        seen_body[p['body_sha']] = key
+        funcs += function_rows(key, p, rel)
+
+
 def find_images():
     files = []
     for rel in RELEASES:
@@ -294,12 +335,16 @@ def build():
                        arch='ColdFire (inferred)' if name == 'l1.bin' else 'PowerPC (inferred)',
                        version=vers.most_common(1)[0][0].decode() if vers else '',
                        detail='load 0x%08x last 0x%08x' % (hdr[0], hdr[1]))
+            if name == 'l1.bin':
+                pre_container_rows(rec, d, p0, rel, pkgs, funcs, seen_body)
         elif name == 'l1.bin' and d[:8] == b'ESTFBINR' and _old_layout(d):
             vers = collections.Counter(re.findall(rb'(?<![\d.])1\.\d{1,2}\.\d{1,2}(?![\d.])', d))
             hdr = struct.unpack('>4I', d[8:24])
             rec.update(kind='L1 firmware image (pre-container layout)', arch='ColdFire (inferred)',
                        version=vers.most_common(1)[0][0].decode() if vers else '',
-                       detail='load 0x%08x last 0x%08x, package table at 0x2c not in the later layout' % (hdr[0], hdr[1]))
+                       detail='load 0x%08x last 0x%08x, one ColdFire package, vector table at 0x%x' % (
+                           hdr[0], hdr[1], pre_container_body(d)))
+            pre_container_rows(rec, d, p0, rel, pkgs, funcs, seen_body)
         elif name == 'l1.bin' and d[:8] == b'ESTFBINR':
             rec['kind'] = 'L1 firmware container'
             ps = l1_packages(d)
