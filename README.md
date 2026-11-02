@@ -20,7 +20,7 @@ tools/check-shared                                   # the pin matches, nothing 
 
 | Path | Contents |
 |---|---|
-| `tools/` | `Containerfile` and `Containerfile.ghidra`, `re-run`, `setup-clone.sh`, `check-shared`, `ghidra-export.py`, `README-analysis.md` |
+| `tools/` | `Containerfile` and `Containerfile.ghidra`, `re-run`, `setup-clone.sh`, `check-shared`, `refresh-union-root`, `ghidra-export.py`, `README-analysis.md` |
 | `tools/chips/` | the register-access census tools (scan, join, report, header generation) |
 | `scripts/` | the code every workspace runs the same way: `inventory.py`, `facts.py`, `check_claims.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `toolchain.py`, `populate-root`, `pre-push`, `check-leaks.sh` and their tests |
 | `scripts/<device>/` | extractors, disassemblers and analysis scripts for one device family (`kona`, `odsy`, `crime`, `chips`, `voyager`, `sysco`, `kudzu`, `gr4`); a script two families share sits in the first family's directory and the other links to it |
@@ -35,7 +35,7 @@ they must be run by the workspace's path.
 ## What stays in a workspace
 
 Content and configuration: documents, findings and generated tables, the inventory and its
-config, root manifests, the list of IRIX files, `scripts/copy-check-allow.txt`, the per-chip
+config, root manifests other than the union store's (see below), the list of IRIX files, `scripts/copy-check-allow.txt`, the per-chip
 `tools/configs/`, and the forbidden-term list described next.
 
 ## The leak check
@@ -58,6 +58,26 @@ once (`--no-verify` too) and names `retools/re-push`. `re-push` runs the stages 
 `origin/main..HEAD`, refuses on any failure or tool error, and pushes with the real URL given for
 that one command. It has no option to skip a stage. `retools/re-push --install [DIR...]` prepares
 existing clones. The pre-push hook stays as the early warning for anything else.
+
+## The union root
+
+`scripts/inventory-root.sha256` is the manifest of a union root store: every workspace's
+`root/` tree, hardlinked under one directory with a subdirectory per workspace. The union
+root exists only so the pre-push copy check has a reference. The check reads the shipped
+binaries from the clone's `root/` and keys its symbol baseline by this manifest's digest, so
+every clone with the same manifest shares one baseline.
+
+```sh
+tools/refresh-union-root RE_ROOTS STORE
+ln -s STORE root            # or: tools/setup-clone.sh --root STORE
+```
+
+`RE_ROOTS` is the directory holding one folder per workspace, each with a `root/` tree. The
+script rebuilds `STORE` from scratch as hardlinks, drops links that do not resolve inside their
+own workspace and dangling links, and rewrites the manifest. Run it when a workspace's root
+changes, commit the new manifest so the baseline key follows, and rebuild the copy-check
+symbol baseline with the copy-check tool's build step (its help lists the option). `STORE` holds links only,
+so it must sit on the same filesystem as `RE_ROOTS`.
 
 ## Licence
 
