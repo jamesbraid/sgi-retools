@@ -472,21 +472,30 @@ class FirmwareRoutine:
                 value = None
         if facts.is_c(value):
             value = facts.C(value[1] & 0xffffffff)
-        value = facts.cap(value)
+        value = facts.cap(self.normalize_value(value))
         if value is None:
             st.regs.pop(full, None)
         else:
             st.regs[full] = value
 
-    @staticmethod
-    def plus(a, b):
+    def plus(self, a, b):
         if a is None or b is None:
             return None
         if facts.is_c(b):
-            return facts.add(a, b[1])
-        if facts.is_c(a):
-            return facts.add(b, a[1])
-        return facts.cap(('op', '+', a, b))
+            value = facts.add(a, b[1])
+        elif facts.is_c(a):
+            value = facts.add(b, a[1])
+        else:
+            value = facts.cap(('op', '+', a, b))
+        return self.normalize_value(value)
+
+    def normalize_value(self, value):
+        if self.arm and value is not None and value[0] == 'add':
+            # ARM register indices, folded sums and writeback wrap at 32 bits.
+            # Keep equivalent symbolic addresses identical for stack aliasing.
+            root, offset = facts.split(value)
+            return facts.add(root, sc(offset & 0xffffffff, 32))
+        return value
 
     def width(self, ins, op=None):
         if self.x86:
@@ -571,6 +580,7 @@ class FirmwareRoutine:
         return facts.add(v, mem.disp), base, mem.disp
 
     def access(self, events, ins, kind, width, address, base, disp, value=None, implicit=False):
+        address = self.normalize_value(address)
         a = {'address': hex(ins.address), 'mnemonic': ins.mnemonic, 'text': ins.mnemonic + ' ' + ins.op_str,
              'kind': kind, 'width': width, 'base': base, 'offset': disp, 'value': self.R(value),
              'implicit': implicit}
@@ -583,6 +593,7 @@ class FirmwareRoutine:
         events['accesses'].append(a)
 
     def memory(self, st, ins, address, width, events, store=False, value=None, base='', disp=0, implicit=False):
+        address = self.normalize_value(address)
         if store and facts.is_c(value):
             value = facts.C(value[1] & ((1 << (width * 8)) - 1))
         self.access(events, ins, 'store' if store else 'load', width, address, base, disp, value, implicit)

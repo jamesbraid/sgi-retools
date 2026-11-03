@@ -113,6 +113,67 @@ class FirmwareFacts(unittest.TestCase):
             self.assertEqual([a for a in fs['accesses'] if a['kind'] == 'store'], [])
             self.assertEqual(len(fs['coverage']['unresolved_transfers']), 1)
 
+    def test_arm_negative_literal_index_keeps_signed_stack_offset(self):
+        # ldr r3,[pc,#8]; sub ip,sp,#12; strh r0,[ip,r3]; bx lr; -692
+        fs, text = self.analyze('arm', '08309fe50cc04de2b3008ce11eff2fe14cfdffff')
+        store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+        self.assertEqual((store['origin'], store['origin_offset'], store['width']),
+                         ('sp', -704, 2))
+        self.assertIn('=> sp -0x2c0', text)
+
+    def test_arm_negative_literal_add_keeps_signed_pointer_offset(self):
+        # ldr r3,[pc,#8]; add r0,sp,r3 (or r3,sp); str r1,[r0]; bx lr; -692
+        for add in ('03008de0', '0d0083e0'):
+            with self.subTest(add=add):
+                fs, _ = self.analyze('arm', '08309fe5' + add + '001080e51eff2fe14cfdffff')
+                store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+                self.assertEqual((store['origin'], store['origin_offset']), ('sp', -692))
+
+    def test_arm_symbolic_offset_wraps_after_repeated_additions(self):
+        # mov r0,sp; add r0,r0,#0x80000000 twice; str r1,[r0]; bx lr
+        fs, _ = self.analyze('arm', '0d00a0e1020180e2020180e2001080e51eff2fe1')
+        store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+        self.assertEqual((store['origin'], store['origin_offset']), ('sp', 0))
+
+    def test_arm_displacement_wraps_with_symbolic_base(self):
+        # add r0,sp,#0x80000000; str r1,[r0,#-4]; bx lr
+        fs, _ = self.analyze('arm', '02018de2041000e51eff2fe1')
+        store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+        self.assertEqual((store['origin'], store['origin_offset']), ('sp', 0x7ffffffc))
+
+    def test_arm_wrapped_stack_alias_preserves_stored_value(self):
+        # add r0,sp,#0x80000000; str r1,[r0,#-4]; sub r0,r0,#4; ldr r2,[r0]; bx lr
+        fs, _ = self.analyze('arm', '02018de2041000e5040040e2002090e51eff2fe1')
+        accesses = [a for a in fs['accesses'] if not a.get('implicit')]
+        self.assertEqual([a['origin_offset'] for a in accesses], [0x7ffffffc, 0x7ffffffc])
+        # The loaded value survives as the first argument candidate of a call.
+        fs, _ = self.analyze('arm', '02018de2041000e5040040e2000090e5fa0300eb1eff2fe1')
+        self.assertEqual(fs['calls'][0]['args'][0]['value'], 'r1')
+
+    def test_arm_multiple_store_wraps_accesses_and_writeback(self):
+        # add r0,sp,#0x80000000; stmdb r0!,{r1,r2}; str r1,[r0]; bx lr
+        fs, _ = self.analyze('arm', '02018de2060020e9001080e51eff2fe1')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store']
+        self.assertEqual([a['origin_offset'] for a in stores],
+                         [0x7ffffff8, 0x7ffffffc, 0x7ffffff8])
+        # add r0,sp,#0x80000000; sub r0,r0,#4; stmia r0!,{r1,r2}; str r1,[r0]; bx lr
+        fs, _ = self.analyze('arm', '02018de2040040e20600a0e8001080e51eff2fe1')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store']
+        self.assertEqual([a['origin_offset'] for a in stores],
+                         [0x7ffffffc, -0x80000000, -0x7ffffffc])
+
+    def test_thumb_push_wraps_symbolic_stack_address(self):
+        # ldr r3,[pc,#4]; add sp,r3; push {r0}; bx lr; 0x80000000
+        fs, _ = self.analyze('thumb', '014b9d4401b4704700000080')
+        store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+        self.assertEqual((store['origin'], store['origin_offset']), ('sp', 0x7ffffffc))
+
+    def test_arm_high_absolute_index_wraps_without_becoming_symbolic(self):
+        # ldr r3,[pc,#8]; mov r2,#32; str r1,[r3,r2]; bx lr; 0xfffffffc
+        fs, _ = self.analyze('arm', '08309fe52020a0e3021083e71eff2fe1fcffffff')
+        store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+        self.assertEqual(store['absolute'], '0x1c')
+
     def test_arm_literal_base_load_and_aapcs_arguments(self):
         # ldr r4,[pc,#12]; mov r0,#7; strb r0,[r4,#2]; bl 0x2000; bx lr; literal
         fs, text = self.analyze('arm', '0c409fe50700a0e30200c4e5fb0300eb1eff2fe100000010')
