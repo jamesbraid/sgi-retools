@@ -329,7 +329,8 @@ class FirmwareImage:
             raise ValueError('flat firmware requires --size; no routine boundary is guessed')
         if self.read(addr, size) is None:
             raise ValueError('routine range lies outside the mapped image')
-        return name, addr, size, 'given' if not inferred else 'next a.out symbol (inferred)'
+        source = 'next a.out symbol (inferred)' if inferred and size == inferred else 'given'
+        return name, addr, size, source
 
     def name_at(self, addr):
         names = sorted(n for n, hits in self.symbols.items() if any(a == addr for a, _ in hits))

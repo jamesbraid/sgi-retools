@@ -22,6 +22,23 @@ class FirmwareFacts(unittest.TestCase):
             fs = r.facts(False)
             return fs, hostfacts.render(r, fs)
 
+    def test_symbol_size_override_records_explicit_extent(self):
+        # Model a symbol-delimited x86 body: nop; ret; nop; ret.
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'blob')
+            with open(p, 'wb') as f:
+                f.write(bytes.fromhex('90c390c3'))
+            image = hostfacts.FirmwareImage(p, 'x86-32', 0x1000)
+            image.symbols = {'entry': [(0x1000, 2)]}
+            for subject in ('entry', '0x1000'):
+                with self.subTest(subject=subject):
+                    self.assertEqual(image.find(subject, None)[2:],
+                                     (2, 'next a.out symbol (inferred)'))
+                    self.assertEqual(image.find(subject, 2)[2:],
+                                     (2, 'next a.out symbol (inferred)'))
+                    self.assertEqual(image.find(subject, 4)[2:], (4, 'given'))
+                    self.assertEqual(image.find(subject, 1)[2:], (1, 'given'))
+
     def test_x86_indirect_far_transfers_read_offset_and_selector(self):
         # FF /3 and /5 read m16:16 or m16:32. The segment selector adds
         # two bytes even when Capstone reports only the offset width.
