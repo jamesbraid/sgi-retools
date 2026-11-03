@@ -499,6 +499,13 @@ class FirmwareRoutine:
 
     def width(self, ins, op=None):
         if self.x86:
+            if (op is not None and op.type == 3 and ins.opcode[0] == 0xff
+                    and (ins.modrm >> 3) & 7 in (3, 5)):
+                # Indirect far CALL/JMP reads an offset plus a 16-bit selector.
+                # Capstone's memory size varies between the offset and the
+                # whole pointer, and can ignore the operand-size override.
+                offset_width = 4 if (self.word == 4) != (0x66 in ins.prefix) else 2
+                return offset_width + 2
             return op.size if op is not None and op.size else self.word
         if self.m68k:
             if ins.mnemonic.split('.')[0] == 'btst' and len(ins.operands) == 2:

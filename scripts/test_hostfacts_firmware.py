@@ -22,6 +22,22 @@ class FirmwareFacts(unittest.TestCase):
             fs = r.facts(False)
             return fs, hostfacts.render(r, fs)
 
+    def test_x86_indirect_far_transfers_read_offset_and_selector(self):
+        # FF /3 and /5 read m16:16 or m16:32. The segment selector adds
+        # two bytes even when Capstone reports only the offset width.
+        for arch, address, far_modrm, near_modrm, default_width in (
+                ('x86-16', '0020', ('1e', '2e'), ('16', '26'), 2),
+                ('x86-32', '00200000', ('1d', '2d'), ('15', '25'), 4)):
+            for prefix, offset_width in (('', default_width),
+                                         ('66', 6 - default_width)):
+                for modrm in far_modrm + near_modrm:
+                    with self.subTest(arch=arch, prefix=prefix, modrm=modrm):
+                        fs, _ = self.analyze(arch, prefix + 'ff' + modrm + address)
+                        loads = [a for a in fs['accesses']
+                                 if not a.get('implicit') and a['kind'] == 'load']
+                        expected = offset_width + (2 if modrm in far_modrm else 0)
+                        self.assertEqual([a['width'] for a in loads], [expected])
+
     def test_m68k_signed_displacement_and_store_width(self):
         # movea.l #0x10000000,a0; move.b -4(a0),d0; move.w #7,2(a0); rts
         fs, text = self.analyze('m68k', '207c100000001028fffc317c000700024e75')
