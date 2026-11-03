@@ -118,6 +118,7 @@ class Entry:
         self.status = ''
         self.subst = ''
         self.file_entry = False
+        self.title = None       # (routine, address) of a "## `name` at `0xADDR`" heading entry
         self.last = line
 
     @property
@@ -134,14 +135,31 @@ def split_cells(line):
     return [c.strip() for c in re.split(r'(?<!\\)\|', s)]
 
 
+TITLE_RE = re.compile(r'^#{2,3}\s+`([^`]+)`\s+at\s+`(' + HEX + r')`\s*$')
+
+
 def read_entries(doc, text):
-    """Bullets (with continuation lines) and table rows of one document."""
+    """Bullets (with continuation lines), table rows and heading entries of one document. A heading
+    "## `name` at `0xADDR`" (or ###) opens an entry whose text is the lines up to the next heading."""
     lines = text.split('\n')
     out, heading, head, preamble = [], '', None, []
     i = 0
     seen_entry = False
     while i < len(lines):
         ln = lines[i]
+        tm = TITLE_RE.match(ln)
+        if tm:
+            j = i + 1
+            while j < len(lines) and not lines[j].startswith('#'):
+                j += 1
+            body = [x.strip() for x in lines[i + 1:j] if x.strip()]
+            e = Entry(doc, i + 1, ' '.join(body), ln.lstrip('#').strip())
+            e.title = (tm.group(1), int(tm.group(2), 16))
+            e.last = j
+            out.append(e)
+            heading, head, seen_entry = e.heading, None, True
+            i = j
+            continue
         if ln.startswith('#'):
             heading = ln.lstrip('#').strip()
             head = None
@@ -275,6 +293,15 @@ def identify(e, bins, hints, default_bin):
         sm = re.match(r'\s*(\d+)\s*$', s)
         e.size = int(sm.group(1)) if sm else None
         e.status = next((row[k] for k in row if k in ('label', 'status')), '')
+        return
+    if e.title:
+        e.name, e.address = e.title
+        bm = PATH_RE.search(t[:400])
+        e.binary = bins.resolve_path(bm.group(1), hints) if bm else default_bin
+        sm = re.search(r'\bSize: (\d+) bytes', t)
+        e.size = int(sm.group(1)) if sm else None
+        st = re.findall(r'\b(Established|Inferred|Unverified)\b\.?', t, re.I)
+        e.status = st[-1] if st else ''
         return
     m = re.match(r'\s*`([^`]+)`', t)
     e.name = m.group(1) if m else None
@@ -670,7 +697,7 @@ class Checker:
     def run(self):
         for f in (self.address, self.size, self.frame, self.width, self.got, self.callee, self.errors, self.likely,
                   self.delay, self.returns, self.args, self.arglist, self.never, self.store_order, self.store_value, self.arg_offsets, self.callee_at, self.return_omission, self.per_pass, self.immediates,
-                  self.offsets, self.stack, self.position, self.insn_address, self.sections, self.clauses):
+                  self.offsets, self.stack, self.position, self.insn_address, self.insn_locator, self.sections, self.clauses):
             try:
                 f()
             except Exception as x:  # a checker bug is reported as an unchecked claim, never a pass
@@ -1703,6 +1730,53 @@ class Checker:
                     continue
                 self.call_kind(kind, a, claim, named)
 
+    LOCATE_RE = re.compile(r'\(instruction (' + HEX + r')\)|\(instructions (' + HEX + r')\s*[\u2013-]\s*(' + HEX + r')\)')
+    BACKTICKED = re.compile(r'`([^`]+)`')
+
+    def insn_locator(self):
+        """ "<clause> (instruction 0xA)" and "<clause> (instructions 0xA-0xB)": the address (or both ends of the
+        range) must be an instruction of the routine, the instructions quoted in the clause must be the one
+        at 0xA, "first memory write is `op`" must name the lowest store of the routine, and "No conditional
+        transfer" must hold over the range. The clause is the text since the previous locator."""
+        c, t = self.c, self.text
+        prev = 0
+        for m in self.LOCATE_RE.finditer(t):
+            clause, prev = t[prev:m.start()], m.end()
+            lo = int(m.group(1) or m.group(2), 16)
+            hi = int(m.group(3), 16) if m.group(3) else lo
+            claim = (clause.strip() + ' ' + m.group(0))[-300:]
+            bad = [a for a in (lo, hi) if a not in c.insn_at]
+            if bad:
+                where = 'outside the routine [0x%x, 0x%x)' % (c.addr, c.end) if not c.addr <= bad[0] < c.end \
+                    else 'not an instruction start'
+                self.mismatch('insn-address', claim, '0x%x is %s' % (bad[0], where),
+                              'the cited instruction address is not an instruction of the routine')
+                continue
+            if hi < lo:
+                self.mismatch('insn-address', claim, '0x%x is below 0x%x' % (hi, lo), 'the cited range runs backwards')
+                continue
+            quoted = [q for q in self.BACKTICKED.findall(clause) if q.split()[0].lower() in MNEMONICS]
+            for q in quoted:
+                if insn_match(q, c.insn_at[lo]):
+                    self.ok('insn-address', claim, '0x%x %s' % (lo, c.insn_at[lo]))
+                else:
+                    self.mismatch('insn-address', claim, '0x%x holds %s' % (lo, c.insn_at[lo]),
+                                  'the stated address holds another instruction')
+            if quoted and re.search(r'first memory write', clause):
+                earlier = [a for a in sorted(c.insn_at) if a < lo and c.insn_at[a].split()[0] in facts.STORES]
+                if earlier:
+                    self.mismatch('insn-address', claim, '0x%x holds %s' % (earlier[0], c.insn_at[earlier[0]]),
+                                  'an earlier instruction already writes memory')
+            if m.group(3) and re.search(r'No conditional transfer', clause):
+                cond = [a for a in range(lo, hi + 1, 4) if a in c.insn_at and facts.is_branch(c.insn_at[a].split()[0])
+                        and c.insn_at[a].split()[0] not in ('j', 'jr', 'jal', 'jalr')
+                        and c.insn_at[a].split()[0] not in facts.CALLS]
+                if cond:
+                    self.mismatch('insn-address', claim, '0x%x holds %s' % (cond[0], c.insn_at[cond[0]]),
+                                  'a conditional transfer lies in the cited range')
+                else:
+                    self.ok('insn-address', claim)
+
     def outside(self, claim, a, pos, start, kind='', obj=''):
         """An instruction address cited in the entry that lies outside its routine is a mismatch, unless the clause
         puts it somewhere else, which is recorded as ok: a named caller, callee or target (OTHER_PLACE_RE), another
@@ -2072,6 +2146,7 @@ def main(argv=None):
     dups = []
     changed = changed_lines(a.changed) if a.changed else None
     chip_results, chip_entries = [], 0
+    empty = []
     for doc in expand_docs(a.docs):
         src = os.path.join(a.text_from, doc) if a.text_from else os.path.join(REPO, doc)
         text = open(src, encoding='utf-8').read()
@@ -2081,6 +2156,9 @@ def main(argv=None):
             chip_entries += cd.count
             continue
         entries, pre = read_entries(doc, text)
+        if changed is not None and doc in changed and not entries and re.search(r'^##', text, re.M):
+            # headings but nothing the reader turns into an entry: a form the checker cannot read must not pass
+            empty.append(doc)
         hints = hints_of(doc, pre)
         dflt = default_binary(pre, bins)
         seen = collections.defaultdict(list)
@@ -2115,6 +2193,9 @@ def main(argv=None):
                                  'fact': 'also at ' + ', '.join(x.id for x in es if x is not e),
                                  'reason': 'two entries for the same routine and address in one document',
                                  'status': e.status})
+    for doc in empty:
+        print('REFUSED-NO-ENTRIES\t%s\thas ## headings but parses to zero entries; write each routine as a bullet, a '
+              'table row or a "## `name` at `0xADDR`" heading entry so the checker can test it' % doc)
     ONLY.update(a.routine or ())
     results, unresolved = list(dups) + chip_results, []
     if a.jobs > 1:
@@ -2169,7 +2250,7 @@ def main(argv=None):
             json.dump({'results': results, 'unresolved': unresolved}, f, indent=1, sort_keys=True)
     if a.blocking and any(r['class'] in BLOCKING for r in mism):
         return 1
-    if refused:
+    if refused or empty:
         return 1
     return 0
 

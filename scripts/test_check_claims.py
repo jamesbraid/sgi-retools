@@ -448,3 +448,97 @@ class ChangedLines(unittest.TestCase):
                 self.assertEqual(dict(check_claims.changed_lines('HEAD')), {'docs/x.md': {4}})
             finally:
                 check_claims.REPO = old
+
+
+HEADING_DOC = ('# Readings\n\nEach entry was read from the member named below.\n\n'
+               '## `fa` at `0x1008`\n\n'
+               'Build: `builds/b1/usr/lib/x.a(a.o)`. Size: 64 bytes. **Established** from this disassembly.\n'
+               'Its first memory write is `sd s2,8(sp)`. (instruction 0x1010)\n'
+               'The routine returns with `jr ra`. (instruction 0x1020)\n\n'
+               '### `fb` at `0x2000`\n\n'
+               'Build: `builds/b1/usr/lib/x.a(b.o)`. Size: 8 bytes. **Inferred**.\n')
+
+
+class HeadingEntries(unittest.TestCase):
+    def test_heading_opens_an_entry_with_the_prose_below_it(self):
+        ents, pre = entries_of(HEADING_DOC)
+        self.assertEqual([(e.line, e.title) for e in ents], [(5, ('fa', 0x1008)), (11, ('fb', 0x2000))])
+        self.assertEqual(ents[0].last, 10)
+        self.assertIn('returns with `jr ra`', ents[0].text)
+        self.assertNotIn('fb', ents[0].text)
+        self.assertIn('member named below', pre)
+
+    def test_other_headings_are_not_entries(self):
+        ents, _ = entries_of('## Method\n\nSome prose.\n\n## `f` near `0x10`\n\nMore prose.\n')
+        self.assertEqual(ents, [])
+
+    def test_identify_takes_routine_address_size_and_grade_from_the_heading_entry(self):
+        bins = binaries(['builds/b1/usr/lib/x.a(a.o)', 'builds/b1/usr/lib/x.a(b.o)'])
+        ents, _ = entries_of(HEADING_DOC)
+        check_claims.identify(ents[0], bins, [], None)
+        self.assertEqual((ents[0].name, ents[0].address, ents[0].size, ents[0].status.lower()),
+                         ('fa', 0x1008, 64, 'established'))
+        self.assertEqual(ents[0].binary, 'builds/b1/usr/lib/x.a(a.o)')
+
+
+class InsnLocator(unittest.TestCase):
+    INSNS = {0x1000: 'addiu sp,sp,-16', 0x1004: 'sd s2,8(sp)', 0x1008: 'beq a0,zero,0x1010',
+             0x100c: 'sll zero,zero,0x0', 0x1010: 'jr ra', 0x1014: 'sll zero,zero,0x0'}
+
+    def run_check(self, text, insns=None):
+        ctx = FakeCtx(insns or self.INSNS)
+        ctx.addr, ctx.end = 0x1000, 0x1018
+        e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='f', status='established')
+        rep = []
+        check_claims.Checker(e, ctx, rep, None, None).insn_locator()
+        return [(r['class'], r['verdict']) for r in rep]
+
+    def test_return_at_the_cited_address_holds(self):
+        self.assertEqual(self.run_check('The routine returns with `jr ra`. (instruction 0x1010)'),
+                         [('insn-address', 'ok')])
+
+    def test_return_one_word_off_mismatches(self):
+        self.assertEqual(self.run_check('The routine returns with `jr ra`. (instruction 0x1014)'),
+                         [('insn-address', 'mismatch')])
+
+    def test_address_outside_the_routine_mismatches(self):
+        self.assertEqual(self.run_check('The routine returns with `jr ra`. (instruction 0x2010)'),
+                         [('insn-address', 'mismatch')])
+
+    def test_first_memory_write_holds_and_an_earlier_store_refutes_it(self):
+        text = 'Its first memory write is `sd s2,8(sp)`. (instruction 0x1004)'
+        self.assertEqual(self.run_check(text), [('insn-address', 'ok')])
+        later = dict(self.INSNS)
+        later[0x1000] = 'sw a0,0(a1)'
+        self.assertEqual(self.run_check(text, later), [('insn-address', 'ok'), ('insn-address', 'mismatch')])
+
+    def test_range_with_no_conditional_transfer(self):
+        text = 'No conditional transfer appears before the return. (instructions 0x1000–0x1004)'
+        self.assertEqual(self.run_check(text), [('insn-address', 'ok')])
+        text = 'No conditional transfer appears before the return. (instructions 0x1000–0x1010)'
+        self.assertEqual(self.run_check(text), [('insn-address', 'mismatch')])
+
+    def test_backwards_range_mismatches(self):
+        self.assertEqual(self.run_check('It falls through to 0x1004. (instructions 0x1008–0x1004)'),
+                         [('insn-address', 'mismatch')])
+
+
+class ZeroEntries(unittest.TestCase):
+    """A changed document with ## headings that parses to no entries is refused, not passed."""
+    OLD = '# Doc\n\nIntro.\n'
+    git = BlockUnresolved.git
+    run_range = BlockUnresolved.run_range
+
+    def test_headings_with_unreadable_entries_are_refused(self):
+        rc, out = self.run_range('# Doc\n\n## `f` near `0x10`\n\nProse about f.\n')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('REFUSED-NO-ENTRIES\tdocs/t.md', out)
+
+    def test_heading_entries_are_read(self):
+        rc, out = self.run_range('# Doc\n\n## `f` at `0x10`\n\nBuild: `usr/sbin/l1cmd`. Unverified.\n')
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn('REFUSED', out)
+
+    def test_prose_without_headings_still_passes(self):
+        rc, out = self.run_range('# Doc\n\nOnly prose.\n')
+        self.assertEqual(rc, 0, out)
