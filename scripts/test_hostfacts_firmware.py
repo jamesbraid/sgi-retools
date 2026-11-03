@@ -22,6 +22,19 @@ class FirmwareFacts(unittest.TestCase):
             fs = r.facts(False)
             return fs, hostfacts.render(r, fs)
 
+    def test_arm_coprocessor_memory_direction_and_unknown_width(self):
+        # stc p1,c0,[r0]; ldc p1,c0,[r0]; stcl p1,c0,[r0];
+        # ldcl p1,c0,[r0]. Transfer length depends on the coprocessor.
+        fs, text = self.analyze('arm', '000180ed000190ed0001c0ed0001d0ed')
+        accesses = [a for a in fs['accesses'] if not a.get('implicit')]
+        self.assertEqual([(a['kind'], a['width'], a.get('origin'),
+                           a.get('origin_offset')) for a in accesses],
+                         [(kind, 'unknown', 'r0', 0)
+                          for kind in ('store', 'load', 'store', 'load')])
+        self.assertIn('store wunknown stc', text)
+        self.assertTrue(any('coprocessor transfer width is unknown' in warning
+                            for warning in fs['warnings']))
+
     def test_symbol_size_override_records_explicit_extent(self):
         # Model a symbol-delimited x86 body: nop; ret; nop; ret.
         with tempfile.TemporaryDirectory() as d:

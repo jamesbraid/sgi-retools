@@ -1061,10 +1061,18 @@ class FirmwareRoutine:
                     kinds = ['store']
                 if self.arm and ins.insn_name() in ('ldrd','strd'):
                     kinds = ['load' if ins.insn_name() == 'ldrd' else 'store']
+                width = self.width(ins, operand)
+                if self.arm and ins.insn_name().startswith(('stc', 'ldc')):
+                    # Capstone marks STC memory operands as reads. The
+                    # coprocessor decides the transfer length, including
+                    # the long forms, so the ARM word size is not evidence.
+                    kinds = ['store' if ins.insn_name().startswith('stc') else 'load']
+                    width = 'unknown'
+                    self.warnings.add('0x%x coprocessor transfer width is unknown' % ins.address)
                 if self.m68k and mn.split('.')[0] in ('btst','bset','bclr','bchg'):
                     kinds = ['load'] if mn.startswith('btst') else ['load','store']
                 for access_kind in kinds or ['unknown']:
-                    self.access(events, ins, access_kind, self.width(ins,operand), address, base, disp)
+                    self.access(events, ins, access_kind, width, address, base, disp)
             self.invalidate(st, ins)
         if predicated:
             self.warnings.add('0x%x predicated effects are merged with the unexecuted path' % ins.address)
@@ -1186,7 +1194,7 @@ class FirmwareRoutine:
         lines += ['', 'accesses (%d)' % len(fs['accesses'])]
         for a in fs['accesses']:
             target = 'abs '+a['absolute'] if 'absolute' in a else a['origin']+' '+sgn(a['origin_offset']) if 'origin' in a else '? (unknown effective address)'
-            lines.append('  %s %s w%d %s base=%s disp %s => %s%s%s' % (a['address'],a['kind'],a['width'],a['mnemonic'],a['base'] or '?',sgn(a['offset']),target,
+            lines.append('  %s %s w%s %s base=%s disp %s => %s%s%s' % (a['address'],a['kind'],a['width'],a['mnemonic'],a['base'] or '?',sgn(a['offset']),target,
                          ' value '+a['value'] if a['kind']=='store' else '', (' space='+a['space'] if a.get('space') else '')+(' when '+a['condition'] if a.get('condition') else '')))
         lines += ['', 'calls (%d)' % len(fs['calls'])]
         for c in fs['calls']:
