@@ -53,6 +53,66 @@ class FirmwareFacts(unittest.TestCase):
         self.assertIn(0x1008, [i['addr'] for i in fs['instructions']])
         self.assertIn('0x1008', fs['unreached'])
 
+    def test_arm_mov_pc_call_with_known_link_tracks_continuation(self):
+        # mov r0,#7; mov lr,pc; mov pc,r4; str r0,[r5]; bx lr
+        fs, _ = self.analyze('arm', '0700a0e30fe0a0e104f0a0e1000085e51eff2fe1')
+        self.assertEqual(len(fs['calls']), 1)
+        call = fs['calls'][0]
+        self.assertEqual((call['address'], call['mnemonic'], call['target']),
+                         ('0x1008', 'mov', None))
+        self.assertEqual(call['args'][0]['value'], '0x7')
+        store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+        self.assertEqual((store['address'], store['origin'], store['value']),
+                         ('0x100c', 'r5', 'ret(unknown)'))
+        self.assertEqual(fs['coverage']['unresolved_transfers'], [])
+
+    def test_arm_mov_pc_call_resolves_target_register(self):
+        # ldr ip,[pc,#16]; mov r0,#7; mov lr,pc; mov pc,ip; str r0,[r5]; bx lr; target
+        fs, _ = self.analyze('arm', '10c09fe50700a0e30fe0a0e10cf0a0e1000085e51eff2fe100200000')
+        self.assertEqual(len(fs['calls']), 1)
+        self.assertEqual(fs['calls'][0]['target'], '0x2000')
+        self.assertEqual(fs['calls'][0]['args'][0]['value'], '0x7')
+        store = next(a for a in fs['accesses'] if a['kind'] == 'store')
+        self.assertEqual(store['value'], 'ret(0x2000)')
+
+    def test_arm_mov_pc_with_conflicting_link_drops_provisional_continuation(self):
+        # cmp r0,#0; beq bypass; mov lr,pc; mov pc,r4; str r1,[r5]; bx lr
+        # nop; bypass: nop; nop; b 0x100c
+        fs, _ = self.analyze('arm', '000050e30400000a0fe0a0e104f0a0e1001085e51eff2fe1'
+                            '0000a0e10000a0e10000a0e1f8ffffea')
+        self.assertEqual(fs['calls'], [])
+        self.assertEqual([a for a in fs['accesses'] if a['kind'] == 'store'], [])
+        self.assertEqual(fs['exits'], [])
+        self.assertIn('0x1010', fs['unreached'])
+
+    def test_arm_removed_call_path_does_not_poison_live_join(self):
+        # A provisional call path writes 9, but the only live path to the
+        # final store writes 7 after bypassing the first link setup.
+        code = ('000050e30500000a0fe0a0e104f0a0e10900a0e3060000ea0000a0e1'
+                '0000a0e10000a0e1000051e3f7ffff0a0700a0e30000a0e1000085e51eff2fe1')
+        fs, _ = self.analyze('arm', code)
+        self.assertEqual(fs['calls'], [])
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store']
+        self.assertEqual([(a['address'], a['value']) for a in stores], [('0x1034', '0x7')])
+
+    def test_arm_removed_call_path_does_not_hide_later_call(self):
+        code = ('000050e30500000a0fe0a0e104f0a0e10900a0e3060000ea0000a0e1'
+                '0000a0e10000a0e1000051e3f7ffff0a0700a0e30fe0a0e106f0a0e1000085e51eff2fe1')
+        fs, _ = self.analyze('arm', code)
+        self.assertEqual([c['address'] for c in fs['calls']], ['0x1034'])
+        self.assertEqual(fs['calls'][0]['args'][0]['value'], '0x7')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store']
+        self.assertEqual([(a['address'], a['value']) for a in stores],
+                         [('0x1038', 'ret(unknown)')])
+
+    def test_arm_mov_pc_without_matching_link_remains_jump(self):
+        for code in ('04f0a0e1000085e51eff2fe1',
+                     '01e0a0e304f0a0e1000085e51eff2fe1'):
+            fs, _ = self.analyze('arm', code)
+            self.assertEqual(fs['calls'], [])
+            self.assertEqual([a for a in fs['accesses'] if a['kind'] == 'store'], [])
+            self.assertEqual(len(fs['coverage']['unresolved_transfers']), 1)
+
     def test_arm_literal_base_load_and_aapcs_arguments(self):
         # ldr r4,[pc,#12]; mov r0,#7; strb r0,[r4,#2]; bl 0x2000; bx lr; literal
         fs, text = self.analyze('arm', '0c409fe50700a0e30200c4e5fb0300eb1eff2fe100000010')

@@ -407,6 +407,7 @@ class FirmwareRoutine:
             self.warnings.add('ColdFire uses the 68040 decoder for the common ISA subset; unsupported opcodes are unknown')
         if self.img.bits == 16:
             self.warnings.add('16-bit addresses are segment offsets; segment bases are unknown')
+        self.initial_warnings = set(self.warnings)
 
     def reg(self, ins, rid):
         name = ins.reg_name(rid)
@@ -736,6 +737,19 @@ class FirmwareRoutine:
             args.append({'location': 'calling convention', 'value': '(unknown)'})
         return args
 
+    def control_at(self, st, ins):
+        kind, target, cc = self.control(ins)
+        # Before BLX, ARM code supplied the return address in lr explicitly.
+        # A merged or unrelated link value must not turn a jump into a call.
+        if (self.arch == 'arm' and kind in ('jump', 'conditional')
+                and ins.insn_name() == 'mov' and not ins.update_flags
+                and len(ins.operands) == 2 and ins.operands[1].type == 1
+                and not ins.operands[1].shift.type
+                and (ins.address in self._fixed_calls if getattr(self, '_fixed_calls', None) is not None
+                     else self.getreg(st, 'lr') == facts.C(ins.address + ins.size))):
+            return 'conditional-call' if kind == 'conditional' else 'call', target, cc
+        return kind, target, cc
+
     def invalidate(self, st, ins):
         try:
             writes = [self.reg(ins, n) for n in ins.regs_access()[1]]
@@ -754,7 +768,7 @@ class FirmwareRoutine:
         st = old.copy()
         ins = record['_cs']
         mn, op = ins.mnemonic, ins.operands
-        kind, target, cc = self.control(ins)
+        kind, target, cc = self.control_at(old, ins)
         conditional = kind.startswith('conditional')
         if self.arm:
             from capstone.arm_const import ARM_CC_AL, ARM_CC_INVALID
@@ -763,7 +777,8 @@ class FirmwareRoutine:
             predicated = False
         if kind in ('call', 'conditional-call'):
             if target is None and op:
-                value = self.operand(st, ins, op[0], events, address_only=self.m68k)
+                callee_op = op[-1] if self.arch == 'arm' and ins.insn_name() == 'mov' else op[0]
+                value = self.operand(st, ins, callee_op, events, address_only=self.m68k)
                 target = value[1] if facts.is_c(value) else None
             name = self.img.name_at(target) if target is not None else None
             call = {'address': hex(ins.address), 'mnemonic': mn, 'target': hex(target) if target is not None else None,
@@ -938,7 +953,13 @@ class FirmwareRoutine:
                     v = facts.C(v[1] & mask) if facts.is_c(v) else facts.cap(('op', '&', v, facts.C(mask)))
                 write(op[1], v)
             else:
-                v = read(op[1])
+                if (self.arch == 'arm' and ins.insn_name() == 'mov'
+                        and not ins.update_flags and op[0].type == op[1].type == 1
+                        and self.reg(ins, op[0].reg) == 'lr'
+                        and self.reg(ins, op[1].reg) == 'pc' and not op[1].shift.type):
+                    v = facts.C(ins.address + 8)
+                else:
+                    v = read(op[1])
                 if ins.insn_name() == 'movt':
                     previous = read(op[0])
                     v = facts.C((previous[1] & 0xffff) | ((v[1] & 0xffff) << 16)) if facts.is_c(previous) and facts.is_c(v) else None
@@ -1042,29 +1063,48 @@ class FirmwareRoutine:
         for name in names:
             regs[name] = ('in', name)
         regs[self.sp] = ('sp0', 0)
-        self.in_states = {0: FirmwareState(regs)}
-        work = collections.deque([0])
-        count = 0
-        while work:
-            count += 1
-            if count > max(1000, len(self.insns) * 100):
-                raise ValueError('register tracking did not converge; no partial fact sheet emitted')
-            n = work.popleft(); record = self.insns[n]; ins = record['_cs']
-            st = self.transfer(self.in_states[n], record, {'accesses': [], 'calls': []})
-            self.out_states[n] = st
-            kind, target, cc = self.control(ins)
-            nextaddr = ins.address + ins.size
-            successors = []
-            if kind not in ('jump','return') and nextaddr in self.at:
-                successors.append(('falls through', self.at[nextaddr]))
-            if kind in ('jump','conditional') and target in self.at:
-                successors.append(('taken', self.at[target]))
-            self.edges[n] = successors
-            for _, successor in successors:
-                # Conditional returns only propagate their unexecuted path.
-                merged = self.in_states[successor].merged(st) if successor in self.in_states else st.copy()
-                if successor not in self.in_states or self.in_states[successor].key() != merged.key():
-                    self.in_states[successor] = merged; work.append(successor)
+        call_sites, seen = set(), set()
+        # Keep control-flow edges fixed during each register-tracking pass.
+        # Recompute from entry when link evidence changes the call sites, so
+        # removed continuations cannot leave stale values in a live join.
+        while True:
+            signature = frozenset(call_sites)
+            if signature in seen or len(seen) > max(10, len(self.insns)):
+                raise ValueError('indirect-call tracking did not converge; no partial fact sheet emitted')
+            seen.add(signature)
+            self._fixed_calls = call_sites
+            self.warnings = set(self.initial_warnings)
+            self.in_states = {0: FirmwareState(dict(regs))}
+            self.out_states, self.edges, self.conditions = {}, {}, {}
+            work = collections.deque([0])
+            count = 0
+            while work:
+                count += 1
+                if count > max(1000, len(self.insns) * 100):
+                    raise ValueError('register tracking did not converge; no partial fact sheet emitted')
+                n = work.popleft(); record = self.insns[n]; ins = record['_cs']
+                st = self.transfer(self.in_states[n], record, {'accesses': [], 'calls': []})
+                self.out_states[n] = st
+                kind, target, cc = self.control_at(self.in_states[n], ins)
+                nextaddr = ins.address + ins.size
+                successors = []
+                if kind not in ('jump','return') and nextaddr in self.at:
+                    successors.append(('falls through', self.at[nextaddr]))
+                if kind in ('jump','conditional') and target in self.at:
+                    successors.append(('taken', self.at[target]))
+                self.edges[n] = successors
+                for _, successor in successors:
+                    merged = self.in_states[successor].merged(st) if successor in self.in_states else st.copy()
+                    if successor not in self.in_states or self.in_states[successor].key() != merged.key():
+                        self.in_states[successor] = merged; work.append(successor)
+            self._fixed_calls = None
+            resolved = {self.insns[n]['addr'] for n, st in self.in_states.items()
+                        if self.control(self.insns[n]['_cs'])[0] in ('jump', 'conditional')
+                        and self.control_at(st, self.insns[n]['_cs'])[0] in ('call', 'conditional-call')}
+            if resolved == call_sites:
+                self._fixed_calls = resolved
+                return
+            call_sites = resolved
 
     def facts(self, _unused=False):
         self.analyze()
@@ -1086,7 +1126,7 @@ class FirmwareRoutine:
             events = {'accesses': [], 'calls': []}
             out = self.transfer(self.in_states[n], record, events)
             fs['accesses'].extend(events['accesses']); fs['calls'].extend(events['calls'])
-            kind, target, cc = self.control(ins)
+            kind, target, cc = self.control_at(self.in_states[n], ins)
             block = {'id': 'B%d' % n, 'first': hex(ins.address), 'last': hex(ins.address),
                      'kind': kind, 'target': hex(target) if target is not None else None,
                      'preds': ['B%d' % p for p, _ in predecessors[n]],
