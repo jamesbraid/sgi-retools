@@ -1045,6 +1045,12 @@ class FirmwareRoutine:
                 address, base, disp = self.effective(old, ins, operand)
                 access = getattr(operand, 'access', 0)
                 kinds = (['load'] if access & 1 else []) + (['store'] if access & 2 else [])
+                # Capstone marks several x87 memory stores as reads.
+                # The floating-point value is still unknown, but the access
+                # direction must not depend on those incorrect flags.
+                if self.x86 and mn in ('fst', 'fstp', 'fist', 'fistp', 'fisttp',
+                                       'fbstp', 'fnstcw', 'fnstsw'):
+                    kinds = ['store']
                 if self.arm and ins.insn_name() in ('ldrd','strd'):
                     kinds = ['load' if ins.insn_name() == 'ldrd' else 'store']
                 if self.m68k and mn.split('.')[0] in ('btst','bset','bclr','bchg'):

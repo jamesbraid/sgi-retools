@@ -252,6 +252,32 @@ class FirmwareFacts(unittest.TestCase):
         self.assertEqual(io[0]['value'], '0x7')
         self.assertIn('space=io', text)
 
+    def test_x86_x87_memory_stores_override_incorrect_decoder_read_flags(self):
+        # fstp qword [esp]; fst dword [esp]; fistp dword [esp];
+        # fstp tbyte [esp]; fnstcw word [esp]; fist dword [esp];
+        # fisttp dword [esp]; fbstp tbyte [esp]; fnstsw word [esp]; ret
+        fs, _ = self.analyze('x86-32', 'dd1c24d91424db1c24db3c24d93c24db1424db0c24df3424dd3c24c3')
+        accesses = [a for a in fs['accesses'] if not a.get('implicit')]
+        self.assertEqual([(a['kind'], a['width'], a['origin'], a['origin_offset'])
+                          for a in accesses],
+                         [('store', width, 'sp', 0) for width in (8, 4, 4, 10, 2, 4, 4, 10, 2)])
+        self.assertTrue(all(a['value'] == '?' for a in accesses))
+
+    def test_x86_x87_loads_remain_loads(self):
+        # fld qword [esp]; fild dword [esp]; ret
+        fs, _ = self.analyze('x86-32', 'dd0424db0424c3')
+        accesses = [a for a in fs['accesses'] if not a.get('implicit')]
+        self.assertEqual([(a['kind'], a['width']) for a in accesses],
+                         [('load', 8), ('load', 4)])
+
+    def test_x86_16_x87_store_keeps_effective_base(self):
+        # fstp qword [bx]; ret
+        fs, _ = self.analyze('x86-16', 'dd1fc3')
+        store = next(a for a in fs['accesses'] if not a.get('implicit'))
+        self.assertEqual((store['kind'], store['width'], store['origin'],
+                          store['origin_offset'], store['value']),
+                         ('store', 8, 'bx', 0, '?'))
+
     def test_x86_unknown_instruction_still_reports_memory_operand(self):
         # mov eax,0x3000; xchg [eax],ebx; ret
         fs, _ = self.analyze('x86-32', 'b8003000008718c3')
