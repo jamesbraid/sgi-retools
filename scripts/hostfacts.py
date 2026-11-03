@@ -777,6 +777,9 @@ class FirmwareRoutine:
             writes = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
             if any(o.type == 3 and self.reg(ins, o.mem.base_reg) == 'a7' for o in ins.operands):
                 writes.append('a7')
+        if self.arm and ins.insn_name() in ('mrc', 'mrc2'):
+            # Capstone omits the destination write for coprocessor reads.
+            writes.extend(self.reg(ins, o.reg) for o in ins.operands if o.type == 1)
         for name in writes:
             self.setreg(st, name, None)
         st.flags = None

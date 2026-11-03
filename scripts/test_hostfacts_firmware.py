@@ -35,6 +35,14 @@ class FirmwareFacts(unittest.TestCase):
         self.assertTrue(any('coprocessor transfer width is unknown' in warning
                             for warning in fs['warnings']))
 
+    def test_arm_mrc_discards_previous_destination_value(self):
+        # mov r3,#7; mrc/mrc2 p1,#0,r3,c0,c0,#3; mov r0,r3; bx lr.
+        for transfer in ('703110ee', '703110fe'):
+            with self.subTest(transfer=transfer):
+                fs, _ = self.analyze('arm', '0730a0e3' + transfer +
+                                     '0300a0e11eff2fe1')
+                self.assertEqual(fs['exits'][0]['value'], '?')
+
     def test_symbol_size_override_records_explicit_extent(self):
         # Model a symbol-delimited x86 body: nop; ret; nop; ret.
         with tempfile.TemporaryDirectory() as d:
