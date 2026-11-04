@@ -22,6 +22,46 @@ class FirmwareFacts(unittest.TestCase):
             fs = r.facts(False)
             return fs, hostfacts.render(r, fs)
 
+    def test_m68k_truncated_call_does_not_invent_a_target(self):
+        # moveq #7,d0; incomplete jsr absolute-long (six bytes).
+        call = '4eb9ffe735c4'
+        for arch in ('m68k', 'coldfire'):
+            for size in range(1, 6):
+                with self.subTest(arch=arch, size=size):
+                    fs, _ = self.analyze(arch, '7007' + call[:2 * size])
+                    self.assertEqual([i['mn'] for i in fs['instructions']], ['moveq'])
+                    self.assertEqual(fs['calls'], [])
+                    self.assertEqual(fs['accesses'], [])
+                    self.assertTrue(any('decoder stopped at 0x1002' in w
+                                        for w in fs['warnings']))
+
+    def test_m68k_truncated_move_does_not_invent_memory_operands(self):
+        # moveq #7,d0; incomplete move.l #0x12345678,0x9abcdef0.l.
+        move = '23fc123456789abcdef0'
+        for arch in ('m68k', 'coldfire'):
+            for size in range(2, 10):
+                with self.subTest(arch=arch, size=size):
+                    fs, _ = self.analyze(arch, '7007' + move[:2 * size])
+                    self.assertEqual([i['mn'] for i in fs['instructions']], ['moveq'])
+                    self.assertEqual(fs['accesses'], [])
+                    self.assertEqual(fs['calls'], [])
+                    self.assertEqual([(c['register'], c['value'])
+                                      for c in fs['constants']], [('d0', '0x7')])
+
+    def test_m68k_complete_long_operands_are_not_filtered_as_placeholders(self):
+        for arch in ('m68k', 'coldfire'):
+            with self.subTest(arch=arch):
+                # 0xaaaaaaaa is also a legitimate fully encoded call target.
+                fs, _ = self.analyze(arch, '4eb9aaaaaaaa4e75')
+                self.assertEqual(fs['calls'][0]['target'], '0xaaaaaaaa')
+                self.assertEqual([i['size'] for i in fs['instructions']], [6, 2])
+                fs, _ = self.analyze(arch, '23fc123456789abcdef04e75')
+                self.assertEqual([i['size'] for i in fs['instructions']], [10, 2])
+                store = fs['accesses'][0]
+                self.assertEqual((store['kind'], store['width'], store['absolute'],
+                                  store['value']),
+                                 ('store', 4, '0x9abcdef0', '0x12345678'))
+
     def test_arm_coprocessor_memory_direction_and_unknown_width(self):
         # stc p1,c0,[r0]; ldc p1,c0,[r0]; stcl p1,c0,[r0];
         # ldcl p1,c0,[r0]. Transfer length depends on the coprocessor.

@@ -391,9 +391,14 @@ class FirmwareRoutine:
             for first, end in gaps:
                 self.warnings.add('undecodable bytes at 0x%x-0x%x; fall-through stops at this range' % (first, end))
         else:
-            decoded = img.md.disasm(raw, addr)
+            # M68K can report a truncated instruction with a clipped size and
+            # invented extension operands. Lookahead gives its full length;
+            # the range check below keeps all added bytes out of the facts.
+            decoded = img.md.disasm(raw + bytes(32) if self.m68k else raw, addr)
         # Linear decoding supplies instruction boundaries only; reachability is computed below.
         for i in decoded:
+            if i.address + i.size > addr + size:
+                break
             self.insns.append({'addr': i.address, 'size': i.size, 'mn': i.mnemonic,
                                'ops': i.op_str, 'bytes': i.bytes.hex(), '_cs': i})
         self.at = {i['addr']: n for n, i in enumerate(self.insns)}
