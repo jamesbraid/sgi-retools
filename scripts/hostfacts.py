@@ -391,7 +391,13 @@ def unresolved_table_jump(r, i):
         return False
     n = facts.reg(ins['ops'][0])
     v = r.in_states.get(i, {}).get(n) if n is not None else None
-    if not isinstance(v, tuple) or not v or v[0] != 'ld':
+    if not isinstance(v, tuple) or not v:
+        return False
+    # The analyzer already recognised a table entry read; its targets are listed only
+    # when the table image could be read, so reaching here means they were not.
+    if v[0] in ('tent', 'tent_gp'):
+        return True
+    if v[0] != 'ld':
         return False
     address = v[1]
     if not contains_scaled_index(address):
@@ -437,6 +443,8 @@ def wire(r, blocks, by_first):
         else:
             b.succ = []
     for b in blocks:
+        if b.first not in r.in_states:
+            continue  # a block no path reaches is not a predecessor of anything
         for _, s in b.succ:
             if s is not None and b not in s.preds:
                 s.preds.append(b)
@@ -504,10 +512,13 @@ def render(r, fs):
         rt['frame_size'], rt['gp'] or 'none', ', '.join(fs['args']['read_before_write']) or 'none'))
     L.append('  legend: [X+N] is the word loaded from X+N; sp is the stack pointer at entry; ret(F) is what F '
              'returned; ? is a value the tool cannot follow')
+    resolved = {t['jump'] for t in fs['jump_tables']}
+    unresolved_tables = {i for i in range(len(r.insns))
+                         if '0x%x' % r.insns[i]['addr'] not in resolved and unresolved_table_jump(r, i)}
     if fs['unreached']:
         L.append('  not reached by any path from the entry: %s' % ' '.join(fs['unreached']))
-
-    unresolved_tables = {i for i in range(len(r.insns)) if unresolved_table_jump(r, i)}
+        if unresolved_tables:
+            L.append('  (code behind an unresolved jump table may be reachable through it)')
 
     L.append('')
     L.append('accesses (%d)' % len(fs['accesses']))

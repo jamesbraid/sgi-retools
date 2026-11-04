@@ -206,6 +206,23 @@ class IndirectJumpTable(unittest.TestCase):
         self.assertIn('CFG incomplete', text)
 
 
+class RecognisedTableEntry(unittest.TestCase):
+    """A table-entry value the analyzer could not expand is still a jump table."""
+
+    class Stub:
+        insns = [{'mn': 'jr', 'ops': ['$4'], 'addr': 0x58}]
+
+        def __init__(self, v):
+            self.in_states = {0: hostfacts.facts.State({4: v})}
+
+    def test_entry_value_is_unresolved_table(self):
+        self.assertTrue(hostfacts.unresolved_table_jump(self.Stub(('tent', ('sym', '.rodata', 0), 8)), 0))
+        self.assertTrue(hostfacts.unresolved_table_jump(self.Stub(('tent_gp', 0x100, 4, 0x2000)), 0))
+
+    def test_unknown_value_is_not_called_a_table(self):
+        self.assertFalse(hostfacts.unresolved_table_jump(self.Stub(('in', 'a0')), 0))
+
+
 class UnreachableBranch(unittest.TestCase):
     def test_unreachable_branch_does_not_require_an_input_state(self):
         words = [
@@ -218,6 +235,21 @@ class UnreachableBranch(unittest.TestCase):
         ]
         _, _, text = routine(words)
         self.assertIn('(never reached)', text)
+
+    def test_unreachable_block_is_not_a_predecessor(self):
+        words = [
+            I(4, 0, 0, 3),             # b 0x1010
+            NOP,
+            I(4, 0, 0, 1),             # unreachable: branches to 0x100c
+            NOP,
+            jr(RA),                    # 0x1010
+            NOP,
+        ]
+        r, fs, text = routine(words)
+        blocks = [l for l in text.splitlines() if l.startswith('  B') and 'preds:' in l]
+        target = [l for l in blocks if '0x1010-' in l][0]
+        self.assertIn('preds: B0', target)
+        self.assertNotIn('B1', target.split('preds:')[1])
 
 
 class OptionalLibGLRepro(unittest.TestCase):
