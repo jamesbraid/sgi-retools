@@ -1825,10 +1825,11 @@ RELOC = re.compile(r'^\s*([0-9a-f]+): (R_MIPS\w*)\s+(\S+)\s*$')
 REG = re.compile(r'^\$(\d+)$')
 MEMOP = re.compile(r'^(-?(?:0x)?[0-9a-fA-F]+)\(\$(\d+)\)$')
 LOADS = {'lb': 1, 'lbu': 1, 'lh': 2, 'lhu': 2, 'lw': 4, 'lwu': 4, 'ld': 8, 'll': 4, 'lld': 8,
-         'lwl': 4, 'lwr': 4, 'ldl': 8, 'ldr': 8, 'lwc1': 4, 'ldc1': 8, 'lwc2': 4, 'ldc2': 8}
+         'lwl': 4, 'lwr': 4, 'ldl': 8, 'ldr': 8, 'lwc1': 4, 'ldc1': 8, 'lwc2': 4, 'ldc2': 8,
+         'lwxc1': 4, 'ldxc1': 8}
 STORES = {'sb': 1, 'sh': 2, 'sw': 4, 'sd': 8, 'sc': 4, 'scd': 8, 'swl': 4, 'swr': 4, 'sdl': 8, 'sdr': 8,
-          'swc1': 4, 'sdc1': 8, 'swc2': 4, 'sdc2': 8}
-FPMEM = {'lwc1', 'ldc1', 'lwc2', 'ldc2'}
+          'swc1': 4, 'sdc1': 8, 'swc2': 4, 'sdc2': 8, 'swxc1': 4, 'sdxc1': 8}
+FPMEM = {'lwc1', 'ldc1', 'lwc2', 'ldc2', 'lwxc1', 'ldxc1'}
 CALLS = {'jal', 'jalr', 'bal', 'bgezal', 'bltzal', 'bgezall', 'bltzall', 'jalx'}
 LIKELY = {'beql', 'bnel', 'blezl', 'bgtzl', 'bltzl', 'bgezl', 'bc1tl', 'bc1fl', 'bc0tl', 'bc0fl',
           'bc2tl', 'bc2fl', 'bgezall', 'bltzall'}

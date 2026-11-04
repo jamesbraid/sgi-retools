@@ -115,8 +115,20 @@ def decode(w, addr):
         return mn, [R(rs), R(rt), '%x' % ((addr + 4 + (simm << 2)) & M64)]
     if op in (2, 3):
         return ('j' if op == 2 else 'jal'), ['%x' % (((addr + 4) & ~0xfffffff & M64) | ((w & 0x3ffffff) << 2))]
-    if op == 0x13 and (w & 0x3f) == 0x0f:
-        return 'prefx', []
+    if op == 0x13:
+        fn = w & 0x3f
+        fr, ft, fs, fd = rs, rt, rd, (w >> 6) & 31
+        fmadd = {0x20: 'madd.s', 0x21: 'madd.d', 0x28: 'msub.s', 0x29: 'msub.d',
+                 0x30: 'nmadd.s', 0x31: 'nmadd.d', 0x38: 'nmsub.s', 0x39: 'nmsub.d'}
+        if fn in fmadd:
+            return fmadd[fn], ['$f%d' % fd, '$f%d' % fr, '$f%d' % fs, '$f%d' % ft]
+        indexed = {0x00: ('lwxc1', True), 0x01: ('ldxc1', True),
+                   0x08: ('swxc1', True), 0x09: ('sdxc1', True),
+                   0x0f: ('prefx', False)}
+        if fn in indexed:
+            mn, floating = indexed[fn]
+            reg = '$f%d' % fs if floating else '$%d' % fs
+            return mn, [reg, R(rs), R(ft)]
     ins = next(iter(md.disasm(struct.pack('>I', w), addr)), None)
     if ins is None:
         return '.word', ['0x%08x' % w]

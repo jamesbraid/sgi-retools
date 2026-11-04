@@ -739,6 +739,13 @@ class Routine:
 
     def eff(self, st, ins):
         """(base register, base value, offset, effective value) of a memory operand."""
+        if ins['mn'] in ('lwxc1', 'ldxc1', 'swxc1', 'sdxc1') and len(ins['ops']) == 3:
+            b, i = reg(ins['ops'][1]), reg(ins['ops'][2])
+            if b is None or i is None:
+                return None
+            bv, iv = st.get(b), st.get(i)
+            ev = add(bv, iv[1]) if is_c(iv) else ('op', '+', bv, iv) if bv is not None and iv is not None else None
+            return b, bv, 0, ev
         m = MEM.match(ins['ops'][-1])
         if not m:
             return None
@@ -841,7 +848,7 @@ class Routine:
             b, bv, off, ev = e
             w = LOADS[mn]
             v = self.load_value(st, ins, ev, w)
-            if mn in ('lwc1', 'ldc1', 'lwc2', 'ldc2'):
+            if mn in ('lwc1', 'ldc1', 'lwc2', 'ldc2', 'lwxc1', 'ldxc1'):
                 fm = FREG.match(ops[0])
                 if fm:
                     if v is None:
@@ -863,7 +870,7 @@ class Routine:
                 return
             b, bv, off, ev = e
             w = STORES[mn]
-            if mn in ('swc1', 'sdc1', 'swc2', 'sdc2'):
+            if mn in ('swc1', 'sdc1', 'swc2', 'sdc2', 'swxc1', 'sdxc1'):
                 fm = FREG.match(ops[0])
                 val = st.f.get(int(fm.group(1))) if fm else None
                 src = ops[0]
@@ -1314,7 +1321,7 @@ class Recorder:
         root, roff = split(ev) if ev is not None and ev[0] not in ('gotref',) else (None, 0)
         d = dict(self.where(), kind=kind, mnemonic=ins['mn'], width=w, base=img.regnames[b],
                  base_origin=self.R(bv), offset=off, text=self.text(ins))
-        if ins['mn'] in ('lwc1', 'ldc1', 'swc1', 'sdc1'):
+        if ins['mn'] in ('lwc1', 'ldc1', 'swc1', 'sdc1', 'lwxc1', 'ldxc1', 'swxc1', 'sdxc1'):
             d['register_file'] = 'fp'
         if ins['mn'] in UNSIGNED:
             d['unsigned'] = True

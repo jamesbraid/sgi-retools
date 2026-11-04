@@ -57,6 +57,10 @@ def sw(rt, off, base):
     return I(0x2b, base, rt, off)
 
 
+def cop1x(rs, rt, rd, sh, fn):
+    return (0x13 << 26) | (rs << 21) | (rt << 16) | (rd << 11) | (sh << 6) | fn
+
+
 def daddu(rd, rs, rt):
     return Rt(rs, rt, rd, 0x2d)
 
@@ -110,6 +114,51 @@ class Decode(unittest.TestCase):
         ]
         for w, mn, ops in cases:
             self.assertEqual(hostfacts.decode(w, BASE), (mn, ops), hex(w))
+
+    def test_mips_iv_cop1x_opcodes(self):
+        cases = [
+            (cop1x(1, 2, 3, 4, 0x20), 'madd.s', ['$f4', '$f1', '$f3', '$f2']),
+            (cop1x(1, 2, 3, 4, 0x21), 'madd.d', ['$f4', '$f1', '$f3', '$f2']),
+            (cop1x(1, 2, 3, 4, 0x28), 'msub.s', ['$f4', '$f1', '$f3', '$f2']),
+            (cop1x(1, 2, 3, 4, 0x29), 'msub.d', ['$f4', '$f1', '$f3', '$f2']),
+            (cop1x(1, 2, 3, 4, 0x30), 'nmadd.s', ['$f4', '$f1', '$f3', '$f2']),
+            (cop1x(1, 2, 3, 4, 0x31), 'nmadd.d', ['$f4', '$f1', '$f3', '$f2']),
+            (cop1x(1, 2, 3, 4, 0x38), 'nmsub.s', ['$f4', '$f1', '$f3', '$f2']),
+            (cop1x(1, 2, 3, 4, 0x39), 'nmsub.d', ['$f4', '$f1', '$f3', '$f2']),
+            (cop1x(8, 9, 10, 0, 0x00), 'lwxc1', ['$f10', '$8', '$9']),
+            (cop1x(8, 9, 10, 0, 0x01), 'ldxc1', ['$f10', '$8', '$9']),
+            (cop1x(8, 9, 10, 0, 0x08), 'swxc1', ['$f10', '$8', '$9']),
+            (cop1x(8, 9, 10, 0, 0x09), 'sdxc1', ['$f10', '$8', '$9']),
+            (cop1x(8, 9, 10, 0, 0x0f), 'prefx', ['$10', '$8', '$9']),
+        ]
+        for word, mnemonic, operands in cases:
+            with self.subTest(mnemonic=mnemonic):
+                self.assertEqual(hostfacts.decode(word, BASE), (mnemonic, operands))
+
+
+class Cop1xAccesses(unittest.TestCase):
+    def test_indexed_fp_accesses_have_their_architectural_width(self):
+        words = [
+            cop1x(8, 9, 10, 0, 0x00),
+            cop1x(8, 9, 10, 0, 0x01),
+            cop1x(8, 9, 10, 0, 0x08),
+            cop1x(8, 9, 10, 0, 0x09),
+            jr(RA), NOP,
+        ]
+        _, fs, _ = routine(words)
+        self.assertEqual([(a['mnemonic'], a['width']) for a in fs['accesses']], [
+            ('lwxc1', 4), ('ldxc1', 8), ('swxc1', 4), ('sdxc1', 8),
+        ])
+        self.assertTrue(all(a['base'] == 'a4' and a['origin'] == '(a4 + a5)'
+                            for a in fs['accesses']))
+
+    def test_standard_fp_load_store_widths(self):
+        words = [I(0x31, 8, 10, 4), I(0x35, 8, 10, 8),
+                 I(0x39, 8, 10, 12), I(0x3d, 8, 10, 16), jr(RA), NOP]
+        _, fs, _ = routine(words)
+        self.assertEqual([(a['mnemonic'], a['width']) for a in fs['accesses']], [
+            ('lwc1', 4), ('ldc1', 8), ('swc1', 4), ('sdc1', 8),
+        ])
 
 
 class NegativeDisplacement(unittest.TestCase):
