@@ -147,6 +147,7 @@ def _render_maps(facts, rendered):
     calls, branches, returns = {}, {}, {}
     last_call = None
     branch_at = None
+    return_at = None
     for line in rendered:
         m = re.match(r"\s+(0x[0-9a-f]+) (tail )?(\w+) (.*?) via (\S+)$", line)
         if m and "args:" not in line:
@@ -184,6 +185,7 @@ def _render_maps(facts, rendered):
         m = re.match(r"\s+(0x[0-9a-f]+) `.*?` returns; delay slot (0x[0-9a-f]+) `(.*?)` runs", line)
         if m:
             returns[m.group(1)] = {"value": None, "paths": {}, "delay": (m.group(2), m.group(3))}
+            return_at = m.group(1)
             continue
         m = re.match(r"\s+taken when (.*?) ->", line)
         if m and branch_at:
@@ -201,11 +203,11 @@ def _render_maps(facts, rendered):
         m = re.match(r"\s+(0x[0-9a-f]+) in \S+: v0 = (.*?)(?:; reached.*)?$", line)
         if m:
             returns.setdefault(m.group(1), {"paths": {}})["value"] = m.group(2)
+            return_at = m.group(1)
             continue
         m = re.match(r"\s+from (0x[0-9a-f]+): v0 = (.*)$", line)
-        if m and returns:
-            # The most recently rendered exit owns the following path lines.
-            returns[list(returns)[-1]]["paths"][m.group(1)] = m.group(2)
+        if m and return_at in returns:
+            returns[return_at]["paths"][m.group(1)] = m.group(2)
     return accesses, calls, branches, returns
 
 
@@ -446,14 +448,16 @@ def check_sentence(sentence, facts, rendered, maps):
             return "MISMATCH", "branch at %s" % address
         return "OK", None
 
-    unanalyzed_branch = re.match(r"The `(\w+)` branch at (" + HEX + r") targets (" + HEX + r"); its condition is not analyzed", text)
+    unanalyzed_branch = re.match(r"The `(\w+)` branch at (" + HEX + r") targets (" + HEX + r"); its condition is not analyzed(?:; its branch-likely delay slot `(.*?)` at (" + HEX + r") runs only when taken and is annulled on fall-through)?", text)
     if unanalyzed_branch:
-        op, address, target = unanalyzed_branch.groups()
+        op, address, target, delay_op, delay_address = unanalyzed_branch.groups()
         expected = branches.get(address)
         if not expected or expected["mn"] != op or expected["target"] != target:
             return "MISMATCH", "branch at %s" % address
         if expected["taken"] != "condition not analyzed" or expected["fall"] != "condition not analyzed":
             return "MISMATCH", "branch condition"
+        if delay_op and (not expected["likely"] or expected["delay"] != (delay_address, delay_op)):
+            return "MISMATCH", "branch-likely delay slot"
         return "OK", None
 
     branch = re.match(r"The `(\w+)` branch at (" + HEX + r") goes to (" + HEX + r") when (.*) and falls through when (.*)$", text)
@@ -537,6 +541,21 @@ def check_sentence(sentence, facts, rendered, maps):
                    if "0x%x" % address not in facts["unreached"]]
         if missing:
             return "MISMATCH", "reachable address in claimed range: %s" % missing[0]
+        return "OK", None
+    jump_table = re.match(r"The indirect jump at (" + HEX + r") uses the jump table at (" + HEX + r") with targets (.*)$", text)
+    if jump_table:
+        jump, table, targets = jump_table.groups()
+        expected = next((item for item in facts.get("jump_tables", []) if item["jump"] == jump), None)
+        actual_targets = [target.strip() for target in targets.split(",")]
+        if not expected or expected.get("table") != table or expected.get("targets", []) != actual_targets:
+            return "MISMATCH", "jump table at %s" % jump
+        return "OK", None
+    unresolved_table = re.match(r"The indirect jump at (" + HEX + r") uses a jump table whose successors are unresolved", text)
+    if unresolved_table:
+        address = unresolved_table.group(1)
+        if not any(re.match(r"\s+%s `.*?` \(jump table; successors unresolved\)" % re.escape(address), line)
+                   for line in rendered):
+            return "MISMATCH", "unresolved jump table at %s" % address
         return "OK", None
     return "UNPARSED", sentence
 

@@ -292,6 +292,17 @@ class SentenceChecks(unittest.TestCase):
         self.assertEqual(self.check("It occupies 24 bytes."), ("OK", None))
         self.assertEqual(self.check("The instructions from 0x1014 to 0x1018 are not reached by any path from the entry, and their branches are not listed."), ("OK", None))
 
+    def test_jump_table_targets(self):
+        self.facts["jump_tables"] = [{"jump": "0x1020", "table": "0x2000",
+                                       "targets": ["0x1030", "0x1040"]}]
+        sentence = "The indirect jump at 0x1020 uses the jump table at 0x2000 with targets 0x1030, 0x1040."
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_unresolved_jump_table_note(self):
+        self.rendered.append("  0x1020 `jr t9` (jump table; successors unresolved)")
+        sentence = "The indirect jump at 0x1020 uses a jump table whose successors are unresolved."
+        self.assertEqual(self.check(sentence), ("OK", None))
+
     def test_unknown_sentence_is_reported(self):
         self.assertEqual(self.check("This sentence is not a hostfacts claim."), ("UNPARSED", "This sentence is not a hostfacts claim."))
 
