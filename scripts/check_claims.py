@@ -521,6 +521,10 @@ def address_list(t, pos, first):
     member that opens a range ("0xB to 0xC") is not part of it."""
     out, end = [(first, pos)], pos
     while True:
+        # A closing parenthesis ends the address citation. A following comma may
+        # introduce a value (for example, a token) rather than another location.
+        if t[:end].rstrip().endswith(')'):
+            return out
         m = LIST_MORE.match(t, end)
         if not m or re.match(r'\s*(?:to|-|\.\.)\s*0x', t[m.end():m.end() + 8]):
             return out
@@ -1691,6 +1695,8 @@ class Checker:
         for m in re.finditer(r'`([^`]+)`\s+(?:\(|at |is at )(' + HEX + r')\)?|(' + HEX + r')\s*(?::|holds|is)\s*`([^`]+)`', t):
             ins = m.group(1) or m.group(4)
             a = int(m.group(2) or m.group(3), 16)
+            if m.group(1) and re.search(r'\s\(' + HEX + r'\)?$', m.group(0)):
+                continue    # an encoded instruction word in parentheses
             if re.match(r'\s*(?:to|-|\.\.)\s*0x', t[m.end():m.end() + 8]) or re.search(r'` and `[^`]*$', t[max(0, m.start() - 30):m.start() + 1]):
                 continue
             if not re.match(r'(?:[a-z][a-z0-9]*(?:\.[a-z0-9]+)*)(?:\s+\$?[a-z0-9]+(?:,|\s*$|\()|\s*$)', ins) or \
@@ -1796,6 +1802,16 @@ class Checker:
             why = 'a data address (%s)' % obj
         elif obj and kind in ('call', 'store', 'load', 'jump'):
             why = 'the address of the object of the verb (%s)' % obj
+        # Kernel documentation often prints 64-bit kseg routine locations as
+        # their low 32 bits. Compare those addresses in the routine's width.
+        if c.addr > 0xffffffff and a <= 0xffffffff:
+            mask = 0xffffffff
+            if (c.addr & mask) <= (a & mask) and (a & mask) - (c.addr & mask) < c.size:
+                return
+        # A parenthesized instruction word is an encoding, not its location.
+        # Small numeric fields are routine-relative offsets or payload values.
+        if a < 0x1000:
+            return
         if why:
             self.ok('insn-outside', claim, '0x%x is outside %s; %s' % (a, rng, why))
         else:

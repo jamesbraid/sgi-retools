@@ -346,6 +346,46 @@ class OutsideRoutine(unittest.TestCase):
         r = self.results('The caller passes a flag. The `lw` at 0x9000 loads the length.')
         self.assertEqual([x[1] for x in r], ['mismatch'])
 
+    def test_low_32_bit_kernel_address_uses_routine_width(self):
+        ctx = FakeCtx({0xc000000000001100: 'sw a0,0(s0)'})
+        ctx.addr, ctx.end, ctx.size = 0xc000000000001100, 0xc000000000001200, 0x100
+        e = types.SimpleNamespace(text='The `sw` at 0x1100 stores it.', table=None, binary=None, id='t', name='f', status='established')
+        rep = []
+        check_claims.Checker(e, ctx, rep, None, None).insn_address()
+        self.assertEqual([x['verdict'] for x in rep if x['class'] == 'insn-outside'], [])
+        self.assertEqual([x[1] for x in self.results('The `lw` at 0x9000 loads it.')], ['mismatch'])
+
+    def test_comma_after_closed_address_citation_is_not_an_instruction_list(self):
+        self.assertEqual(self.results('The `sw` at 0x1100), 0x1900 is the token value.'), [])
+        self.assertEqual([x[1] for x in self.results('The `lw` at 0x9000 loads it.')], ['mismatch'])
+
+    def test_small_values_and_parenthesized_encodings_are_not_addresses(self):
+        self.assertEqual(self.results('The stores are at 0x1b0 and 0xd0; `jr ra` (0x03e00008) returns.'), [])
+        self.assertEqual([x[1] for x in self.results('The `lw` at 0x9000 loads it.')], ['mismatch'])
+
+
+    def high_routine(self, text):
+        ctx = FakeCtx({0xc000000000001100: 'sw a0,0(s0)'})
+        ctx.addr, ctx.end, ctx.size = 0xc000000000001100, 0xc000000000001200, 0x100
+        e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='f', status='established')
+        rep = []
+        check_claims.Checker(e, ctx, rep, None, None).insn_address()
+        return [x['verdict'] for x in rep if x['class'] == 'insn-outside']
+
+    def test_low_32_bit_form_is_still_bounded_by_the_routine_size(self):
+        self.assertEqual(self.high_routine('The `sw` at 0x11f0 stores it.'), [])
+        self.assertEqual(self.high_routine('The `sw` at 0x1200 stores it.'), ['mismatch'])
+        self.assertEqual(self.high_routine('The `sw` at 0x10f0 stores it.'), ['mismatch'])
+        self.assertEqual(self.high_routine('The `sw` at 0x2000000011f0 stores it.'), ['mismatch'])
+
+    def test_wrong_address_after_a_parenthesised_citation_is_not_hidden_in_plain_lists(self):
+        self.assertEqual([x[1] for x in self.results('The `sw` at 0x1100, 0x9000 and 0xa000 store it.')], ['mismatch', 'mismatch'])
+        self.assertEqual([x[1] for x in self.results('The `sw` at 0x9000 (0x03e00008) stores it.')], ['mismatch'])
+
+    def test_small_value_cutoff_is_exactly_the_first_page(self):
+        self.assertEqual(self.high_routine('The `sw` at 0xfff stores it.'), [])
+        self.assertEqual(self.high_routine('The `sw` at 0x1000 stores it.'), ['mismatch'])
+
 
 if __name__ == '__main__':
     unittest.main()
