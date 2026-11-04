@@ -99,6 +99,27 @@ class SentenceChecks(unittest.TestCase):
         self.assertEqual(self.check(sentence), ("OK", None))
         self.assertEqual(self.check(sentence.replace("0x4", "0x8"))[0], "MISMATCH")
 
+    def test_store_uses_resolved_offset_and_accepts_parenthesized_value(self):
+        self.facts["accesses"].append({"address": "0x1010", "kind": "store", "width": 4,
+                                       "mnemonic": "sw", "base": "a2", "origin": "[a0+280]",
+                                       "origin_offset": 308, "offset": 20, "text": "sw a1,20(a2)",
+                                       "value": "0x3"})
+        self.maps = grade._render_maps(self.facts, self.rendered)
+        sentence = "The `sw` at 0x1010 stores 4 bytes to [a0+280] +0x134 (value 0x3)."
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_unknown_matches_unknown_argument_value_forms(self):
+        expected = "a0=ret(?), a1=?, a2=0x3, a3=0x4"
+        rendered = ["  0x100c jal foo via direct", "      args: " + expected]
+        maps = grade._render_maps(self.facts, rendered)
+        sentence = "The `jal` at 0x100c calls `foo` with a0=unknown, a1=unknown, a2=0x3, a3=0x4."
+        self.assertEqual(grade.check_sentence(sentence, self.facts, rendered, maps), ("OK", None))
+
+    def test_unknown_matches_unknown_return_value_forms(self):
+        returns = self.maps[3]
+        returns["0x1020"]["value"] = "ret(?)"
+        self.assertEqual(self.check("The return at 0x1020 has v0 = unknown."), ("OK", None))
+
     def test_old_call_compares_every_argument_slot(self):
         sentence = "Calls `foo` via direct with a0=[a0+4], a1=0x1, a2=?, a3=ret(bar) (`jal` at 0x100c)."
         self.assertEqual(self.check(sentence), ("OK", None))

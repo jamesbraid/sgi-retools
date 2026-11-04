@@ -2,6 +2,7 @@
 """Compare facts-only instruction readings with hostfacts output."""
 import argparse
 import collections
+import itertools
 import os
 import random
 import re
@@ -52,6 +53,27 @@ def _value(value):
     value = re.sub(r" \((?:arg[0-7] at entry|at entry|base unknown)\)", "", value)
     value = value.replace("unknown", "?")
     return re.sub(r"\s+", " ", value).strip()
+
+
+def _value_variants(value):
+    value = re.sub(r"(?<![A-Za-z0-9_])\(unknown\)", "?", value)
+    value = re.sub(r" \((?:arg[0-7] at entry|at entry|base unknown)\)", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    unknowns = list(re.finditer(r"\bunknown\b", value))
+    variants = set()
+    for replacements in itertools.product(("?", "ret(?)"), repeat=len(unknowns)):
+        parts = []
+        start = 0
+        for match, replacement in zip(unknowns, replacements):
+            parts.extend((value[start:match.start()], replacement))
+            start = match.end()
+        parts.append(value[start:])
+        variants.add(_value("".join(parts)))
+    return variants
+
+
+def _values_match(left, right):
+    return bool(_value_variants(left) & _value_variants(right))
 
 
 def _access_target(a):
@@ -141,6 +163,7 @@ def _render_maps(facts, rendered):
 def check_sentence(sentence, facts, rendered, maps):
     accesses, calls, branches, returns = maps
     text = sentence.rstrip(".")
+    text = re.sub(r" \(value (.*?)\)$", r" with value \1", text)
     m = re.match(r"It occupies (\d+) bytes", text)
     if m:
         return ("OK", None) if int(m.group(1)) == facts["routine"]["size"] else ("MISMATCH", "size %d bytes" % facts["routine"]["size"])
@@ -170,8 +193,8 @@ def check_sentence(sentence, facts, rendered, maps):
             value = None
             matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == direction
                        and a["width"] == int(width) and a["base"] == base
-                       and _value(_access_target(a)) == _value(target)
-                       and (not group_value or _value(a.get("value") or "") == _value(group_value))]
+                       and _values_match(_access_target(a), target)
+                       and (not group_value or _values_match(a.get("value") or "", group_value))]
             if len(matches) != int(count):
                 return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
         elif acc_group:
@@ -182,8 +205,8 @@ def check_sentence(sentence, facts, rendered, maps):
             reg = None
             value = None
             matches = [a for a in facts["accesses"] if a["kind"] == direction and a["width"] == int(width)
-                       and a["base"] == base and _value(_access_target(a)) == _value(target)
-                       and (not group_value or _value(a.get("value") or "") == _value(group_value))]
+                       and a["base"] == base and _values_match(_access_target(a), target)
+                       and (not group_value or _values_match(a.get("value") or "", group_value))]
             if len(matches) != int(count):
                 return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
         elif acc_group2:
@@ -194,7 +217,7 @@ def check_sentence(sentence, facts, rendered, maps):
             reg = None
             value = None
             matching = [a for a in facts["accesses"] if a["kind"] == direction[:-1] and a["width"] == int(width)
-                        and _value(_access_target(a)) == _value(target)]
+                        and _values_match(_access_target(a), target)]
             if len(matching) != int(count):
                 return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matching))
         elif acc_group3:
@@ -208,7 +231,7 @@ def check_sentence(sentence, facts, rendered, maps):
             if direction == "Loads":
                 target = re.sub(r"^from ", "", target)
             matching = [a for a in facts["accesses"] if a["kind"] == kind and a["width"] == int(width)
-                        and _value(_access_target(a)) == _value(target)]
+                        and _values_match(_access_target(a), target)]
             if len(matching) != int(count):
                 return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matching))
         else:
@@ -220,9 +243,9 @@ def check_sentence(sentence, facts, rendered, maps):
             if not any(a["mn"] == mn and (reg is None or a["register"] == reg) for a in candidates):
                 return "MISMATCH", "access at %s" % address
             fact = next(a for a in candidates if a["mn"] == mn and (reg is None or a["register"] == reg))
-            if acc and (fact["kind"] != ("load" if direction == "loads" else "store") or fact["width"] != int(width) or _value(fact["target"]) != _value(target) or (value is not None and _value(fact.get("value") or "") != _value(value))):
+            if acc and (fact["kind"] != ("load" if direction == "loads" else "store") or fact["width"] != int(width) or not _values_match(fact["target"], target) or (value is not None and not _values_match(fact.get("value") or "", value))):
                 return "MISMATCH", "%s %d-byte %s from %s" % (fact["kind"], fact["width"], mn, fact["target"])
-            if old_acc and (_value(fact["target"]) != _value(target) or fact["width"] != int(width) or fact["kind"] != ("load" if direction == "Loads" else "store") or (value is not None and _value(fact.get("value") or "") != _value(value))):
+            if old_acc and (not _values_match(fact["target"], target) or fact["width"] != int(width) or fact["kind"] != ("load" if direction == "Loads" else "store") or (value is not None and not _values_match(fact.get("value") or "", value))):
                 return "MISMATCH", "%s %d-byte %s from %s" % (fact["kind"], fact["width"], mn, fact["target"])
         return "OK", None
 
@@ -241,7 +264,7 @@ def check_sentence(sentence, facts, rendered, maps):
             expected = calls.get(address)
             if not expected or expected["mn"] != op or expected["via"] != via or callee not in expected["callee"]:
                 return "MISMATCH", "call at %s" % address
-        if _value(args) != _value(expected["args"]):
+        if not _values_match(args, expected["args"]):
             return "MISMATCH", expected["args"]
         return "OK", None
 
@@ -268,7 +291,7 @@ def check_sentence(sentence, facts, rendered, maps):
                 return "MISMATCH", "branch-likely delay slot"
         taken = re.sub(r" -> (?:B\d+|outside|end of routine)$", "", taken)
         fall = re.sub(r" -> (?:B\d+|outside|end of routine)$", "", fall)
-        if taken != "condition not analyzed" and (_value(taken) != _value(expected["taken"]) or _value(fall) != _value(expected["fall"])):
+        if taken != "condition not analyzed" and (not _values_match(taken, expected["taken"]) or not _values_match(fall, expected["fall"])):
             return "MISMATCH", "taken when %s; falls through when %s" % (expected["taken"], expected["fall"])
         # A branch-likely sentence may explicitly describe annulment/delay behavior.
         if "branch-likely" in text and not expected["likely"]:
@@ -302,9 +325,10 @@ def check_sentence(sentence, facts, rendered, maps):
             actual = {x.strip() for x in re.split(r",\s*|\s+or\s+", expected.removeprefix("one of "))}
             if expected == "?" and address in returns:
                 actual = set(returns[address]["paths"].values())
-            if not actual or choices != actual:
+            if not actual or len(choices) != len(actual) or any(
+                    not any(_values_match(choice, fact) for fact in actual) for choice in choices):
                 return "MISMATCH", "one of %s" % ", ".join(sorted(actual or {expected}))
-        elif expected != value:
+        elif not _values_match(expected, value):
             return "MISMATCH", "v0 = %s" % expected
         if delay_claim and returns.get(address, {}).get("delay") != delay_claim:
             return "MISMATCH", "delay slot %s at %s" % (returns.get(address, {}).get("delay"), address)
