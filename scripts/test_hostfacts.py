@@ -315,6 +315,20 @@ class UnreachableDefinition(unittest.TestCase):
         self.assertEqual(hostfacts.find_def(Stub(), block, 2, 8), 0)
 
 
+class UnanalyzedConditionSource(unittest.TestCase):
+    def test_fp_branch_reports_missing_comparison_state(self):
+        class Stub:
+            insns = [
+                {'mn': 'c.eq.s', 'ops': ['$fcc0', '$f2', '$f4'], 'addr': BASE},
+                {'mn': 'bc1t', 'ops': ['$fcc0', '1010'], 'addr': BASE + 4},
+            ]
+            in_states = {1: object()}
+
+        block = hostfacts.Block('B0', 0, 1)
+        self.assertEqual(hostfacts.cond_words(Stub(), block, 1),
+                         ('(condition not analyzed)', '(condition not analyzed)'))
+
+
 class OptionalKonaGfxRepro(unittest.TestCase):
     ROOT = '/path/to/re-roots/kona/root'
     OBJECTS = (
@@ -347,6 +361,28 @@ class OptionalLibGLRepro(unittest.TestCase):
                 r = hostfacts.routine_for(self.BINARY, name)
                 fs = r.facts(False)
                 self.assertIn('blocks (', hostfacts.render(r, fs))
+
+
+class OptionalOdsyLibGLCoreRepro(unittest.TestCase):
+    BINARY = ('/path/to/re-roots/odsy/root/builds/'
+              '6.5.30-media/usr/gfx/arch/IP30ODSY/libGLcore.so')
+    ROUTINES = ('ImageChainAddOpConvolve', 'ImageChainAddOpConvolveResidue', 'Clampf')
+    CLAMPF_ADDRESSES = ('0xd9eb61c', '0xda91338')
+
+    @unittest.skipUnless(os.path.isfile(BINARY), 'optional ODSY libGLcore root is not present')
+    def test_reported_routines_render_missing_conditions(self):
+        for name in self.ROUTINES[:2]:
+            with self.subTest(routine=name):
+                r = hostfacts.routine_for(self.BINARY, name)
+                text = hostfacts.render(r, r.facts(False))
+                self.assertIn('blocks (', text)
+                self.assertIn('(condition not analyzed)', text)
+        for address in self.CLAMPF_ADDRESSES:
+            with self.subTest(routine='Clampf', address=address):
+                r = hostfacts.routine_for(self.BINARY, address, size=0x40)
+                text = hostfacts.render(r, r.facts(False))
+                self.assertIn('blocks (', text)
+                self.assertIn('(condition not analyzed)', text)
 
 
 class CallArguments(unittest.TestCase):

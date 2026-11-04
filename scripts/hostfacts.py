@@ -343,15 +343,20 @@ def cond_words(r, blk, i):
         if ops and ops[0].startswith('$fcc'):
             cc = int(ops[0][4:])
         cmp_ = None
+        cmp_unanalyzed = False
         for j in range(i - 1, max(i - 16, -1), -1):
             x = r.insns[j]
             if x['mn'].startswith('c.'):
                 o = x['ops']
                 xc = int(o[0][4:]) if o and o[0].startswith('$fcc') else 0
                 if xc == cc:
+                    if j not in r.in_states:
+                        cmp_unanalyzed = True
                     cmp_ = (j, x)
                     break
-        if cmp_ is None:
+        if cmp_unanalyzed:
+            t = f = '(condition not analyzed)'
+        elif cmp_ is None:
             t, f = 'FP condition code %d is true' % cc, 'FP condition code %d is false' % cc
         else:
             j, x = cmp_
