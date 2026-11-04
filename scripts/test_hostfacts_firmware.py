@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Flat non-MIPS facts checked against hand-assembled instruction sequences."""
+"""Non-MIPS facts checked against hand-assembled instruction and ELF sequences."""
 import contextlib
 import io
+import inspect
 import os
+import struct
 import sys
 import tempfile
 import unittest
@@ -11,7 +13,435 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hostfacts
 
 
+def arm_elf(code='04109fe5000091e51eff2fe100000000', relocations=(), rela=False,
+            thumb=False, mappings=(), symbol_size=None, copy_size=8, elf_type=3,
+            dynamic=False, dynamic_changes=None, hide_relocations=False):
+    """Assemble a small ELF32 file with separate executable and writable loads."""
+    code = bytes.fromhex(code)
+    names = b'\0entry\0external\0alias\0object\0undefined_function\0'
+    symbols = [bytes(16)]
+    for address, mode in mappings:
+        at = len(names); names += ('$'+mode).encode()+b'\0'
+        symbols.append(struct.pack('<IIIBBH', at, address, 0, 0, 0, 1))
+    first_global = len(symbols)
+    size = symbol_size if symbol_size is not None else len(code)-4
+    symbols.append(struct.pack('<IIIBBH', 1, 0x2000+thumb, size, 0x12, 0, 1))
+    external = len(symbols)
+    symbols.append(struct.pack('<IIIBBH', 7, 0, copy_size, 0x11, 0, 0))
+    symbols.append(struct.pack('<IIIBBH', 16, 0x2000+thumb, size, 0x12, 0, 1))
+    symbols.append(struct.pack('<IIIBBH', 22, 0x2000, 4, 0x11, 0, 1))
+    symbols.append(struct.pack('<IIIBBH', 29, 0, 0, 0x12, 0, 0))
+    rel = b''
+    for kind, site in relocations:
+        info = ((0 if kind in (0, 23) else external) << 8) | kind
+        rel += struct.pack('<IIi' if rela else '<II', site, info, -4) if rela else struct.pack('<II', site, info)
+    shnames = b'\0.text\0.data\0.strtab\0.symtab\0.rel.dyn\0.shstrtab\0'
+    nameat = lambda n: shnames.index(n.encode()+b'\0')
+    raw = bytearray(0x190)
+    raw[0x100:0x100+len(code)] = code
+    raw[0x180:0x190] = struct.pack('<IIII', 7, 8, 9, 10)
+    tags = {}
+    if dynamic:
+        tags = {7 if rela else 17:0x4000, 8 if rela else 18:len(rel), 9 if rela else 19:12 if rela else 8,
+                6:0x5000, 11:16, 5:0x6000, 10:len(names)}
+        for key, value in (dynamic_changes or {}).items():
+            if value is None:tags.pop(key, None)
+            else:tags[key]=value
+        raw += b''.join(struct.pack('<II',k,v)for k,v in tags.items())+bytes(8)
+    dynamic_size = len(raw)-0x190
+    strings = len(raw); raw += names
+    while len(raw) % 4: raw += b'\0'
+    syms = len(raw); raw += b''.join(symbols)
+    relpos = len(raw); raw += rel
+    shstr = len(raw); raw += shnames
+    while len(raw) % 4: raw += b'\0'
+    shoff = len(raw)
+    sections = [(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                (nameat('.text'), 1, 6, 0x2000, 0x100, len(code), 0, 0, 4, 0),
+                (nameat('.data'), 1, 3, 0x3000, 0x180, 16, 0, 0, 4, 0),
+                (nameat('.strtab'), 3, 2 if dynamic else 0, 0x6000 if dynamic else 0, strings, len(names), 0, 0, 1, 0),
+                (nameat('.symtab'), 11 if dynamic else 2, 2 if dynamic else 0, 0x5000 if dynamic else 0, syms, 16*len(symbols), 3, first_global, 4, 16),
+                (nameat('.rel.dyn'), 1 if hide_relocations else 4 if rela else 9, 2, 0x4000 if dynamic else 0, relpos, len(rel), 4, 0, 4, 12 if rela else 8),
+                (nameat('.shstrtab'), 3, 0, 0, shstr, len(shnames), 0, 0, 1, 0)]
+    for section in sections: raw += struct.pack('<10I', *section)
+    ident = b'\x7fELF'+bytes([1, 1, 1, 0])+bytes(8)
+    raw[:52] = ident+struct.pack('<HHIIIIIHHHHHH', elf_type, 40, 1, 0x2000+thumb,
+                                52, shoff, 0, 52, 32, 6 if dynamic else 2, 40, 7, 6)
+    raw[52:84] = struct.pack('<8I', 1, 0x100, 0x2000, 0x2000, len(code), len(code), 5, 0x80)
+    raw[84:116] = struct.pack('<8I', 1, 0x180, 0x3000, 0x3000, 16+dynamic_size, max(64,16+dynamic_size), 6, 0x80)
+    if dynamic:
+        loads = [(1,relpos,0x4000,0x4000,len(rel),len(rel),4,4),
+                 (1,syms,0x5000,0x5000,16*len(symbols),16*len(symbols),4,4),
+                 (1,strings,0x6000,0x6000,len(names),len(names),4,1),
+                 (2,0x190,0x3010,0x3010,dynamic_size,dynamic_size,6,4)]
+        for n, load in enumerate(loads):raw[116+n*32:148+n*32]=struct.pack('<8I',*load)
+    return bytes(raw)
+
+
 class FirmwareFacts(unittest.TestCase):
+    def test_arm_extracted_load_image_remains_flat_without_elf_opt_in(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'load.bin')
+            with open(path, 'wb') as stream: stream.write(arm_elf())
+            image = hostfacts.FirmwareImage(path, 'arm', 0x2000)
+            self.assertEqual(image.kind, 'flat')
+            self.assertEqual(image.read(0x2000, 4), b'\x7fELF')
+
+    def elf_image(self, raw, arch='arm', load=0x2000, **kwargs):
+        self.assertIn('elf', inspect.signature(hostfacts.FirmwareImage).parameters)
+        d = tempfile.TemporaryDirectory(); self.addCleanup(d.cleanup)
+        p = os.path.join(d.name, 'image.elf')
+        with open(p, 'wb') as stream: stream.write(raw)
+        return hostfacts.FirmwareImage(p, arch, load, elf=True, **kwargs)
+
+    def elf_facts(self, raw, arch='arm', size=None):
+        image = self.elf_image(raw, arch)
+        self.assertEqual(image.kind, 'elf')
+        name, addr, size, source = image.find('entry', size)
+        routine = hostfacts.FirmwareRoutine(image, name, addr, size, source)
+        return image, routine, routine.facts()
+
+    def test_arm_elf_maps_loads_and_defined_function_symbols(self):
+        image = self.elf_image(arm_elf())
+        self.assertEqual(image.kind, 'elf')
+        self.assertEqual(image.read(0x2000, 4).hex(), '04109fe5')
+        self.assertIsNone(image.read(0x2010, 1))
+        self.assertIsNone(image.read(0x3010, 1))
+        self.assertEqual(image.find('entry', None)[1:3], (0x2000, 12))
+        self.assertEqual(image.find('alias', None)[1:3], (0x2000, 12))
+        self.assertIsNone(image.name_at(0x2000))
+        for name in ('external', 'object', 'undefined_function'):
+            with self.assertRaises(ValueError): image.find(name, None)
+
+    def test_arm_elf_relocated_zero_literal_never_becomes_absolute_zero(self):
+        for rela in (False, True):
+            with self.subTest(rela=rela):
+                _, _, fs = self.elf_facts(arm_elf(relocations=[(2, 0x200c)], rela=rela))
+                dereference = next(a for a in fs['accesses'] if a['address'] == '0x2004')
+                self.assertNotIn('absolute', dereference)
+                self.assertEqual(fs['exits'][0]['value'], '?')
+                self.assertTrue(any('relocation' in w for w in fs['warnings']))
+
+    def test_arm_elf_unreached_relocated_pool_does_not_block_body(self):
+        _, _, fs = self.elf_facts(arm_elf(relocations=[(23, 0x200c)], symbol_size=16))
+        self.assertIn('0x200c', fs['unreached'])
+        self.assertEqual(len(fs['exits']), 1)
+        self.assertNotIn('absolute', next(a for a in fs['accesses'] if a['address']=='0x2004'))
+
+    def test_arm_elf_genuine_readonly_zero_and_nonzero_remain_constants(self):
+        for value in (0, 7):
+            code = '00009fe51eff2fe1'+struct.pack('<I', value).hex()
+            _, _, fs = self.elf_facts(arm_elf(code))
+            self.assertEqual(fs['exits'][0]['value'], hex(value))
+
+    def test_arm_elf_writable_initial_word_is_not_a_runtime_constant(self):
+        _, _, fs = self.elf_facts(arm_elf('f80f9fe51eff2fe1', symbol_size=8))
+        self.assertNotEqual(fs['exits'][0]['value'], '0x7')
+
+    def test_arm_elf_relocation_partial_overlap_and_copy_extent(self):
+        image = self.elf_image(arm_elf(relocations=[(2, 0x200c)]))
+        self.assertEqual(image.kind, 'elf')
+        for start, width in ((0x200c, 1), (0x200d, 2), (0x200b, 2)):
+            self.assertIsNone(image.read_constant(start, width))
+        image = self.elf_image(arm_elf(relocations=[(20, 0x3000)], elf_type=2, copy_size=8))
+        self.assertIsNone(image.read_constant(0x3004, 4))
+        self.assertEqual(image.relocations[0]['size'], 8)
+        image = self.elf_image(arm_elf('04109fe5000091e51eff2fe10000000007000000',
+                                      relocations=[(20,0x200c)],elf_type=2,copy_size=8,symbol_size=12))
+        self.assertIsNone(image.read_constant(0x2010,4))
+        for copy_size, elf_type in ((0,2),(8,3)):
+            with self.subTest(copy_size=copy_size,elf_type=elf_type),self.assertRaises(ValueError):
+                self.elf_image(arm_elf(relocations=[(20,0x3000)],copy_size=copy_size,elf_type=elf_type))
+
+    def test_arm_elf_none_relocation_does_not_taint(self):
+        _, _, fs = self.elf_facts(arm_elf('00009fe51eff2fe100000000', relocations=[(0, 0x2008)]))
+        self.assertEqual(fs['exits'][0]['value'], '0x0')
+
+    def test_arm_elf_reached_relocated_opcode_cannot_build_a_cfg(self):
+        image = self.elf_image(arm_elf(relocations=[(2, 0x2000)]))
+        self.assertEqual(image.kind, 'elf')
+        name, addr, size, source = image.find('entry', None)
+        routine = hostfacts.FirmwareRoutine(image, name, addr, size, source)
+        with self.assertRaisesRegex(ValueError, 'relocation-dependent instruction'):
+            routine.facts()
+
+    def test_arm_elf_rejects_unknown_relocations_and_bad_sites(self):
+        for kind, site in ((255, 0x200c), (2, 0x5000), (2, 0x200e)):
+            with self.subTest(kind=kind, site=site), self.assertRaises(ValueError):
+                self.elf_image(arm_elf(relocations=[(kind, site)]))
+
+    def test_arm_elf_checks_load_offset_architecture_and_endianness(self):
+        for kwargs in ({'load': 0}, {'offset': 1}, {'arch': 'x86-32'}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError): self.elf_image(arm_elf(), **kwargs)
+        raw = bytearray(arm_elf()); raw[5] = 2
+        with self.assertRaises(ValueError): self.elf_image(bytes(raw))
+        raw = bytearray(arm_elf()); raw[4] = 2
+        with self.assertRaises(ValueError): self.elf_image(bytes(raw))
+
+    def test_arm_elf_thumb_symbol_and_mapping_modes_are_checked(self):
+        raw = arm_elf('00207047', thumb=True, symbol_size=4, mappings=[(0x2000, 't')])
+        _, _, fs = self.elf_facts(raw, 'thumb')
+        self.assertEqual(fs['exits'][0]['value'], '0x0')
+        image = self.elf_image(raw)
+        with self.assertRaisesRegex(ValueError, 'mode'): image.find('entry', None)
+        image = self.elf_image(arm_elf(mappings=[(0x2000, 'a'), (0x2004, 't')]))
+        self.assertEqual(image.kind, 'elf')
+        name, addr, size, source = image.find('entry', None)
+        with self.assertRaisesRegex(ValueError, 'mode'):
+            hostfacts.FirmwareRoutine(image, name, addr, size, source).facts()
+
+    def test_arm_elf_reports_linked_coordinates_and_unknown_runtime_base(self):
+        _, routine, fs = self.elf_facts(arm_elf())
+        self.assertEqual(fs['routine']['coordinate_basis'], 'linked ELF virtual addresses')
+        self.assertEqual(fs['routine']['runtime_load_base'], 'unknown')
+        self.assertIn('runtime load base unknown', hostfacts.render(routine, fs))
+
+    def test_arm_elf_taint_reaches_calls_conditions_returns_and_indirect_targets(self):
+        _, _, fs = self.elf_facts(arm_elf('08009fe50d0000eb1eff2fe10000a0e100000000',
+                                        relocations=[(2,0x2010)], symbol_size=12))
+        self.assertEqual(fs['calls'][0]['args'][0]['value'], '?')
+        _, _, fs = self.elf_facts(arm_elf('10009fe5000050e30000000a1eff2fe11eff2fe10000a0e100000000',
+                                        relocations=[(23,0x2018)], symbol_size=20))
+        branch = next(b for b in fs['blocks'] if 'taken_when' in b)
+        self.assertEqual(branch['taken_when'], '? == 0x0')
+        self.assertTrue(all(e['value']=='?' for e in fs['exits']))
+        self.assertFalse(any(c['register']=='r0' for c in fs['constants']))
+        _, _, fs = self.elf_facts(arm_elf('04309fe533ff2fe11eff2fe100000000', relocations=[(2,0x200c)]))
+        self.assertIsNone(fs['calls'][0]['target'])
+        self.assertIsNone(fs['calls'][0]['callee'])
+
+    def test_arm_elf_rejects_malformed_load_and_symbol_mapping(self):
+        raw = bytearray(arm_elf()); struct.pack_into('<I', raw, 52+20, 4)
+        with self.assertRaises(ValueError): self.elf_image(bytes(raw))
+        raw = bytearray(arm_elf()); struct.pack_into('<I', raw, 84+8, 0x2000)
+        with self.assertRaises(ValueError): self.elf_image(bytes(raw))
+        raw = bytearray(arm_elf()); struct.pack_into('<I', raw, 52+24, 4)
+        image = self.elf_image(bytes(raw))
+        with self.assertRaises(ValueError): image.find('entry', None)
+
+    def test_arm_elf_cli_and_routine_api_require_unambiguous_input_mode(self):
+        self.assertIn('elf', inspect.signature(hostfacts.routine_for).parameters)
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'image.elf')
+            with open(path, 'wb') as stream: stream.write(arm_elf())
+            with self.assertRaises(ValueError):
+                hostfacts.routine_for(path, 'entry', flat=True, load=0x2000, arch='arm', elf=True)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                hostfacts.main([path,'entry','--arch','arm','--elf','--load','0x2000','--json'])
+            import json
+            self.assertEqual(json.loads(output.getvalue())['routine']['kind'], 'elf')
+
+    def test_arm_elf_numeric_entry_respects_containing_thumb_function(self):
+        image = self.elf_image(arm_elf('0020012070477047', thumb=True, symbol_size=8))
+        with self.assertRaisesRegex(ValueError, 'mode'): image.find('0x2004', 4)
+
+    def test_arm_elf_reports_only_relocations_relevant_to_selected_routine(self):
+        _, routine, fs = self.elf_facts(arm_elf(relocations=[(2,0x200c),(21,0x3000)]))
+        self.assertEqual([r['address'] for r in fs['relocations']], ['0x200c'])
+        self.assertIn('ELF relocation-dependent places (1)', hostfacts.render(routine, fs))
+
+    def test_arm_elf_dynamic_tables_must_have_complete_matching_metadata(self):
+        for rela in (False, True):
+            _, _, fs = self.elf_facts(arm_elf(relocations=[(2,0x200c)],rela=rela,dynamic=True))
+            self.assertNotIn('absolute', next(a for a in fs['accesses']if a['address']=='0x2004'))
+        cases = [(True, {}), (False, {18:None}), (False, {19:4}),
+                 (False, {18:16}), (False, {17:0x4004}),
+                 (False, {6:0x5004}), (False, {5:0x6001}),
+                 (False, {36:0x4000,35:8,37:4}), (False,{0x60000011:0x4000})]
+        for hidden, changes in cases:
+            with self.subTest(hidden=hidden,changes=changes), self.assertRaises(ValueError):
+                self.elf_image(arm_elf(relocations=[(2,0x200c)],dynamic=True,
+                                       hide_relocations=hidden,dynamic_changes=changes))
+
+    def test_arm_elf_unreviewed_named_dynamic_extensions_are_rejected(self):
+        with self.assertRaisesRegex(ValueError,'DT_GNU_CONFLICT'):
+            self.elf_image(arm_elf(relocations=[(2,0x200c)],dynamic=True,
+                                   dynamic_changes={0x6ffffef8:0x4000}))
+        with self.assertRaises(ValueError):
+            self.elf_image(arm_elf(relocations=[(23,0x200c)],dynamic=True,
+                                   dynamic_changes={0x6ffffffa:2}))
+
+    def test_arm_elf_accepted_dynamic_records_always_taint_their_places(self):
+        for rela in (False,True):
+            for kind in (2,23):
+                for info in (0,1,3,6):
+                    for flags in (0,2):
+                        for strings_allocated in (False,True):
+                            with self.subTest(rela=rela,kind=kind,info=info,flags=flags,strings_allocated=strings_allocated):
+                                raw=bytearray(arm_elf(relocations=[(kind,0x200c)],rela=rela,dynamic=True,dynamic_changes={22:0}))
+                                shoff=struct.unpack_from('<I',raw,32)[0]
+                                struct.pack_into('<I',raw,shoff+5*40+28,info)
+                                struct.pack_into('<I',raw,shoff+5*40+8,flags)
+                                struct.pack_into('<I',raw,shoff+3*40+8,2 if strings_allocated else 0)
+                                try:image=self.elf_image(bytes(raw))
+                                except ValueError:
+                                    self.assertIn(info,(3,6))
+                                    continue
+                                self.assertTrue(image.relocation_overlap(0x200c,4))
+                                name,addr,size,source=image.find('entry',None)
+                                fs=hostfacts.FirmwareRoutine(image,name,addr,size,source).facts()
+                                self.assertNotIn('absolute',next(a for a in fs['accesses']if a['address']=='0x2004'))
+                                self.assertEqual(fs['exits'][0]['value'],'?')
+
+    def test_arm_elf_dynamic_validation_requires_the_consumed_taint_to_remain(self):
+        image=self.elf_image(arm_elf(relocations=[(2,0x200c)],dynamic=True,dynamic_changes={22:0}))
+        image.relocations.clear()
+        with self.assertRaises(ValueError):image.check_dynamic_relocations(list(image.elf.iter_sections()))
+
+    def test_arm_elf_relative_count_checks_the_actual_prefix_types(self):
+        for rela in (False,True):
+            counttag=0x6ffffff9 if rela else 0x6ffffffa
+            for first in (0,2):
+                with self.subTest(rela=rela,first=first),self.assertRaises(ValueError):
+                    self.elf_image(arm_elf(relocations=[(first,0x200c),(23,0x3000)],rela=rela,dynamic=True,dynamic_changes={22:0,counttag:1}))
+            image=self.elf_image(arm_elf(relocations=[(23,0x200c),(0,0x3000)],rela=rela,dynamic=True,dynamic_changes={22:0,counttag:1}))
+            self.assertTrue(image.relocation_overlap(0x200c,4))
+            with self.subTest(rela=rela,second_prefix=True),self.assertRaises(ValueError):
+                self.elf_image(arm_elf(relocations=[(23,0x200c),(0,0x3000)],rela=rela,dynamic=True,dynamic_changes={22:0,counttag:2}))
+
+    def test_arm_elf_none_and_empty_relative_count_controls_remain_valid(self):
+        for rela in (False,True):
+            counttag=0x6ffffff9 if rela else 0x6ffffffa
+            for count in (None,0):
+                changes={22:0}if count is None else{22:0,counttag:count}
+                _,_,fs=self.elf_facts(arm_elf(relocations=[(0,0x200c)],rela=rela,dynamic=True,dynamic_changes=changes))
+                self.assertEqual(next(a for a in fs['accesses']if a['address']=='0x2004')['absolute'],'0x0')
+                image=self.elf_image(arm_elf(rela=rela,dynamic=True,dynamic_changes=changes))
+                self.assertEqual(image.relocations,[])
+            with self.subTest(rela=rela,empty_positive=True),self.assertRaises(ValueError):
+                self.elf_image(arm_elf(rela=rela,dynamic=True,dynamic_changes={22:0,counttag:1}))
+
+    def test_arm_elf_nonruntime_sections_and_conflicting_count_hints(self):
+        raw=bytearray(arm_elf(relocations=[(2,0x200c)]));shoff=struct.unpack_from('<I',raw,32)[0]
+        struct.pack_into('<I',raw,shoff+5*40+28,6);struct.pack_into('<I',raw,shoff+5*40+8,0)
+        image=self.elf_image(bytes(raw));self.assertEqual(image.relocations,[])
+        for rela in (False,True):
+            counttag=0x6ffffff9 if rela else 0x6ffffffa
+            raw=bytearray(arm_elf(relocations=[(0,0x200c)],rela=rela,dynamic=True,dynamic_changes={22:0,counttag:1,0x6ffffffe:0}))
+            struct.pack_into('<I',raw,0x190+9*8,counttag)
+            with self.subTest(rela=rela),self.assertRaises(ValueError):self.elf_image(bytes(raw))
+
+    def test_arm_elf_missing_sections_cannot_hide_dynamic_relocations(self):
+        raw = bytearray(arm_elf(relocations=[(2,0x200c)],dynamic=True))
+        struct.pack_into('<I',raw,32,0);struct.pack_into('<HH',raw,48,0,0)
+        with self.assertRaises(ValueError):self.elf_image(bytes(raw))
+
+    def test_arm_elf_empty_dynamic_relocation_table_needs_no_mapped_bytes(self):
+        try:
+            _, _, fs = self.elf_facts(arm_elf('00009fe51eff2fe100000000',dynamic=True))
+        except ValueError as error:
+            self.fail('a valid empty relocation table was rejected: '+str(error))
+        self.assertEqual(fs['exits'][0]['value'], '0x0')
+
+    def test_arm_elf_zero_sized_function_requires_an_explicit_extent(self):
+        image = self.elf_image(arm_elf(symbol_size=0))
+        with self.assertRaisesRegex(ValueError, 'ELF.*--size'):image.find('entry',None)
+        self.assertEqual(image.find('entry',12)[1:3],(0x2000,12))
+
+    def test_arm_elf_nonallocated_function_cannot_name_a_runtime_callee(self):
+        raw = bytearray(arm_elf());shoff=struct.unpack_from('<I',raw,32)[0]
+        struct.pack_into('<I',raw,shoff+40+8,4)
+        syms=struct.unpack_from('<I',raw,shoff+4*40+16)[0];raw[syms+3*16+12]=0x11
+        image=self.elf_image(bytes(raw))
+        self.assertNotIn('entry',image.symbols)
+        self.assertIsNone(image.name_at(0x2000))
+
+    def test_arm_elf_mapping_markers_require_mapping_symbol_attributes(self):
+        for info, size in ((0x10,0),(2,0),(0,4)):
+            raw=bytearray(arm_elf(mappings=[(0x2000,'a')]));shoff=struct.unpack_from('<I',raw,32)[0]
+            syms=struct.unpack_from('<I',raw,shoff+4*40+16)[0]
+            raw[syms+16+12]=info;struct.pack_into('<I',raw,syms+16+8,size)
+            with self.subTest(info=info,size=size),self.assertRaises(ValueError):self.elf_image(bytes(raw))
+
+    def test_arm_elf_dynamic_indirect_constant_does_not_name_a_linked_function(self):
+        for elf_type in (3,2):
+            raw=bytearray(arm_elf('04309fe533ff2fe11eff2fe100200000',elf_type=elf_type))
+            shoff=struct.unpack_from('<I',raw,32)[0];syms=struct.unpack_from('<I',raw,shoff+4*40+16)[0]
+            raw[syms+3*16+12]=0x11
+            _,_,fs=self.elf_facts(bytes(raw))
+            self.assertEqual(fs['calls'][0]['target'],'0x2000')
+            self.assertIsNone(fs['calls'][0]['callee'])
+            self.assertEqual(fs['calls'][0].get('target_coordinate_basis'),'runtime constant')
+            self.assertEqual(fs['exits'][0]['value'],'ret(runtime 0x2000)')
+
+    def test_arm_elf_dynamic_pc_values_remain_load_bias_relative(self):
+        _,_,fs=self.elf_facts(arm_elf('00402de90fe0a0e10e00a0e10080bde8',symbol_size=16))
+        self.assertNotEqual(fs['exits'][0]['value'],'0x200c')
+        self.assertIn('ELF load bias',fs['exits'][0]['value'])
+        self.assertFalse(any(c['register']in('lr','r0')for c in fs['constants']))
+        _,_,fs=self.elf_facts(arm_elf())
+        literal=next(a for a in fs['accesses']if a['address']=='0x2000')
+        self.assertEqual(literal['linked_address'],'0x200c')
+        self.assertNotIn('absolute',literal)
+        self.assertIn('ELF load bias',literal['origin'])
+        self.assertEqual(next(a for a in fs['accesses']if a['address']=='0x2004')['absolute'],'0x0')
+
+    def test_arm_elf_direct_calls_keep_linked_target_identity(self):
+        raw=bytearray(arm_elf('feffffeb1eff2fe1',symbol_size=8))
+        shoff=struct.unpack_from('<I',raw,32)[0];syms=struct.unpack_from('<I',raw,shoff+4*40+16)[0];raw[syms+3*16+12]=0x11
+        _,_,fs=self.elf_facts(bytes(raw))
+        self.assertEqual(fs['calls'][0]['callee'],'entry')
+        self.assertEqual(fs['calls'][0].get('target_coordinate_basis'),'linked ELF virtual address')
+        _,_,fs=self.elf_facts(arm_elf('0e0000eb1eff2fe1',symbol_size=8))
+        self.assertEqual(fs['exits'][0]['value'],'ret(linked ELF 0x2040)')
+
+    def test_arm_elf_pc_relative_indirect_call_keeps_local_identity(self):
+        raw=bytearray(arm_elf('00402de90fe0a0e10c304ee233ff2fe10080bde8',symbol_size=20))
+        shoff=struct.unpack_from('<I',raw,32)[0];syms=struct.unpack_from('<I',raw,shoff+4*40+16)[0];raw[syms+3*16+12]=0x11
+        _,_,fs=self.elf_facts(bytes(raw))
+        self.assertEqual(fs['calls'][0]['callee'],'entry')
+        self.assertEqual(fs['calls'][0].get('target_coordinate_basis'),'linked ELF virtual address')
+
+    def test_arm_elf_data_addresses_and_scalar_returns_do_not_mix_domains(self):
+        _,routine,fs=self.elf_facts(arm_elf('04109fe5000091e51eff2fe100200000'))
+        access=next(a for a in fs['accesses']if a['address']=='0x2004')
+        self.assertEqual(access['absolute'],'0x2000')
+        self.assertEqual(access['coordinate_basis'],'runtime constant')
+        self.assertNotIn('sym(',hostfacts.render(routine,fs))
+        _,_,fs=self.elf_facts(arm_elf('00009fe51eff2fe100200000'))
+        self.assertEqual(fs['exits'][0]['value'],'0x2000')
+        _,routine,fs=self.elf_facts(arm_elf('04108fe2000091e51eff2fe107000000'))
+        access=next(a for a in fs['accesses']if a['address']=='0x2004')
+        self.assertNotIn('absolute',access)
+        self.assertEqual(access['linked_address'],'0x200c')
+        self.assertIn('ELF load bias',access['origin'])
+        self.assertIn('coordinate_basis=ELF load-bias-relative',hostfacts.render(routine,fs))
+
+    def test_arm_elf_pc_provenance_wraps_in_the_32_bit_address_domain(self):
+        image=self.elf_image(arm_elf())
+        self.assertEqual(hostfacts.facts.Render(image)(image.code_value(0x100000004)),
+                         'ELF load bias (unknown)+4')
+
+    def test_arm_elf_callee_identity_requires_matching_execution_state(self):
+        for opcode, mode, name in [('0a0000fa','thumb','alias'),('0a0000eb','arm',None)]:
+            with self.subTest(opcode=opcode):
+                code=opcode+'1eff2fe1'+'0000a0e1'*10+'0b207047'
+                raw=bytearray(arm_elf(code,symbol_size=8));shoff=struct.unpack_from('<I',raw,32)[0]
+                syms=struct.unpack_from('<I',raw,shoff+4*40+16)[0];struct.pack_into('<II',raw,syms+3*16+4,0x2031,4)
+                _,_,fs=self.elf_facts(bytes(raw))
+                self.assertEqual(fs['calls'][0]['callee'],name)
+                self.assertEqual(fs['calls'][0].get('target_arch'),mode)
+
+    def test_arm_elf_pc_relative_thumb_pointer_retains_interworking_bit(self):
+        code='00402de90fe0a0e125308ee233ff2fe10080bde8'+'0000a0e1'*7+'0b207047'
+        raw=bytearray(arm_elf(code,symbol_size=20));shoff=struct.unpack_from('<I',raw,32)[0]
+        syms=struct.unpack_from('<I',raw,shoff+4*40+16)[0];struct.pack_into('<II',raw,syms+3*16+4,0x2031,4)
+        _,_,fs=self.elf_facts(bytes(raw));call=fs['calls'][0]
+        self.assertEqual(call['callee'],'alias')
+        self.assertEqual(call.get('target_arch'),'thumb')
+        self.assertEqual(call['target'],'0x2031')
+        self.assertEqual(call.get('instruction_target'),'0x2030')
+
+    def test_arm_elf_reached_mode_switch_cannot_be_decoded_in_wrong_mode(self):
+        raw = bytearray(arm_elf('0000a0e100207047',symbol_size=4))
+        shoff = struct.unpack_from('<I',raw,32)[0]
+        syms = struct.unpack_from('<I',raw,shoff+4*40+16)[0]
+        struct.pack_into('<II',raw,syms+3*16+4,0x2005,4)
+        image = self.elf_image(bytes(raw));name,addr,size,source=image.find('entry',8)
+        with self.assertRaisesRegex(ValueError,'mode'):
+            hostfacts.FirmwareRoutine(image,name,addr,size,source).facts()
+
     def analyze(self, arch, code, **kwargs):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, 'blob')

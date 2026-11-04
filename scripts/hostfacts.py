@@ -3,7 +3,7 @@
 
 Usage: scripts/hostfacts.py BINARY[:MEMBER] ROUTINE [--size N] [--flat --load ADDR [--isa mips3|mips4]]
                             [--arch mips|m68k|coldfire|arm|thumb|x86-16|x86-32]
-                            [--offset N] [--abi NAME] [--json]
+                            [--offset N] [--abi NAME] [--elf] [--json]
 
   uv run --with capstone --with pyelftools \\
       python -I retools/scripts/hostfacts.py root/usr/lib32/libGLcore.so CISendFc
@@ -35,7 +35,14 @@ Sections of the output:
 
 Non-MIPS flat firmware requires an explicit --load and --size. MMSC a.out images use
 scripts/sysco/mmsc_aout.py for their mapped segments and symbols; their size can come from
-the next symbol (inferred). Architecture adapters share the symbolic value representation,
+the next symbol (inferred). With --elf, ARM ELF32 executables and shared objects use linked virtual
+coordinates: --load must equal the lowest mapped PT_LOAD virtual address, not a guessed runtime
+base. ELF magic alone does not select this mode: extracted load images can begin with
+an ELF header and still use the historical flat contract. --offset is unavailable for
+mapped files. Defined function symbols supply sizes; zero-sized symbols need --size.
+Relocations are not applied; reads
+overlapping them and writable literals remain unknown. A reached instruction overlapping
+a relocation or a conflicting mapping symbol stops analysis with an error. Architecture adapters share the symbolic value representation,
 worklist, path merging and output format inside this module. Calling conventions are assumed
 and argument counts are unknown. Unsupported effects are invalidated and reported.
 
@@ -239,11 +246,13 @@ def host_image(path, member=None, flat=False, load=0, isa='mips4'):
 
 
 def routine_for(path, routine, member=None, size=None, flat=False, load=0, isa='mips4', errors=None,
-                arch='mips', offset=0, abi=None):
+                arch='mips', offset=0, abi=None, elf=False):
+    if elf and (flat or arch not in ('arm', 'thumb')):
+        raise ValueError('--elf requires ARM/Thumb and cannot be combined with --flat')
     if arch != 'mips':
         if member:
             raise ValueError('non-MIPS firmware does not support archive members')
-        img = FirmwareImage(path, arch, load, offset, abi)
+        img = FirmwareImage(path, arch, load, offset, abi, elf=elf)
         name, addr, size, source = img.find(routine, size)
         return FirmwareRoutine(img, name, addr, size, source)
     img = host_image(path, member, flat, load, isa)
@@ -257,15 +266,18 @@ def routine_for(path, routine, member=None, size=None, flat=False, load=0, isa='
 # ===================================================================== non-MIPS firmware
 
 class FirmwareImage:
-    """Flat firmware or the existing MMSC a.out reader's mapped segments."""
+    """Flat firmware, mapped ARM ELF, or the MMSC a.out reader's segments."""
 
-    def __init__(self, path, arch, load, offset=0, abi=None):
+    def __init__(self, path, arch, load, offset=0, abi=None, elf=False):
         import capstone as cs
         self.path, self.arch, self.load = path, arch, load
         with open(path, 'rb') as stream:
             self.data = stream.read()
         self.kind, self.elf, self.flat = 'flat', None, True
         self.offset, self.symbols, self.aout = offset, {}, None
+        self.elf_segments, self.relocations, self.mapping_regions = [], [], []
+        self._consumed_elf_relocations = {}
+        self.symbol_modes = {}
         self.bits = 16 if arch == 'x86-16' else 32
         self.endian = 'big' if arch in ('m68k', 'coldfire') else 'little'
         self.abi = abi or {'m68k': 'm68k-sysv', 'coldfire': 'm68k-sysv', 'arm': 'arm-aapcs',
@@ -284,6 +296,21 @@ class FirmwareImage:
         self.md.detail = True
         self.sections = [{'name': 'flat', 'address': hex(load), 'offset': hex(offset),
                           'size': len(self.data) - offset, 'flags': 'AX'}]
+        if elf:
+            if not self.data.startswith(b'\x7fELF'):
+                raise ValueError('--elf input has no ELF header')
+            if arch not in ('arm', 'thumb'):
+                raise ValueError('non-MIPS ELF input currently requires ARM or Thumb mode')
+            if offset:
+                raise ValueError('--offset cannot be combined with an ARM ELF image')
+            try:
+                self.read_arm_elf()
+            except ValueError:
+                raise
+            except (IndexError, KeyError, TypeError, struct.error) as error:
+                raise ValueError('invalid ARM ELF metadata: %s' % error) from error
+            except __import__('elftools.common.exceptions', fromlist=['ELFError']).ELFError as error:
+                raise ValueError('invalid ARM ELF metadata: %s' % error) from error
         # The header and nlist are not mapped into the controller's address space.
         if arch.startswith('x86') and len(self.data) >= 32 and self.data[:4] == b'\x07\x01\x00\x00':
             from sysco import mmsc_aout
@@ -300,8 +327,283 @@ class FirmwareImage:
                 if s.kind == 'text' and not s.marker:
                     self.symbols.setdefault(s.name, []).append((s.value, s.size))
 
+    def read_arm_elf(self):
+        from elftools.elf.sections import SymbolTableSection
+        from elftools.elf.relocation import RelocationSection
+        self.elf = facts.inventory.elf_of(self.data)
+        elf = self.elf
+        if (elf.elfclass != 32 or not elf.little_endian or elf['e_machine'] != 'EM_ARM'
+                or elf['e_type'] not in ('ET_EXEC', 'ET_DYN')):
+            raise ValueError('expected a little-endian ARM ELF32 executable or shared object')
+        self.kind, self.flat = 'elf', False
+        for segment in elf.iter_segments():
+            if segment['p_type'] != 'PT_LOAD':
+                continue
+            a, off, size, mem, flags = (segment[k] for k in ('p_vaddr', 'p_offset', 'p_filesz', 'p_memsz', 'p_flags'))
+            align = segment['p_align']
+            if (size > mem or off + size > len(self.data) or a + mem > 1 << 32
+                    or align > 1 and (align & (align-1) or a % align != off % align)):
+                raise ValueError('invalid ARM ELF PT_LOAD bounds or alignment')
+            if mem:
+                self.elf_segments.append(dict(address=a, offset=off, size=size, memory_size=mem, flags=flags))
+        self.elf_segments.sort(key=lambda s:s['address'])
+        if not self.elf_segments or self.load != self.elf_segments[0]['address']:
+            raise ValueError('--load must equal the lowest mapped linked ELF PT_LOAD address')
+        for left, right in zip(self.elf_segments, self.elf_segments[1:]):
+            if left['address'] + left['memory_size'] > right['address']:
+                raise ValueError('overlapping ARM ELF PT_LOAD mappings')
+        sections = list(elf.iter_sections())
+        if not sections:
+            raise ValueError('ARM ELF mapped analysis requires section and symbol metadata')
+        self.sections = []
+        for section in sections:
+            if section['sh_flags'] & 2 and (isinstance(section['sh_type'], int) or section['sh_type'] == 'SHT_RELR'):
+                raise ValueError('unsupported allocated ARM ELF section type')
+            if section['sh_type'] != 'SHT_NOBITS' and section['sh_offset'] + section['sh_size'] > len(self.data):
+                raise ValueError('ARM ELF section extends beyond file')
+            if section['sh_flags'] & 2:
+                self.sections.append(dict(name=section.name, address=hex(section['sh_addr']),
+                                          offset=hex(section['sh_offset']), size=section['sh_size'],
+                                          flags=''.join(c for mask,c in ((2,'A'),(1,'W'),(4,'X')) if section['sh_flags'] & mask)))
+        maps = collections.defaultdict(list)
+        for table in sections:
+            if not isinstance(table, SymbolTableSection):
+                continue
+            if table['sh_entsize'] != 16 or table['sh_size'] % 16:
+                raise ValueError('invalid ARM ELF symbol table entry size')
+            for symbol in table.iter_symbols():
+                index = symbol['st_shndx']
+                if not isinstance(index, int) or not 0 < index < len(sections):
+                    continue
+                section = sections[index]
+                value, size = symbol['st_value'], symbol['st_size']
+                mapping = re.fullmatch(r'\$([atd])(?:\..*)?', symbol.name)
+                if mapping:
+                    if not section['sh_flags'] & 2:
+                        continue
+                    if (symbol['st_info']['type'] != 'STT_NOTYPE'
+                            or symbol['st_info']['bind'] != 'STB_LOCAL' or size):
+                        raise ValueError('invalid ARM ELF mapping symbol attributes')
+                    if not section['sh_addr'] <= value < section['sh_addr'] + section['sh_size']:
+                        raise ValueError('ARM ELF mapping symbol outside its section')
+                    maps[index].append((value, mapping[1]))
+                    continue
+                if (symbol['st_info']['type'] != 'STT_FUNC' or not symbol.name
+                        or section['sh_flags'] & 6 != 6 or section['sh_type']=='SHT_NOBITS'):
+                    continue
+                address = value & ~1
+                mode = 'thumb' if value & 1 else 'arm'
+                if not section['sh_addr'] <= address < section['sh_addr'] + section['sh_size'] or address + size > section['sh_addr'] + section['sh_size']:
+                    raise ValueError('ARM ELF function symbol outside its executable section')
+                if address % (2 if mode == 'thumb' else 4):
+                    raise ValueError('misaligned ARM ELF function symbol')
+                if not any(s['flags'] & 1 and s['address'] <= address
+                           and address+max(1,size) <= s['address']+s['size'] for s in self.elf_segments):
+                    continue
+                if address in self.symbol_modes and self.symbol_modes[address] != mode:
+                    raise ValueError('conflicting ARM ELF function modes')
+                self.symbol_modes[address] = mode
+                hit = (address, size)
+                if hit not in self.symbols.setdefault(symbol.name, []):
+                    self.symbols[symbol.name].append(hit)
+        for index, values in maps.items():
+            values = sorted(set(values)); section = sections[index]
+            for n, (start, mode) in enumerate(values):
+                if n and start == values[n-1][0]:
+                    raise ValueError('conflicting ARM ELF mapping symbols')
+                end = values[n+1][0] if n+1 < len(values) else section['sh_addr'] + section['sh_size']
+                self.mapping_regions.append((start, end, {'a':'arm', 't':'thumb', 'd':'data'}[mode]))
+        # AAELF32 defines data and instruction places independently. No relocation
+        # is applied here: known extents only identify bytes that are not constants.
+        widths = {1:4, 2:4, 3:4, 4:4, 5:2, 6:4, 7:2, 8:1, 9:4, 10:4, 11:2,
+                  17:4, 18:4, 19:4, 21:4, 22:4, 23:4, 28:4, 29:4, 30:4,
+                  38:4, 40:4, 43:4, 44:4, 45:4, 46:4}
+        for section_index, section in enumerate(sections):
+            if not isinstance(section, RelocationSection):
+                continue
+            target = section['sh_info']
+            if target and (target >= len(sections) or not sections[target]['sh_flags'] & 2):
+                if target >= len(sections):
+                    raise ValueError('invalid ARM ELF relocation target section')
+                continue
+            expected = 12 if section.is_RELA() else 8
+            if section['sh_entsize'] != expected or section['sh_size'] % expected:
+                raise ValueError('invalid ARM ELF relocation entry size')
+            table = elf.get_section(section['sh_link'])
+            if not isinstance(table, SymbolTableSection):
+                raise ValueError('ARM ELF relocation has no symbol table')
+            for relocation_index, relocation in enumerate(section.iter_relocations()):
+                kind, address, symbol_index = (relocation[k] for k in ('r_info_type','r_offset','r_info_sym'))
+                if symbol_index >= table.num_symbols():
+                    raise ValueError('ARM ELF relocation symbol index outside table')
+                if kind == 0:
+                    continue
+                symbol = table.get_symbol(symbol_index)
+                if kind == 20:
+                    if elf['e_type'] != 'ET_EXEC' or not symbol['st_size']:
+                        raise ValueError('ARM ELF COPY relocation has unknown extent')
+                    width = symbol['st_size']
+                else:
+                    width = widths.get(kind)
+                    if width is None:
+                        raise ValueError('ARM ELF relocation type %d has unknown extent' % kind)
+                if not any(s['address'] <= address and address + width <= s['address'] + s['memory_size'] for s in self.elf_segments):
+                    raise ValueError('ARM ELF relocation place outside mapped memory')
+                taint = dict(address=address, size=width, type=kind, symbol=symbol.name,
+                             addend=relocation['r_addend'] if section.is_RELA() else None,
+                             section=section.name)
+                self.relocations.append(taint)
+                self._consumed_elf_relocations[(section_index,relocation_index)] = taint
+        self.check_dynamic_relocations(sections)
+
+    def check_dynamic_relocations(self, sections):
+        """Refuse dynamic tables whose bytes or symbol metadata were not parsed."""
+        from elftools.elf.sections import SymbolTableSection
+        from elftools.elf.relocation import RelocationSection
+        critical = {'DT_REL','DT_RELSZ','DT_RELENT','DT_RELA','DT_RELASZ','DT_RELAENT',
+                    'DT_JMPREL','DT_PLTRELSZ','DT_PLTREL','DT_SYMTAB','DT_SYMENT','DT_STRTAB','DT_STRSZ',
+                    'DT_RELCOUNT','DT_RELACOUNT'}
+        # Generic ABI tags locate the handled tables or describe binding,
+        # initialization and names. AAELF32 adds symbol-version metadata;
+        # RELCOUNT/RELACOUNT describe prefixes of the already parsed tables.
+        # Unreviewed extensions can introduce additional relocation places.
+        allowed = critical | {'DT_NEEDED','DT_PLTGOT','DT_HASH','DT_INIT','DT_FINI',
+                    'DT_SONAME','DT_RPATH','DT_SYMBOLIC','DT_DEBUG','DT_TEXTREL','DT_BIND_NOW',
+                    'DT_INIT_ARRAY','DT_FINI_ARRAY','DT_INIT_ARRAYSZ','DT_FINI_ARRAYSZ',
+                    'DT_RUNPATH','DT_FLAGS','DT_PREINIT_ARRAY','DT_PREINIT_ARRAYSZ',
+                    'DT_SYMTAB_SHNDX','DT_SYMTABSZ','DT_VERSYM','DT_VERDEF','DT_VERDEFNUM',
+                    'DT_VERNEED','DT_VERNEEDNUM','DT_RELCOUNT','DT_RELACOUNT'}
+        for segment in self.elf.iter_segments():
+            if segment['p_type'] != 'PT_DYNAMIC':
+                continue
+            size = segment['p_filesz']
+            if size % 8 or self.read(segment['p_vaddr'], size) != segment.data():
+                raise ValueError('ARM ELF dynamic metadata is not completely mapped')
+            tags = {}; terminated = False
+            for n, tag in enumerate(segment.iter_tags()):
+                if n >= size // 8:
+                    break
+                key, value = tag['d_tag'], tag['d_val']
+                if key == 'DT_NULL':
+                    terminated = True; break
+                if key not in allowed:
+                    raise ValueError('unsupported ARM ELF dynamic tag %s' % (hex(key)if isinstance(key,int)else key))
+                if key in critical and key in tags and tags[key] != value:
+                    raise ValueError('conflicting ARM ELF dynamic metadata')
+                tags[key] = value
+            if not terminated:
+                raise ValueError('unterminated ARM ELF dynamic metadata')
+            symbol_tables = []
+            if 'DT_SYMTAB' in tags:
+                if tags.get('DT_SYMENT') != 16 or 'DT_STRTAB' not in tags or 'DT_STRSZ' not in tags:
+                    raise ValueError('incomplete ARM ELF dynamic symbol metadata')
+                for index, table in enumerate(sections):
+                    if not isinstance(table, SymbolTableSection) or table['sh_addr'] != tags['DT_SYMTAB']:
+                        continue
+                    if self.read(table['sh_addr'],table['sh_size']) != table.data():
+                        continue
+                    strings = self.elf.get_section(table['sh_link']); string_size = tags['DT_STRSZ']
+                    if (strings['sh_addr'] != tags['DT_STRTAB'] or string_size > strings['sh_size']
+                            or self.read(tags['DT_STRTAB'],string_size) != strings.data()[:string_size]):
+                        continue
+                    data = strings.data()[:string_size]
+                    if any(s['st_name'] >= string_size or b'\0' not in data[s['st_name']:] for s in table.iter_symbols()):
+                        continue
+                    symbol_tables.append(index)
+                if not symbol_tables:
+                    raise ValueError('ARM ELF dynamic symbol/string tables disagree with sections')
+            tables = []
+            for kind in ('REL','RELA'):
+                prefix = 'DT_'+kind
+                count = tags.get(prefix+'COUNT',0)
+                if prefix in tags or tags.get(prefix+'SZ',0):
+                    entry = 8 if kind=='REL' else 12
+                    if prefix not in tags or prefix+'SZ' not in tags or tags.get(prefix+'ENT') != entry:
+                        raise ValueError('incomplete ARM ELF dynamic relocation table')
+                    tables.append((tags[prefix],tags[prefix+'SZ'],entry,count))
+                if count and (prefix not in tags or count > tags.get(prefix+'SZ',0)//(8 if kind=='REL'else 12)):
+                    raise ValueError('invalid ARM ELF relative relocation count')
+            if 'DT_JMPREL' in tags or tags.get('DT_PLTRELSZ',0):
+                if 'DT_JMPREL' not in tags or 'DT_PLTRELSZ' not in tags or tags.get('DT_PLTREL') not in (7,17):
+                    raise ValueError('incomplete ARM ELF PLT relocation table')
+                tables.append((tags['DT_JMPREL'],tags['DT_PLTRELSZ'],12 if tags['DT_PLTREL']==7 else 8,0))
+            for address, length, entry, relative_count in tables:
+                if length % entry:
+                    raise ValueError('invalid ARM ELF dynamic relocation table bounds')
+                if not length:
+                    continue
+                if self.read(address,length) is None:
+                    raise ValueError('invalid ARM ELF dynamic relocation table bounds')
+                for place in range(address,address+length,entry):
+                    matching = [(i,s) for i,s in enumerate(sections) if isinstance(s,RelocationSection)
+                                and (12 if s.is_RELA()else 8)==entry
+                                and s['sh_addr'] <= place and place+entry <= s['sh_addr']+s['sh_size']
+                                and (place-s['sh_addr'])%entry==0]
+                    if not matching:
+                        raise ValueError('ARM ELF dynamic relocation table has unparsed records')
+                    for section_index, section in matching:
+                        off = place-section['sh_addr']
+                        if self.read(place,entry) != section.data()[off:off+entry]:
+                            raise ValueError('ARM ELF dynamic relocation bytes disagree with sections')
+                        if section['sh_link'] not in symbol_tables:
+                            raise ValueError('ARM ELF dynamic relocation symbol table disagrees with sections')
+                        relocation_index = off // entry
+                        relocation = section.get_relocation(relocation_index)
+                        kind = relocation['r_info_type']
+                        if (place-address)//entry < relative_count and kind != 23:
+                            raise ValueError('ARM ELF relative relocation count prefix is not RELATIVE')
+                        # Matching bytes do not prove the earlier section pass
+                        # consumed them: sh_info may have filtered that section.
+                        if kind:
+                            taint = self._consumed_elf_relocations.get((section_index,relocation_index))
+                            if (taint is None or taint not in self.relocations
+                                    or taint['address'] != relocation['r_offset'] or taint['type'] != kind):
+                                raise ValueError('active ARM ELF relocation record was not consumed into taint')
+
+    def relocation_overlap(self, addr, size):
+        return any(r['address'] < addr + size and addr < r['address'] + r['size'] for r in self.relocations)
+
+    def code_value(self, address):
+        # Instruction coordinates do not establish where an ELF image was loaded.
+        return facts.add(('in','ELF load bias (unknown)'),address & 0xffffffff) if self.elf else facts.C(address)
+
+    def linked_address(self, value):
+        root, offset = facts.split(value)
+        if self.elf and root == ('in','ELF load bias (unknown)'):
+            return offset & 0xffffffff
+        return None
+
+    def read_constant(self, addr, size):
+        if self.elf:
+            if self.relocation_overlap(addr, size):
+                return None
+            if not any(s['address'] <= addr and addr + size <= s['address'] + s['size'] and not s['flags'] & 2 for s in self.elf_segments):
+                return None
+            if any('W' in s['flags'] and int(s['address'],16) < addr + size and addr < int(s['address'],16) + s['size'] for s in self.sections):
+                return None
+        return self.read(addr, size)
+
+    def check_instruction(self, addr, size):
+        if self.elf:
+            if self.relocation_overlap(addr, size):
+                raise ValueError('relocation-dependent instruction at 0x%x; no fact sheet emitted' % addr)
+            if self.symbol_modes.get(addr,self.arch) != self.arch:
+                raise ValueError('ARM ELF instruction mode differs from selected architecture at 0x%x' % addr)
+            for hits in self.symbols.values():
+                if any(a < addr+size and addr < a+z and self.symbol_modes[a] != self.arch for a,z in hits):
+                    raise ValueError('ARM ELF instruction mode differs from containing function at 0x%x' % addr)
+            for start, end, mode in self.mapping_regions:
+                if start < addr + size and addr < end and mode != self.arch:
+                    raise ValueError('ARM ELF instruction mode/data mismatch at 0x%x' % addr)
+
     def read(self, addr, size):
         if size < 0:
+            return None
+        if self.elf:
+            for s in self.elf_segments:
+                if s['address'] <= addr and addr + size <= s['address'] + s['size']:
+                    off = s['offset'] + addr - s['address']
+                    return self.data[off:off+size]
             return None
         if self.aout:
             for s in self.aout.segments:
@@ -324,12 +626,30 @@ class FirmwareImage:
             if len({a for a, _ in hits}) != 1:
                 raise ValueError('routine is absent or ambiguous; use 0xADDR --size N')
             name, (addr, inferred) = routine, hits[0]
+        if self.elf:
+            if self.arch == 'thumb':
+                addr &= ~1
+            if addr % (2 if self.arch == 'thumb' else 4) or self.symbol_modes.get(addr, self.arch) != self.arch:
+                raise ValueError('ARM ELF symbol mode differs from selected architecture')
+            for hits in self.symbols.values():
+                if any(a <= addr < a+z and self.symbol_modes[a] != self.arch for a,z in hits):
+                    raise ValueError('ARM ELF containing function mode differs from selected architecture')
+            inferred_sizes = {z for a,z in self.symbols.get(name, []) if a == addr and z}
+            if len(inferred_sizes) > 1 and size is None:
+                raise ValueError('ARM ELF symbol size is ambiguous; use --size')
+            inferred = next(iter(inferred_sizes)) if len(inferred_sizes) == 1 else None
         size = size if size is not None else inferred
         if not size or size < 0:
+            if self.elf:
+                raise ValueError('ARM ELF function requires --size; no boundary is guessed')
             raise ValueError('flat firmware requires --size; no routine boundary is guessed')
         if self.read(addr, size) is None:
             raise ValueError('routine range lies outside the mapped image')
-        source = 'next a.out symbol (inferred)' if inferred and size == inferred else 'given'
+        if self.elf and not any('X' in s['flags'] and int(s['address'],16) <= addr and addr + size <= int(s['address'],16) + s['size'] for s in self.sections):
+            raise ValueError('routine range lies outside an ELF executable section')
+        if self.elf and not any(s['flags'] & 1 and s['address'] <= addr and addr + size <= s['address'] + s['size'] for s in self.elf_segments):
+            raise ValueError('routine range lies outside an executable ELF PT_LOAD')
+        source = ('ELF symbol size' if self.elf else 'next a.out symbol (inferred)') if inferred and size == inferred else 'given'
         return name, addr, size, source
 
     def name_at(self, addr):
@@ -570,7 +890,7 @@ class FirmwareRoutine:
         base = self.reg(ins, mem.base) if mem.base else ''
         idx = self.reg(ins, mem.index) if mem.index else ''
         if self.arm and base == 'pc':
-            v = facts.C((ins.address + (4 if self.arch == 'thumb' else 8)) & ~3)
+            v = self.img.code_value((ins.address + (4 if self.arch == 'thumb' else 8)) & ~3)
         elif base:
             v = self.getreg(st, base)
         else:
@@ -605,6 +925,12 @@ class FirmwareRoutine:
         elif address is not None:
             origin, off = facts.split(address)
             a['origin'], a['origin_offset'] = self.R(origin), off
+        if self.img.elf:
+            linked = self.img.linked_address(address)
+            if linked is not None:
+                a.update(linked_address=hex(linked),coordinate_basis='ELF load-bias-relative')
+            elif facts.is_c(address):
+                a['coordinate_basis']='runtime constant'
         events['accesses'].append(a)
 
     def memory(self, st, ins, address, width, events, store=False, value=None, base='', disp=0, implicit=False):
@@ -629,10 +955,14 @@ class FirmwareRoutine:
             return value
         if stack and key in st.memory:
             return st.memory[key]
-        if base == 'pc' and facts.is_c(address):
-            raw = self.img.read(address[1], width)
+        literal = self.img.linked_address(address) if self.img.elf else address[1] if facts.is_c(address) else None
+        if base == 'pc' and literal is not None:
+            raw = self.img.read_constant(literal, width)
             if raw is not None:
                 return facts.C(int.from_bytes(raw, self.img.endian))
+            if self.img.elf:
+                self.warnings.add('0x%x ELF literal at linked 0x%x has relocation, writable or unmapped bytes; value unknown' % (ins.address, literal))
+                return None
         if address is None:
             return None
         return facts.cap(('ld', root, off, width))
@@ -645,6 +975,8 @@ class FirmwareRoutine:
                 self.setreg(st, name, value, self.width(ins, op))
                 return value
             v = self.getreg(st, name)
+            if self.arm and self.img.elf and name=='pc':
+                v = self.img.code_value(ins.address+(4 if self.arch=='thumb'else 8))
             if self.arm and op.shift.type:
                 from capstone import arm_const as ac
                 if not facts.is_c(v) or op.shift.type != ac.ARM_SFT_LSL or not 0 <= op.shift.value < 32:
@@ -669,6 +1001,7 @@ class FirmwareRoutine:
         return None
 
     def control(self, ins):
+        self.img.check_instruction(ins.address, ins.size)
         """kind, direct target, condition code. Architectures here have no delay slots."""
         mn, op = ins.mnemonic, ins.operands
         if self.m68k:
@@ -772,7 +1105,7 @@ class FirmwareRoutine:
                 and len(ins.operands) == 2 and ins.operands[1].type == 1
                 and not ins.operands[1].shift.type
                 and (ins.address in self._fixed_calls if getattr(self, '_fixed_calls', None) is not None
-                     else self.getreg(st, 'lr') == facts.C(ins.address + ins.size))):
+                     else self.getreg(st, 'lr') == self.img.code_value(ins.address + ins.size))):
             return 'conditional-call' if kind == 'conditional' else 'call', target, cc
         return kind, target, cc
 
@@ -862,20 +1195,39 @@ class FirmwareRoutine:
         else:
             predicated = False
         if kind in ('call', 'conditional-call'):
+            linked_target = target is not None
+            direct_target = linked_target
             if target is None and op:
                 callee_op = op[-1] if self.arch == 'arm' and ins.insn_name() == 'mov' else op[0]
                 value = self.operand(st, ins, callee_op, events, address_only=self.m68k)
-                target = value[1] if facts.is_c(value) else None
-            name = self.img.name_at(target) if target is not None else None
+                target = value[1] if facts.is_c(value) else self.img.linked_address(value)
+                linked_target = target is not None and not facts.is_c(value)
+            lookup, target_arch = target, None
+            if self.img.elf and target is not None:
+                operation=ins.insn_name()
+                if direct_target:
+                    target_arch=('thumb'if self.arch=='arm'else'arm')if operation=='blx'else self.arch
+                elif operation=='blx':
+                    target_arch='thumb'if target & 1 else'arm';lookup=target & ~1
+            name = self.img.name_at(lookup) if lookup is not None and (not self.img.elf or linked_target) else None
+            if self.img.elf and name and self.img.symbol_modes.get(lookup) != target_arch:
+                name=None
             call = {'address': hex(ins.address), 'mnemonic': mn, 'target': hex(target) if target is not None else None,
                     'callee': name, 'args': self.call_args(st), 'conditional': conditional}
+            if self.img.elf:
+                call['target_coordinate_basis']='unknown'if target is None else'linked ELF virtual address'if linked_target else'runtime constant'
+                call['target_arch']=target_arch or'unknown'
+                call['instruction_target']=hex(lookup)if target_arch and lookup is not None else None
             if conditional:
                 call['taken_when'], call['falls_through_when'] = self.branch_words(old, ins, cc)
             events['calls'].append(call)
             clobber = ['d0', 'd1', 'a0', 'a1'] if self.m68k else ['r0', 'r1', 'r2', 'r3', 'r12', 'lr'] if self.arm else ['eax', 'ecx', 'edx'] if self.word == 4 else ['ax', 'cx', 'dx']
             for reg in clobber:
                 self.setreg(st, reg, None)
-            self.setreg(st, self.retreg, ('ret', name or hex(target) if target is not None else 'unknown'))
+            result = name or hex(target) if target is not None else 'unknown'
+            if self.img.elf and target is not None and name is None:
+                result = ('linked ELF 'if linked_target else'runtime ')+hex(target)
+            self.setreg(st, self.retreg, ('ret', result))
             st.flags = None
             st.direction = None
             st.memory.clear()
@@ -1054,7 +1406,7 @@ class FirmwareRoutine:
                         and not ins.update_flags and op[0].type == op[1].type == 1
                         and self.reg(ins, op[0].reg) == 'lr'
                         and self.reg(ins, op[1].reg) == 'pc' and not op[1].shift.type):
-                    v = facts.C(ins.address + 8)
+                    v = self.img.code_value(ins.address + 8)
                 else:
                     v = read(op[1])
                 if ins.insn_name() == 'movt':
@@ -1225,6 +1577,8 @@ class FirmwareRoutine:
               'accesses': [], 'calls': [], 'blocks': [], 'exits': [], 'constants': [],
               'instructions': [], 'immediates': [], 'unreached': [], 'warnings': [], 'sections': self.img.sections,
               'coverage': {'unresolved_transfers': []}}
+        if self.img.elf:
+            fs['routine'].update(coordinate_basis='linked ELF virtual addresses', runtime_load_base='unknown')
         predecessors = collections.defaultdict(list)
         for n, edges in self.edges.items():
             for label, successor in edges:
@@ -1260,6 +1614,11 @@ class FirmwareRoutine:
         if fs['coverage']['unresolved_transfers']:
             self.warnings.add('unresolved indirect transfers: access, call and return lists cover known edges only')
         fs['warnings'] = sorted(self.warnings)
+        if self.img.elf:
+            used = [(self.addr, self.size)] + [(int(a['linked_address'],16), a['width'])
+                    for a in fs['accesses'] if a['kind']=='load' and 'linked_address' in a and isinstance(a['width'],int)]
+            fs['relocations'] = [dict(r, address=hex(r['address'])) for r in self.img.relocations
+                                 if any(r['address'] < a+size and a < r['address']+r['size'] for a,size in used)]
         return fs
 
     def render(self, fs):
@@ -1267,8 +1626,16 @@ class FirmwareRoutine:
                  '  file %s  %s  ISA %s  ABI %s  load %s; size from %s' % (self.img.path,self.img.kind,self.arch,self.img.abi,hex(self.img.load),self.source),
                  '  calling convention: assumed %s; argument count unknown; printed arguments are candidate locations; ? means unknown' % self.img.abi,
                  '  legend: sp is the stack pointer at entry; [X+N] is a loaded value; ret(F) is a call result']
+        if self.img.elf:
+            lines.append('  coordinates: instructions/direct targets are linked ELF virtual addresses; runtime load base unknown')
+            lines.append('  data: PC-derived image references retain unknown ELF load bias; unrelocated scalar constants retain runtime values; relocations are not applied')
         for warning in fs['warnings']:
             lines.append('  warning: '+warning)
+        if self.img.elf:
+            lines += ['', 'ELF relocation-dependent places (%d)' % len(fs['relocations'])]
+            for relocation in fs['relocations']:
+                lines.append('  %s size %d type %d symbol %s; value unknown (not applied)' % (
+                    relocation['address'],relocation['size'],relocation['type'],relocation['symbol'] or '(none)'))
         lines += ['', 'accesses (%d)' % len(fs['accesses'])]
         for a in fs['accesses']:
             target = 'abs '+a['absolute'] if 'absolute' in a else a['origin']+' '+sgn(a['origin_offset']) if 'origin' in a else '? (unknown effective address)'
@@ -1279,11 +1646,18 @@ class FirmwareRoutine:
                     a['stride'] if a['stride'] is not None else '?', a['address_bits'])
                 if a.get('segment'):
                     string += ' segment=%s offset=%s base unknown' % (a['segment'], a['segment_offset'])
+            if self.img.elf and a.get('coordinate_basis'):
+                string += ' coordinate_basis='+a['coordinate_basis']
+                if a.get('linked_address'):
+                    string += ' linked_address='+a['linked_address']
             lines.append('  %s %s w%s %s base=%s disp %s => %s%s%s' % (a['address'],a['kind'],a['width'],a['mnemonic'],a['base'] or '?',sgn(a['offset']),target,
                          ' value '+a['value'] if a['kind']=='store' else '', (' space='+a['space'] if a.get('space') else '')+string+(' when '+a['condition'] if a.get('condition') else '')))
         lines += ['', 'calls (%d)' % len(fs['calls'])]
         for c in fs['calls']:
             lines.append('  %s %s %s [%s]' % (c['address'],c['mnemonic'],c['callee'] or '(unknown callee)',c['target'] or 'unknown target'))
+            if self.img.elf:
+                lines.append('      target coordinate basis: '+c['target_coordinate_basis'])
+                lines.append('      target execution state: %s; instruction target: %s' % (c['target_arch'],c['instruction_target']or'unknown'))
             lines.append('      args: '+', '.join(a['location']+'='+a['value'] for a in c['args']))
             if c.get('conditional'):
                 lines.append('      taken when '+c['taken_when']+'; falls through when '+c['falls_through_when'])
@@ -1806,7 +2180,9 @@ def main(argv=None):
     ap.add_argument('--arch', default='mips', choices=('mips', 'm68k', 'coldfire', 'arm', 'thumb', 'x86-16', 'x86-32'))
     ap.add_argument('--offset', type=lambda s: int(s, 0), default=0, help='flat payload file offset')
     ap.add_argument('--abi', choices=('unknown', 'm68k-sysv', 'arm-aapcs', 'cdecl32', 'cdecl16'))
-    ap.add_argument('--flat', action='store_true', help='raw payload (MIPS/M68K big-endian; ARM/x86 little-endian)')
+    formats = ap.add_mutually_exclusive_group()
+    formats.add_argument('--flat', action='store_true', help='raw payload (MIPS/M68K big-endian; ARM/x86 little-endian)')
+    formats.add_argument('--elf', action='store_true', help='mapped ARM ELF32, linked coordinates and relocation taint')
     ap.add_argument('--load', type=lambda s: int(s, 0))
     ap.add_argument('--isa', default='mips4', choices=('mips3', 'mips4'))
     ap.add_argument('--error-routine', action='append')
@@ -1817,10 +2193,10 @@ def main(argv=None):
     path, member = split_binary(a.binary)
     try:
         r = routine_for(path, a.routine, member, a.size, a.flat, a.load or 0, a.isa, a.error_routine,
-                        a.arch, a.offset, a.abi)
+                        a.arch, a.offset, a.abi, a.elf)
+        fs = r.facts(False)
     except ValueError as exc:
         ap.error(str(exc))
-    fs = r.facts(False)
     fs['routine']['file'] = a.binary
     sys.stdout.write(json.dumps(fs, indent=1, sort_keys=True) + '\n' if a.json else render(r, fs))
 
