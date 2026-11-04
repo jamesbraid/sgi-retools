@@ -174,6 +174,66 @@ class PlainBranch(unittest.TestCase):
         self.assertIn('runs on both paths', text)
 
 
+class UnconditionalBranchDelay(unittest.TestCase):
+    def test_return_uses_delay_slot_write(self):
+        words = [
+            I(4, 0, 0, 2),             # b 0x100c
+            daddu(V0, 0, 0),           # move v0,zero in the delay slot
+            daddiu(V0, 0, 1),          # skipped
+            jr(RA),
+            NOP,
+        ]
+        _, fs, text = routine(words)
+        self.assertEqual(fs['exits'][0]['v0'], '0x0')
+        self.assertIn('delay slot 0x1004', text)
+
+
+class IndirectJumpTable(unittest.TestCase):
+    def test_unresolved_indexed_table_is_explicit(self):
+        t0, t1, t9 = 8, 9, 25
+        words = [
+            lui(t0, 0x1001),
+            Rt(0, A0, t1, 0x00, 2),  # sll t1,a0,2
+            daddu(t0, t0, t1),
+            lw(t9, 0, t0),
+            jr(t9),
+            NOP,
+            jr(RA),
+            NOP,
+        ]
+        _, _, text = routine(words)
+        self.assertIn('(jump table; successors unresolved)', text)
+        self.assertIn('CFG incomplete', text)
+
+
+class UnreachableBranch(unittest.TestCase):
+    def test_unreachable_branch_does_not_require_an_input_state(self):
+        words = [
+            I(4, 0, 0, 2),             # b 0x1010
+            NOP,
+            I(4, 0, 0, 2),             # unreachable branch
+            NOP,
+            jr(RA),
+            NOP,
+        ]
+        _, _, text = routine(words)
+        self.assertIn('(never reached)', text)
+
+
+class OptionalLibGLRepro(unittest.TestCase):
+    BINARY = ('/path/to/re-roots/odsy/root/builds/'
+              '6.5.30-media/usr/gfx/arch/IP30ODSY/libGL.so')
+    ROUTINES = ('__glXGetDrawableAttributes', '__glXSendMakeCurrentRead', 'GetFBConfigsSGIX')
+
+    @unittest.skipUnless(os.path.isfile(BINARY), 'optional libGL root is not present')
+    def test_real_routines_render(self):
+        for name in self.ROUTINES:
+            with self.subTest(routine=name):
+                r = hostfacts.routine_for(self.BINARY, name)
+                fs = r.facts(False)
+                self.assertIn('blocks (', hostfacts.render(r, fs))
+
+
 class CallArguments(unittest.TestCase):
     def test_arguments_before_the_call(self):
         words = [

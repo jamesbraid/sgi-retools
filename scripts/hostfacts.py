@@ -370,8 +370,41 @@ def terminator(r, i):
         return 'return' if facts.reg(ins['ops'][0]) == 31 else 'indirect'
     if mn == 'j':
         return 'jump'
+    if i not in r.in_states:
+        return 'cond'
     never, always = r.static_cond(r.in_states[i], ins)
     return 'always' if always else 'never' if never else 'cond'
+
+
+def contains_scaled_index(value):
+    if not isinstance(value, tuple):
+        return False
+    if len(value) == 4 and value[:2] == ('op', '<<') and facts.is_c(value[3]) and value[3][1] in (2, 3):
+        return True
+    return any(contains_scaled_index(part) for part in value[1:])
+
+
+def unresolved_table_jump(r, i):
+    """Whether an indirect jump uses a value loaded through a scaled table address."""
+    ins = r.insns[i]
+    if ins['mn'] not in ('jr', 'jr.hb') or not ins['ops']:
+        return False
+    n = facts.reg(ins['ops'][0])
+    v = r.in_states.get(i, {}).get(n) if n is not None else None
+    if not isinstance(v, tuple) or not v or v[0] != 'ld':
+        return False
+    address = v[1]
+    if not contains_scaled_index(address):
+        return False
+    # An indexed address based at gp or a constructed constant is characteristic of
+    # the switch tables this analyzer cannot resolve from a flat or incomplete image.
+    def has_table_base(x):
+        if not isinstance(x, tuple):
+            return False
+        if facts.is_c(x) or x == ('in', 'gp'):
+            return True
+        return any(has_table_base(part) for part in x[1:])
+    return has_table_base(address)
 
 
 def wire(r, blocks, by_first):
@@ -474,6 +507,8 @@ def render(r, fs):
     if fs['unreached']:
         L.append('  not reached by any path from the entry: %s' % ' '.join(fs['unreached']))
 
+    unresolved_tables = {i for i in range(len(r.insns)) if unresolved_table_jump(r, i)}
+
     L.append('')
     L.append('accesses (%d)' % len(fs['accesses']))
     for a in fs['accesses']:
@@ -534,7 +569,8 @@ def render(r, fs):
         txt = nop(ins)
         likely = ins['mn'] in facts.LIKELY
         if k == 'cond':
-            tw, fw = cond_words(r, b, bi)
+            tw, fw = cond_words(r, b, bi) if bi in r.in_states else ('condition not analyzed',
+                                                                      'condition not analyzed')
             tb, nb = ex['target_block'], ex['next_block']
             L.append('      0x%x `%s` -> 0x%x%s' % (ins['addr'], txt, ex['target'], ' (%s)' % tb.id if tb else ' (outside)'))
             L.append('      taken when %s -> %s' % (tw or '(condition not decoded)', tb.id if tb else 'outside'))
@@ -570,14 +606,18 @@ def render(r, fs):
                         if b not in bb.preds:
                             bb.preds.append(b)
             else:
-                L.append('      0x%x `%s` indirect jump, targets not resolved' % (ins['addr'], txt))
+                if bi in unresolved_tables:
+                    L.append('      0x%x `%s` (jump table; successors unresolved)' % (ins['addr'], txt))
+                else:
+                    L.append('      0x%x `%s` indirect jump, targets not resolved' % (ins['addr'], txt))
         elif k == 'call':
             nb = ex['next_block']
             L.append('      0x%x `%s` is a call; execution continues at 0x%x' % (ins['addr'], txt, ins['addr'] + 8))
 
     # returns: ancestors per return block
     L.append('')
-    L.append('returns (%d)' % len(fs['exits']))
+    L.append('returns (%d%s)' % (len(fs['exits']),
+                                '; CFG incomplete due to unresolved jump table' if unresolved_tables else ''))
     rblocks = {}
     for b in blocks:
         if b.exit['kind'] == 'return':
