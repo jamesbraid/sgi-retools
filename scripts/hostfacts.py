@@ -273,6 +273,9 @@ def find_def(r, blk, i, n):
     """The instruction in the block before index i that last wrote register n, or None."""
     j = i - 1
     while j >= blk.first:
+        if j not in r.in_states:
+            j -= 1
+            continue
         ins = r.insns[j]
         mn, ops = ins['mn'], ins['ops']
         if facts.is_branch(mn) or mn in facts.STORES:

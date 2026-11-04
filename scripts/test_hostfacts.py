@@ -252,6 +252,40 @@ class UnreachableBranch(unittest.TestCase):
         self.assertNotIn('B1', target.split('preds:')[1])
 
 
+class UnreachableDefinition(unittest.TestCase):
+    def test_last_definition_skips_unreachable_instruction(self):
+        class Stub:
+            insns = [
+                {'mn': 'daddiu', 'ops': ['$8', '$4', '1']},
+                {'mn': 'daddiu', 'ops': ['$8', '$4', '2']},
+                {'mn': 'bne', 'ops': ['$8', '$0', '20']},
+            ]
+            in_states = {0: {}, 2: {8: ('in', 'a0')}}
+
+        block = hostfacts.Block('B0', 0, 2)
+        self.assertEqual(hostfacts.find_def(Stub(), block, 2, 8), 0)
+
+
+class OptionalKonaGfxRepro(unittest.TestCase):
+    ROOT = '/path/to/re-roots/kona/root'
+    OBJECTS = (
+        ('usr/cpu/sysgen/IP27boot/gfx.o', None),
+        ('usr/cpu/sysgen/IP35boot/gfx.o', None),
+        ('usr/cpu/sysgen/IP27boot/gfxs.a', 'gfx.o'),
+        ('usr/cpu/sysgen/IP35boot/gfxs.a', 'gfx.o'),
+    )
+
+    @unittest.skipUnless(os.path.isdir(ROOT), 'optional Kona root is not present')
+    def test_gfx_shcheck_renders(self):
+        for relative, member in self.OBJECTS:
+            path = os.path.join(self.ROOT, relative)
+            if not os.path.isfile(path):
+                continue
+            with self.subTest(binary=relative):
+                r = hostfacts.routine_for(path, 'gfx_shcheck', member=member)
+                self.assertIn('blocks (', hostfacts.render(r, r.facts(False)))
+
+
 class OptionalLibGLRepro(unittest.TestCase):
     BINARY = ('/path/to/re-roots/odsy/root/builds/'
               '6.5.30-media/usr/gfx/arch/IP30ODSY/libGL.so')
