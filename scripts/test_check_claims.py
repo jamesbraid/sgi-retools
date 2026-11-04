@@ -6,6 +6,7 @@ import sys
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
@@ -68,6 +69,10 @@ class Resolution(unittest.TestCase):
         e = self.ident('- `f` (`usr/sbin/only`, 6.5.29, `0x10`, 16 bytes). Established.\n')
         self.assertEqual(e.binary, 'usr/sbin/only')
 
+    def test_routine_size_is_read_from_a_range_header(self):
+        e = self.ident('- `f` in `usr/sbin/l1cmd` at 0x10. Range: 0x10-0x20 (16 bytes). Established.\n')
+        self.assertEqual((e.address, e.size), (0x10, 16))
+
 
 class RootFallback(unittest.TestCase):
     def test_release_in_prose_finds_a_file_the_inventory_lacks(self):
@@ -83,6 +88,31 @@ class RootFallback(unittest.TestCase):
             finally:
                 check_claims.REPO = old
         self.assertEqual(ents[0].binary, '6.5.30/usr/cpu/elsc.o')
+
+
+class StatedRoutineSize(unittest.TestCase):
+    def test_size_is_passed_when_the_symbol_size_is_missing_or_smaller(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.makedirs(os.path.join(td, 'root', 'usr', 'bin'))
+            binary = os.path.join(td, 'root', 'usr', 'bin', 'x')
+            open(binary, 'wb').close()
+            old, check_claims.REPO = check_claims.REPO, td
+            try:
+                for symbol_size in (0, 556):
+                    f = check_claims.Facts()
+                    f.image = lambda _: types.SimpleNamespace(
+                        byname={'f': [(0x1000, symbol_size, 'f', '.text', True, 'symtab')]})
+                    seen = []
+                    def fact_sheet(path, routine, member, size=None, with_insns=True):
+                        seen.append((routine, size))
+                        return {'routine': {'address': '0x1000', 'size': size, 'size_source': 'given'}}
+                    with mock.patch.object(check_claims.facts, 'fact_sheet', fact_sheet):
+                        result, err = f.get('usr/bin/x', 'f', 0x1000, 7008)
+                    self.assertIsNone(err)
+                    self.assertEqual(seen, [('0x1000', 7008)])
+                    self.assertEqual(result['routine']['size'], 7008)
+            finally:
+                check_claims.REPO = old
 
 
 class Tables(unittest.TestCase):

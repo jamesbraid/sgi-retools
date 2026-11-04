@@ -330,13 +330,15 @@ def identify(e, bins, hints, default_bin):
     elif default_bin:
         e.binary = default_bin
     am = re.search(r'^\s*`[^`]+`\s*\((?:[^()]|\([^()]*\))*?(' + HEX + r')', t) or \
+        re.search(r'^\s*`[^`]+`\s+in\s+.+?\s+at\s+(' + HEX + r')\b', t) or \
         re.search(r'occupies \d+ bytes at (?:address |offset )(' + HEX + r')\b', t) or \
         re.search(r'\d+ bytes at (?:address |offset )(' + HEX + r')\b', t) or \
         re.search(r'(' + HEX + r'),\s*\d+ bytes', lead) or re.search(r'at address (' + HEX + r')\b', t) or \
         re.search(r'\b(?:instructions|bytes) at (?:address |offset )?(' + HEX + r')\b', t)
     e.address = int(am.group(1), 16) if am else None
     sm = re.search(r'occupies (\d+) bytes', t) or re.search(r'(\d+) bytes at (?:address|offset) ' + HEX, t) or \
-        re.search(HEX + r',\s*(\d+) bytes', lead)
+        re.search(HEX + r',\s*(\d+) bytes', lead) or \
+        re.search(r'\bRange:\s*' + HEX + r'\s*-\s*' + HEX + r'\s*\((\d+) bytes\)', t)
     e.size = int(sm.group(1)) if sm else None
     st = re.findall(r'\b(Established|Inferred|Unverified)\b\.?', t, re.I)
     e.status = st[-1] if st else ''
@@ -349,7 +351,7 @@ class Facts:
         self.cache = {}
 
     def get(self, binary, name, address, size=None):
-        key = (binary, name, address)
+        key = (binary, name, address, size)
         if key in self.cache:
             return self.cache[key]
         path = binary
@@ -363,17 +365,20 @@ class Facts:
         if os.path.exists(full):
             img = self.image(binary)
             syms = [x for x in img.byname.get(name, []) if x[4]] if (img is not None and name) else []
+            at_address = [x for x in syms if x[0] == address] if address is not None else []
+            known_size = max((x[1] for x in at_address), default=0)
+            analysis_size = size if size is not None and size > known_size else None
             order, debug_elsewhere = [], False
             if address is not None and any(x[0] == address for x in syms):
-                order = [('0x%x' % address, None)]
+                order = [('0x%x' % address, analysis_size)]
             elif address is not None and syms and all(x[5].startswith('inventory') for x in syms):
                 # the name is known only from debug information, at another address: a static routine
                 # of that name can exist more than once, so read the stated address
-                order = [('0x%x' % address, size)]
+                order = [('0x%x' % address, analysis_size)]
                 debug_elsewhere = True
             elif syms and address is not None and len({x[0] for x in syms}) > 1:
                 # facts.py refuses a name that matches several routines; the stated address says which
-                order = [('0x%x' % address, size)]
+                order = [('0x%x' % address, analysis_size)]
             elif syms:
                 order = [(name, None)]
             elif address is not None:
