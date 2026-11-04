@@ -2,7 +2,9 @@
 """Tests for the facts-only reading entry renderer."""
 import importlib.util
 import os
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,12 +33,45 @@ class AccessRenderingTests(unittest.TestCase):
             "`sw` at 0x1000, `sw` at 0x1004, `sw` at 0x1008."
         ])
 
+    def test_shared_filter_excludes_sp_and_gp_accesses(self):
+        accesses = [
+            {"address": "0x1000", "base": "a0", "kind": "load", "mnemonic": "lw", "width": 4,
+             "origin": "a0", "origin_offset": 0},
+            {"address": "0x1004", "base": "sp", "kind": "load", "mnemonic": "lw", "width": 4,
+             "origin": "sp", "origin_offset": 0},
+            {"address": "0x1008", "base": "gp", "kind": "load", "mnemonic": "lw", "width": 4,
+             "origin": "gp", "origin_offset": 0},
+        ]
+
+        self.assertEqual(len(render_reading.access_sentences(accesses, 1)), 1)
+        self.assertEqual(render_reading.hostfacts.is_stack_or_global_access(accesses[1]), True)
+        self.assertEqual(render_reading.hostfacts.is_stack_or_global_access(accesses[2]), True)
+
     def test_return_lists_all_distinct_path_values(self):
         exit_fact = {"v0": "?", "paths": [
             {"v0": "0x0"}, {"v0": "0x1"}, {"v0": "0x0"}
         ]}
 
         self.assertEqual(render_reading.return_value(exit_fact), "one of 0x0, 0x1")
+
+    def test_return_lists_flatten_and_deduplicate_nested_choices(self):
+        exit_fact = {"v0": "?", "paths": [
+            {"v0": "one of (ret(foo, bar)), 0x1"},
+            {"v0": "one of 0x1, 0x2"},
+        ]}
+
+        self.assertEqual(render_reading.return_value(exit_fact), "one of (ret(foo, bar)), 0x1, 0x2")
+
+    def test_header_preserves_the_requested_alias_name(self):
+        routine = SimpleNamespace(nargs=0, insns=[], in_states={})
+        facts = {"routine": {"name": "canonical_name", "address": "0x1000", "end": "0x1004",
+                              "size": 4, "abi": "o32"}}
+        with patch.object(render_reading, "_call_sentences", return_value=[]), \
+                patch.object(render_reading, "_branch_sentences", return_value=[]):
+            output = render_reading.render_entry(
+                routine, facts, "usr/lib/a.so", "Inferred", requested_name="requested_alias")
+
+        self.assertTrue(output.startswith("- `requested_alias` in `usr/lib/a.so`"))
 
 
 if __name__ == "__main__":

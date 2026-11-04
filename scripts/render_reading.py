@@ -40,7 +40,7 @@ def access_sentences(accesses, nargs):
     """Describe pointer accesses, excluding frame and global-pointer traffic."""
     groups = collections.OrderedDict()
     for access in accesses:
-        if access.get("stack") or access.get("base") in ("sp", "gp"):
+        if hostfacts.is_stack_or_global_access(access):
             continue
         target = access_target(access, nargs)
         key = (access["mnemonic"], access["kind"], access["width"], target)
@@ -64,10 +64,19 @@ def access_sentences(accesses, nargs):
 
 def return_value(exit_fact):
     value = exit_fact.get("v0", "?")
-    if value != "?":
-        return value
-    values = list(dict.fromkeys(path.get("v0", "?") for path in exit_fact.get("paths", [])))
-    if len(values) > 1:
+    source_values = [value] if value != "?" else [
+        path.get("v0", "?") for path in exit_fact.get("paths", [])]
+    had_choices = any(item.startswith("one of ") for item in source_values)
+    values = []
+    pending = list(source_values)
+    while pending:
+        item = pending.pop(0)
+        if item.startswith("one of "):
+            had_choices = True
+            pending[0:0] = hostfacts.split_top_level(item[7:])
+        elif item not in values:
+            values.append(item)
+    if len(values) > 1 or had_choices:
         return "one of " + ", ".join(values)
     return values[0] if values else value
 
@@ -176,9 +185,9 @@ def _unreached_sentences(facts):
             (_address(start), _address(end)) for start, end in ranges]
 
 
-def render_entry(routine, facts, install_path, grade):
+def render_entry(routine, facts, install_path, grade, requested_name=None):
     rt = facts["routine"]
-    name = rt.get("name") or "(unnamed)"
+    name = requested_name or rt.get("name") or "(unnamed)"
     address = rt["address"]
     end = rt["end"]
     lines = ["- `%s` in `%s` at %s (%s)." % (name, install_path, address, rt.get("abi", "unknown")),
@@ -232,7 +241,10 @@ def main(argv=None):
         routine = hostfacts.routine_for(binary, args.routine, member=member, size=args.size)
         facts = routine.facts(False)
         facts["routine"]["file"] = args.binary
-    sys.stdout.write(render_entry(routine, facts, args.path, args.grade))
+    requested_name = (args.routine if args.routine and
+                      not re.fullmatch(r"0x[0-9a-fA-F]+", args.routine) else None)
+    sys.stdout.write(render_entry(routine, facts, args.path, args.grade,
+                                  requested_name=requested_name))
     return 0
 
 

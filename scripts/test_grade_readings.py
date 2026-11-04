@@ -39,6 +39,20 @@ class EntryLayouts(unittest.TestCase):
                           ])
         self.assertEqual(len(entries[1]["sentences"]), 1)
 
+    def test_entry_ends_at_first_non_indented_line(self):
+        content = """- `routine_a` in `usr/lib/a.so` at 0x1000 (o32).
+  It occupies 24 bytes.
+
+Skipped targets:
+These are not part of the last entry.
+"""
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as doc:
+            doc.write(content)
+            doc.flush()
+            entries = grade.parse_entries(doc.name)
+
+        self.assertEqual(entries[0]["sentences"], ["It occupies 24 bytes."])
+
 
 class SentenceChecks(unittest.TestCase):
     def setUp(self):
@@ -78,6 +92,20 @@ class SentenceChecks(unittest.TestCase):
     def test_grouped_access_counts_and_addresses(self):
         sentence = ("2 such accesses load 4 bytes from a0 (arg0 at entry) +0xc4 via base s0 (a0), "
                     "including `lw` at 0x1004, `lw` at 0x1008.")
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_grouped_access_count_ignores_sp_and_gp_bases(self):
+        self.facts["accesses"] = [
+            {"address": "0x100c", "kind": "load", "width": 4, "mnemonic": "lw", "base": "s0",
+             "text": "lw v0,196(s0)", "value": None},
+            {"address": "0x1010", "kind": "load", "width": 4, "mnemonic": "lw", "base": "sp",
+             "text": "lw v0,196(sp)", "value": None},
+            {"address": "0x1014", "kind": "load", "width": 4, "mnemonic": "lw", "base": "gp",
+             "text": "lw v0,196(gp)", "value": None},
+        ]
+        self.maps = grade._render_maps(self.facts, self.rendered)
+        sentence = "1 such `lw` accesses load 4 bytes from ?, including `lw` at 0x100c."
+
         self.assertEqual(self.check(sentence), ("OK", None))
 
     def test_kona_g25_grouped_access_without_base_clause(self):
@@ -233,6 +261,15 @@ class SentenceChecks(unittest.TestCase):
     def test_return_one_of_and_per_path_values(self):
         self.assertEqual(self.check("The return at 0x1020 has v0 = one of 0x0 or 0x1."), ("OK", None))
         self.assertEqual(self.check("The return at 0x1020 has v0 = 0x0 on the path from 0x100c."), ("OK", None))
+
+    def test_return_choices_split_only_outside_parentheses(self):
+        self.maps[3]["0x1020"]["value"] = "?"
+        self.maps[3]["0x1020"]["paths"] = {
+            "0x100c": "(ret(foo, bar))", "0x1010": "0x1"
+        }
+        sentence = "The return at 0x1020 has v0 = one of (ret(foo, bar)), 0x1."
+
+        self.assertEqual(self.check(sentence), ("OK", None))
 
     def test_return_value_and_delay_slot(self):
         returns = self.maps[3]

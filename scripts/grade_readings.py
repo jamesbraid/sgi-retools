@@ -23,8 +23,10 @@ def parse_entries(doc):
         lines = source.read().splitlines()
     starts = [i for i, line in enumerate(lines) if line.startswith("- ")]
     entries = []
-    for j, start in enumerate(starts):
-        end = starts[j + 1] if j + 1 < len(starts) else len(lines)
+    for start in starts:
+        end = start + 1
+        while end < len(lines) and lines[end][:1].isspace():
+            end += 1
         block = lines[start:end]
         header = HEADER.match(block[0])
         if not header:
@@ -120,6 +122,15 @@ def _access_target(a):
     return "?"
 
 
+def _return_choices(value):
+    if value.startswith("one of "):
+        choices = []
+        for part in hostfacts.split_top_level(value[7:]):
+            choices.extend(_return_choices(part))
+        return choices
+    return [part.strip() for part in re.split(r"\s+or\s+", value)]
+
+
 def facts_for(root, entry):
     binary_path, separator, member = entry["binary"].partition(":")
     binary = os.path.join(root, binary_path)
@@ -213,6 +224,8 @@ def _render_maps(facts, rendered):
 
 def check_sentence(sentence, facts, rendered, maps):
     accesses, calls, branches, returns = maps
+    group_accesses = [a for a in facts["accesses"]
+                      if not hostfacts.is_stack_or_global_access(a)]
     text = sentence.rstrip(".")
     text = re.sub(r" \(value (.*?)\)$", r" with value \1", text)
     m = re.match(r"It occupies (\d+) bytes", text)
@@ -273,7 +286,7 @@ def check_sentence(sentence, facts, rendered, maps):
             addrs = [address for _op, address in refs]
             reg = register
             value = None
-            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == "store"
+            matches = [a for a in group_accesses if a["mnemonic"] == mn and a["kind"] == "store"
                        and a["width"] == int(width)
                        and a["text"].split(" ", 1)[1].split(",")[0].lstrip("$") == register
                        and _targets_match(_access_target(a), target)]
@@ -286,7 +299,7 @@ def check_sentence(sentence, facts, rendered, maps):
             reg = None
             value = None
             kind = "load" if direction == "loads" else "store"
-            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == kind
+            matches = [a for a in group_accesses if a["mnemonic"] == mn and a["kind"] == kind
                        and a["width"] == int(width) and _access_target_matches(a, target)]
             if len(matches) != int(count):
                 return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
@@ -298,8 +311,8 @@ def check_sentence(sentence, facts, rendered, maps):
             reg = None
             value = None
             kind = "load" if direction == "loads" else "store"
-            ref_bases = {a["base"] for a in facts["accesses"] if a["address"] in addrs}
-            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == kind
+            ref_bases = {a["base"] for a in group_accesses if a["address"] in addrs}
+            matches = [a for a in group_accesses if a["mnemonic"] == mn and a["kind"] == kind
                        and a["width"] == int(width) and _values_match(_access_target(a), target)
                        and (not ref_bases or a["base"] in ref_bases)]
             if len(matches) != int(count):
@@ -310,7 +323,7 @@ def check_sentence(sentence, facts, rendered, maps):
             addrs = [address for _op, address in refs]
             reg = None
             value = None
-            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == direction
+            matches = [a for a in group_accesses if a["mnemonic"] == mn and a["kind"] == direction
                        and a["width"] == int(width) and _values_match(_access_target(a), target)
                        and _values_match(a.get("value") or "", group_value)]
             if len(matches) != int(count):
@@ -321,7 +334,7 @@ def check_sentence(sentence, facts, rendered, maps):
             addrs = [address for _op, address in refs]
             reg = None
             value = None
-            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == direction
+            matches = [a for a in group_accesses if a["mnemonic"] == mn and a["kind"] == direction
                        and a["width"] == int(width) and _values_match(_access_target(a), target)
                        and _values_match(a.get("value") or "", group_value)]
             if len(matches) != int(count):
@@ -332,7 +345,7 @@ def check_sentence(sentence, facts, rendered, maps):
             addrs = [address for _op, address in refs]
             reg = None
             value = None
-            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == direction
+            matches = [a for a in group_accesses if a["mnemonic"] == mn and a["kind"] == direction
                        and a["width"] == int(width) and _values_match(_access_target(a), target)]
             if len(matches) != int(count):
                 return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
@@ -342,7 +355,7 @@ def check_sentence(sentence, facts, rendered, maps):
             addrs = [address for _op, address in refs]
             reg = None
             value = None
-            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == direction
+            matches = [a for a in group_accesses if a["mnemonic"] == mn and a["kind"] == direction
                        and a["width"] == int(width) and a["base"] == base
                        and _values_match(_access_target(a), target)
                        and (not group_value or _values_match(a.get("value") or "", group_value))]
@@ -355,7 +368,7 @@ def check_sentence(sentence, facts, rendered, maps):
             mn = refs[0][0] if refs else ""
             reg = None
             value = None
-            matches = [a for a in facts["accesses"] if a["kind"] == direction and a["width"] == int(width)
+            matches = [a for a in group_accesses if a["kind"] == direction and a["width"] == int(width)
                        and a["base"] == base and _values_match(_access_target(a), target)
                        and (not group_value or _values_match(a.get("value") or "", group_value))]
             if len(matches) != int(count):
@@ -367,7 +380,7 @@ def check_sentence(sentence, facts, rendered, maps):
             mn = refs[0][0] if refs else ""
             reg = None
             value = None
-            matching = [a for a in facts["accesses"] if a["kind"] == direction[:-1] and a["width"] == int(width)
+            matching = [a for a in group_accesses if a["kind"] == direction[:-1] and a["width"] == int(width)
                         and _values_match(_access_target(a), target)]
             if len(matching) != int(count):
                 return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matching))
@@ -381,7 +394,7 @@ def check_sentence(sentence, facts, rendered, maps):
             kind = "load" if direction == "Loads" else "store"
             if direction == "Loads":
                 target = re.sub(r"^from ", "", target)
-            matching = [a for a in facts["accesses"] if a["kind"] == kind and a["width"] == int(width)
+            matching = [a for a in group_accesses if a["kind"] == kind and a["width"] == int(width)
                         and _values_match(_access_target(a), target)]
             if len(matching) != int(count):
                 return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matching))
@@ -519,10 +532,12 @@ def check_sentence(sentence, facts, rendered, maps):
         if expected is None:
             return "MISMATCH", "return at %s" % address
         if value.startswith("one of "):
-            choices = {x.strip() for x in re.split(r",\s*|\s+or\s+", value[7:])}
-            actual = {x.strip() for x in re.split(r",\s*|\s+or\s+", expected.removeprefix("one of "))}
+            choices = set(_return_choices(value))
             if expected == "?" and address in returns:
-                actual = set(returns[address]["paths"].values())
+                actual = set(choice for path_value in returns[address]["paths"].values()
+                             for choice in _return_choices(path_value))
+            else:
+                actual = set(_return_choices(expected))
             if not actual or len(choices) != len(actual) or any(
                     not any(_values_match(_canonical_calls(choice, calls), _canonical_calls(fact, calls))
                             for fact in actual) for choice in choices):

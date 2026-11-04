@@ -71,6 +71,28 @@ FP_WORDS = {'f': 'never (always false)', 'sf': 'never (always false)', 'un': 'un
 ARG_ORDINAL = {'a%d' % k: k for k in range(8)}
 
 
+def is_stack_or_global_access(access):
+    """Whether an access is routine frame or global-pointer traffic."""
+    return bool(access.get('stack') or access.get('base') in ('sp', 'gp'))
+
+
+def split_top_level(value, separator=','):
+    """Split a string at separators outside balanced parentheses."""
+    parts = []
+    depth = 0
+    start = 0
+    for index, char in enumerate(value):
+        if char == '(':
+            depth += 1
+        elif char == ')':
+            depth = max(0, depth - 1)
+        elif char == separator and depth == 0:
+            parts.append(value[start:index].strip())
+            start = index + 1
+    parts.append(value[start:].strip())
+    return parts
+
+
 def sc(x, bits=16):
     return x - (1 << bits) if x >> (bits - 1) else x
 
