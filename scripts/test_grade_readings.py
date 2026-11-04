@@ -80,6 +80,69 @@ class SentenceChecks(unittest.TestCase):
                     "including `lw` at 0x1004, `lw` at 0x1008.")
         self.assertEqual(self.check(sentence), ("OK", None))
 
+    def test_kona_g25_grouped_access_without_base_clause(self):
+        for access in self.facts["accesses"]:
+            access["origin_offset"] = 332
+        sentence = ("2 such `lw` accesses load 4 bytes from a0 (arg0 at entry) +0x14c, "
+                    "including `lw` at 0x1004, `lw` at 0x1008.")
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_kona_g23_grouped_access_legacy_form(self):
+        for access in self.facts["accesses"]:
+            access["absolute"] = "0x100a90d4"
+            access.pop("origin", None)
+        sentence = ("3 such accesses, including `lw` at 0x1004, 0x1008, 0x100c, "
+                    "loads 4 bytes from abs 0x100a90d4.")
+        self.facts["accesses"].append(dict(self.facts["accesses"][0], address="0x100c"))
+        self.maps = grade._render_maps(self.facts, self.rendered)
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_odsy_g24_grouped_access_form(self):
+        sentence = ("2 4-byte lw loads at a0 +0xc4, including `lw` at 0x1004, `lw` at 0x1008.")
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_odsy_g24_single_access_form(self):
+        sentence = "Loads 4 bytes at a0 +0xc4 (`lw` at 0x1004)."
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_odsy_g24_store_at_target_form(self):
+        self.facts["accesses"].append({"address": "0x100c", "kind": "store", "width": 4,
+                                       "mnemonic": "swc1", "base": "a2", "origin": "a2",
+                                       "origin_offset": 0, "text": "swc1 $f13,0(a2)", "value": None})
+        self.maps = grade._render_maps(self.facts, self.rendered)
+        sentence = "Stores 4 bytes from f13 at a2 +0x0 (`swc1` at 0x100c)."
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_odsy_g21_routine_size_and_address(self):
+        self.facts["routine"]["address"] = "0x1000"
+        sentence = "The routine occupies 24 bytes at address 0x1000."
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_odsy_g21_grouped_store_form(self):
+        for address in ("0x100c", "0x1010"):
+            self.facts["accesses"].append({"address": address, "kind": "store", "width": 4,
+                                            "mnemonic": "sw", "base": "zero",
+                                            "text": "sw zero,0(zero)", "value": "0x0"})
+        self.maps = grade._render_maps(self.facts, self.rendered)
+        sentence = ("2 such accesses: Stores 4 bytes from zero to ? (base unknown) "
+                    "(including `sw` at 0x100c, 0x1010).")
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_kona_g25_call_with_unquoted_callee(self):
+        sentence = ("The `jal` at 0x100c calls update__18VkwindowMainWindowGv with "
+                    "a0=[sym(vkwindow)], a1=[a2+8], a2=[a0+328], a3=0x7d8c0.")
+        self.maps[1]["0x100c"] = {"tail": False, "mn": "jal", "callee": "update__18VkwindowMainWindowGv",
+                                  "via": "direct", "args": "a0=[sym(vkwindow)], a1=[a2+8], a2=[a0+328], a3=0x7d8c0"}
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_kona_g22_call_with_address_qualified_callee(self):
+        sentence = ("The `jalr` at 0x100c calls `__glNamesIsName [0x2e580d0]` with "
+                    "a0=[0x1020]:8, a1=[[0x1020]:8+6864]:8, a2=a0 at entry (arg0), "
+                    "a3=a3 at entry (arg3).")
+        self.maps[1]["0x100c"] = {"tail": False, "mn": "jalr", "callee": "__glNamesIsName [0x2e580d0]",
+                                  "via": "register-constant", "args": "a0=[0x1020]:8, a1=[[0x1020]:8+6864]:8, a2=a0 at entry (arg0), a3=a3 at entry (arg3)"}
+        self.assertEqual(self.check(sentence), ("OK", None))
+
     def test_old_access_sentence_with_value_qualifier(self):
         self.facts["accesses"].append({"address": "0x100c", "kind": "store", "width": 8,
                                        "mnemonic": "sd", "base": "zero", "origin": None,
@@ -137,6 +200,36 @@ class SentenceChecks(unittest.TestCase):
         sentence = "The `beq` at 0x1010 is taken when condition not analyzed and falls through when condition not analyzed."
         self.assertEqual(self.check(sentence), ("OK", None))
 
+    def test_kona_g23_branch_with_target_and_conditions(self):
+        self.maps[2]["0x1010"].update(mn="beq", target="0x1018", taken="a0 == 0", fall="a0 != 0")
+        sentence = ("The `beq` branch at 0x1010 targets 0x1018, is taken when a0 == 0, "
+                    "and falls through when a0 != 0.")
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_kona_g23_never_taken_branch(self):
+        rendered = ["  0x1010 `beq a0,zero,1018` never taken (operands are equal constants); falls through; runs"]
+        self.maps = grade._render_maps(self.facts, rendered)
+        sentence = ("The `beq` branch at 0x1010 targets 0x1018 and is never taken: its operands are equal constants, "
+                    "so execution always falls through.")
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_kona_g25_always_taken_branch(self):
+        rendered = ["  0x1010 `beq zero,zero,1018` always taken -> B1"]
+        self.maps = grade._render_maps(self.facts, rendered)
+        sentence = "The `beq` branch at 0x1010 targets 0x1018 and is always taken."
+        self.assertEqual(self.check(sentence), ("OK", None))
+        self.assertEqual(self.check(sentence.replace("0x1018", "0x1020"))[0], "MISMATCH")
+
+    def test_kona_g22_always_taken_branch(self):
+        branch = self.maps[2]["0x1010"]
+        branch.update(mn="beq", target="0x1018", always=True)
+        sentence = "At `beq` at 0x1010 (target 0x1018), the branch is always taken."
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_kona_g25_branch_condition_not_analyzed(self):
+        sentence = "The `beq` branch at 0x1010 targets 0x1018; its condition is not analyzed."
+        self.assertEqual(self.check(sentence), ("OK", None))
+
     def test_return_one_of_and_per_path_values(self):
         self.assertEqual(self.check("The return at 0x1020 has v0 = one of 0x0 or 0x1."), ("OK", None))
         self.assertEqual(self.check("The return at 0x1020 has v0 = 0x0 on the path from 0x100c."), ("OK", None))
@@ -147,11 +240,52 @@ class SentenceChecks(unittest.TestCase):
         sentence = "The `jr` at 0x1020 returns with v0 = one of 0x0, 0x1; its delay slot executes `nop` at 0x1024."
         self.assertEqual(self.check(sentence), ("OK", None))
 
+    def test_odsy_g24_return_with_float_result(self):
+        self.maps[3]["0x1020"]["value"] = "ret(foo); f0 = ret(foo)"
+        sentence = "Returns v0 = ret(foo), f0 = ret(foo) (`jr` at 0x1020)."
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_odsy_g24_tail_call_sentence(self):
+        self.maps[1]["0x100c"].update(tail=True, mn="jr", callee="(unnamed) [0xd980438]",
+                                      via="register-constant", args="a0=a0 at entry (arg0), a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3)")
+        sentence = ("Calls (unknown callee) via register-constant with a0=a0 at entry (arg0), "
+                    "a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3) "
+                    "(`jr` at 0x100c).")
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_odsy_g23_instruction_description(self):
+        self.facts["instructions"] = {"0x1010": "nmsub.s"}
+        sentence = ("The instruction at 0x1010 is `nmsub.s`, a single-precision floating-point "
+                    "negative multiply-subtract.")
+        self.assertEqual(self.check(sentence), ("OK", None))
+        self.assertEqual(self.check(sentence.replace("nmsub.s", "nmadd.s"))[0], "MISMATCH")
+
+    def test_kona_g24_nonbranch_instruction_list(self):
+        self.facts["instructions"] = {"0x1004": "madd.s", "0x1008": "madd.s"}
+        self.facts["branch_likely"] = []
+        sentence = "The `madd.s` at 0x1004, 0x1008 is not a branch."
+        self.assertEqual(self.check(sentence), ("OK", None))
+        self.facts["branches"].append({"address": "0x1008"})
+        self.assertEqual(self.check(sentence)[0], "MISMATCH")
+
     def test_branch_likely_delay_slot(self):
         branch = self.maps[2]["0x1010"]
         branch.update(mn="bnel", likely=True, delay=("0x1014", "lw"))
         sentence = ("The `bnel` branch at 0x1010 is taken when condition not analyzed and falls through when "
                     "condition not analyzed; its `lw` delay slot at 0x1014 runs only when taken and is annulled on fall-through.")
+        self.assertEqual(self.check(sentence), ("OK", None))
+
+    def test_odsy_g24_branch_likely_delay_wording(self):
+        rendered = [
+            "  0x1010 `bc1fl 1018` -> 0x1018 (B1)",
+            "      taken when not (f2 < f4 (c.lt.d at 0x100c)) -> B1",
+            "      falls through when f2 < f4 (c.lt.d at 0x100c) -> B2",
+            "      delay slot 0x1014 `sqrt.d $f0,$f2`: branch-likely: runs only when taken, annulled on fall-through",
+        ]
+        self.maps = grade._render_maps(self.facts, rendered)
+        sentence = ("At `bc1fl` at 0x1010 (target 0x1018), taken when not (f2 < f4 (c.lt.d at 0x100c)) "
+                    "and falls through when f2 < f4 (c.lt.d at 0x100c); its branch-likely delay slot "
+                    "`sqrt.d $f0,$f2` at 0x1014 runs only when taken and is annulled on fall-through.")
         self.assertEqual(self.check(sentence), ("OK", None))
 
     def test_size_and_unreached_ranges(self):

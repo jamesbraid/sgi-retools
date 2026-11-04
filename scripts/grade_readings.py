@@ -42,7 +42,7 @@ def parse_entries(doc):
         if binary and "(" in binary and binary.endswith(")"):
             binary = re.sub(r"\(([^()]*)\)$", r":\1", binary)
         sentences = [line.strip() for line in block[1:] if line.strip() and not re.match(
-            r"(?:Evidence grade:|Exact binary:|Range:|Role:)", line.strip())]
+            r"(?:Evidence grade:|Exact binary:|Exact build:|Range:|Role:)", line.strip())]
         entries.append({"name": name, "binary": binary, "address": address, "size": size,
                         "sentences": sentences, "line": start + 1})
     return entries
@@ -73,7 +73,38 @@ def _value_variants(value):
 
 
 def _values_match(left, right):
+    left = re.sub(r" \(c\.\w+ at " + HEX + r"\)", "", left)
+    right = re.sub(r" \(c\.\w+ at " + HEX + r"\)", "", right)
     return bool(_value_variants(left) & _value_variants(right))
+
+
+def _targets_match(left, right):
+    left = _value(left)
+    right = _value(right)
+    return _values_match(left, right) or left == right + " +0x0"
+
+
+def _access_target_matches(access, target):
+    actual = _access_target(access)
+    return _targets_match(actual, target)
+
+
+def _callee_matches(callee, expected):
+    if callee in expected:
+        return True
+    cited = set(re.findall(HEX, callee))
+    resolved = set(re.findall(HEX, expected))
+    return bool(cited & resolved) or (callee == "(unknown callee)" and "(unnamed)" in expected)
+
+
+def _canonical_calls(value, calls):
+    for call in calls.values():
+        m = re.search(r"([^\s]+) \[(" + HEX + r")\]", call["callee"])
+        if m:
+            value = value.replace("ret(%s)" % m.group(1), "ret(%s)" % m.group(2))
+        for alias in call.get("aliases", ()):
+            value = value.replace("ret(%s)" % alias, "ret(%s)" % m.group(2))
+    return value
 
 
 def _access_target(a):
@@ -102,6 +133,7 @@ def facts_for(root, entry):
     member = member if separator else None
     routine = hostfacts.routine_for(binary, entry["address"], member=member, size=entry["size"])
     facts = routine.facts(False)
+    facts["instructions"] = {"0x%x" % insn["addr"]: insn["mn"] for insn in routine.insns}
     rendered = hostfacts.render(routine, facts).splitlines()
     return facts, rendered
 
@@ -126,10 +158,27 @@ def _render_maps(facts, rendered):
         if m and last_call:
             calls[last_call]["args"] = m.group(1)
             continue
+        m = re.match(r"\s+(0x[0-9a-f]+) `(\w+) .*?,([0-9a-f]+)` never taken \(operands are equal constants\); falls through", line)
+        if m:
+            branches[m.group(1)] = {"mn": m.group(2), "target": "0x" + m.group(3), "taken": None,
+                                   "fall": None, "always": False, "never": True,
+                                   "likely": False, "delay": None}
+            branch_at = m.group(1)
+            continue
+        m = re.match(r"\s+(0x[0-9a-f]+) `(\w+) (.*?)` always taken ->", line)
+        if m:
+            target = m.group(3).rsplit(",", 1)[-1]
+            if re.fullmatch(r"[0-9a-f]+", target):
+                branches[m.group(1)] = {"mn": m.group(2), "target": "0x" + target, "taken": None,
+                                       "fall": None, "always": True, "never": False,
+                                       "likely": False, "delay": None}
+                branch_at = m.group(1)
+                continue
         m = re.match(r"\s+(0x[0-9a-f]+) `(\w+) (.*?)` -> (0x[0-9a-f]+)", line)
         if m:
             branch_at = m.group(1)
             branches[branch_at] = {"mn": m.group(2), "target": m.group(4), "taken": None, "fall": None,
+                                   "always": "always taken" in line, "never": "never taken" in line,
                                    "likely": False, "delay": None}
             continue
         m = re.match(r"\s+(0x[0-9a-f]+) `.*?` returns; delay slot (0x[0-9a-f]+) `(.*?)` runs", line)
@@ -167,11 +216,35 @@ def check_sentence(sentence, facts, rendered, maps):
     m = re.match(r"It occupies (\d+) bytes", text)
     if m:
         return ("OK", None) if int(m.group(1)) == facts["routine"]["size"] else ("MISMATCH", "size %d bytes" % facts["routine"]["size"])
+    routine_size = re.match(r"The routine occupies (\d+) bytes at address (" + HEX + r")", text)
+    if routine_size:
+        size, address = routine_size.groups()
+        if int(size) != facts["routine"]["size"] or address != facts["routine"]["address"]:
+            return "MISMATCH", "routine size/address"
+        return "OK", None
+    instruction = re.match(r"The instruction at (" + HEX + r") is `(\w+(?:\.\w+)?)`, a (.+)$", text)
+    if instruction:
+        address, mnemonic, _description = instruction.groups()
+        return ("OK", None) if facts.get("instructions", {}).get(address) == mnemonic else ("MISMATCH", "instruction at %s" % address)
+    nonbranch_instructions = re.match(r"The `(\w+(?:\.\w+)?)` at (.+) is not a branch", text)
+    if nonbranch_instructions:
+        mnemonic, listed = nonbranch_instructions.groups()
+        addresses = re.findall(HEX, listed)
+        branches = {branch["address"] for branch in facts.get("branches", []) + facts.get("branch_likely", [])}
+        if not addresses or any(facts.get("instructions", {}).get(address) != mnemonic or address in branches
+                                for address in addresses):
+            return "MISMATCH", "non-branch instruction"
+        return "OK", None
     # Accesses, including old forms with several cited instruction addresses.
     acc = re.match(r"The `(\w+)` at (" + HEX + r") (loads|stores) (\d+) bytes? (?:from|to) (.*?)(?: via base (\w+) \((.*?)\))?(?: with value (.*))?$", text)
-    old_acc = re.match(r"(Loads|Stores) (\d+) bytes? (?:into `?(\w+)`? from|from `?(\w+)`? to) (.*) \(`(\w+)` at (.*?)\)(?: with value (.*))?$", text)
+    old_acc = re.match(r"(Loads|Stores) (\d+) bytes? (?:into `?(\$?\w+)`? from|from `?(\$?\w+)`? (?:to|at)) (.*) \(`(\w+)` at (.*?)\)(?: with value (.*))?$", text)
+    loc_acc = re.match(r"(Loads|Stores) (\d+) bytes? at (.*?) \(`(\w+)` at (" + HEX + r")\)(?: with value (.*))?$", text)
     if acc:
         mn, address, direction, width, target, base, _base_note, value = acc.groups()
+        addrs = [address]
+        reg = None
+    elif loc_acc:
+        direction, width, target, mn, address, value = loc_acc.groups()
         addrs = [address]
         reg = None
     elif old_acc:
@@ -179,13 +252,89 @@ def check_sentence(sentence, facts, rendered, maps):
         addrs = re.findall(HEX, addr_list)
         reg = src or dest
     else:
+        acc_group_simple_value = re.match(r"(\d+) such `(\w+)` accesses (load|store) (\d+) bytes? (?:from|to) (.*?) with value (.*?), including (.*)$", text)
+        acc_group_simple_parenthesized_value = re.match(r"(\d+) such `(\w+)` accesses (load|store) (\d+) bytes? (?:from|to) (.*?) \(value (.*?)\), including (.*)$", text)
+        acc_group_simple = re.match(r"(\d+) such `(\w+)` accesses (load|store) (\d+) bytes? (?:from|to) (.*?), including (.*)$", text)
+        acc_group_legacy = re.match(r"(\d+) such accesses, including (.*), (loads|stores) (\d+) bytes? (?:from|to) (.*)$", text)
         acc_group = re.match(r"(\d+) such accesses (load|store) (\d+) bytes? (?:from|to) (.*?) via base (\w+) \((.*?)\)(?: with value (.*?))?, including (.*)$", text)
         acc_group_mn = re.match(r"(\d+) such `(\w+)` accesses (load|store) (\d+) bytes? (?:from|to) (.*?) via base (\w+) \((.*?)\)(?: with value (.*?))?, including (.*)$", text)
         acc_group2 = re.match(r"Performs (\d+) (\d+)-byte (loads|stores) (?:from|to) (.*), including (.*)$", text)
+        acc_group4 = re.match(r"(\d+) (\d+)-byte `?(\w+)`? (loads|stores) at (.*?), including (.*)$", text)
+        acc_group5 = re.match(r"(\d+) such accesses: Stores (\d+) bytes? from (\w+) to (.*?) \(base unknown\) \(including (.*)\)$", text)
         acc_group3 = re.match(r"(Loads|Stores) (\d+) bytes? (.*?) into `?(\w+)`?: (\d+) such accesses, including (.*)$", text)
         if not acc_group3:
             acc_group3 = re.match(r"(Loads|Stores) (\d+) bytes? from `?(\w+)`? to (.*?): (\d+) such accesses, including (.*)$", text)
-        if acc_group_mn:
+        if acc_group5:
+            count, width, register, target, items = acc_group5.groups()
+            refs = re.findall(r"`(\w+)` at (" + HEX + r")", items)
+            mn = refs[0][0] if refs else ""
+            addrs = [address for _op, address in refs]
+            reg = register
+            value = None
+            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == "store"
+                       and a["width"] == int(width)
+                       and a["text"].split(" ", 1)[1].split(",")[0].lstrip("$") == register
+                       and _targets_match(_access_target(a), target)]
+            if len(matches) != int(count):
+                return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
+        elif acc_group4:
+            count, width, mn, direction, target, items = acc_group4.groups()
+            refs = re.findall(r"`(\w+)` at (" + HEX + r")", items)
+            addrs = [address for _op, address in refs]
+            reg = None
+            value = None
+            kind = "load" if direction == "loads" else "store"
+            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == kind
+                       and a["width"] == int(width) and _access_target_matches(a, target)]
+            if len(matches) != int(count):
+                return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
+        elif acc_group_legacy:
+            count, items, direction, width, target = acc_group_legacy.groups()
+            first_ref = re.search(r"`(\w+)` at (" + HEX + r")", items)
+            mn = first_ref.group(1) if first_ref else ""
+            addrs = re.findall(HEX, items)
+            reg = None
+            value = None
+            kind = "load" if direction == "loads" else "store"
+            ref_bases = {a["base"] for a in facts["accesses"] if a["address"] in addrs}
+            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == kind
+                       and a["width"] == int(width) and _values_match(_access_target(a), target)
+                       and (not ref_bases or a["base"] in ref_bases)]
+            if len(matches) != int(count):
+                return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
+        elif acc_group_simple_value:
+            count, mn, direction, width, target, group_value, items = acc_group_simple_value.groups()
+            refs = re.findall(r"`(\w+)` at (" + HEX + r")", items)
+            addrs = [address for _op, address in refs]
+            reg = None
+            value = None
+            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == direction
+                       and a["width"] == int(width) and _values_match(_access_target(a), target)
+                       and _values_match(a.get("value") or "", group_value)]
+            if len(matches) != int(count):
+                return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
+        elif acc_group_simple_parenthesized_value:
+            count, mn, direction, width, target, group_value, items = acc_group_simple_parenthesized_value.groups()
+            refs = re.findall(r"`(\w+)` at (" + HEX + r")", items)
+            addrs = [address for _op, address in refs]
+            reg = None
+            value = None
+            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == direction
+                       and a["width"] == int(width) and _values_match(_access_target(a), target)
+                       and _values_match(a.get("value") or "", group_value)]
+            if len(matches) != int(count):
+                return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
+        elif acc_group_simple:
+            count, mn, direction, width, target, items = acc_group_simple.groups()
+            refs = re.findall(r"`(\w+)` at (" + HEX + r")", items)
+            addrs = [address for _op, address in refs]
+            reg = None
+            value = None
+            matches = [a for a in facts["accesses"] if a["mnemonic"] == mn and a["kind"] == direction
+                       and a["width"] == int(width) and _values_match(_access_target(a), target)]
+            if len(matches) != int(count):
+                return "MISMATCH", "group count %s (hostfacts: %d)" % (count, len(matches))
+        elif acc_group_mn:
             count, mn, direction, width, target, base, _note, group_value, items = acc_group_mn.groups()
             refs = re.findall(r"`(\w+)` at (" + HEX + r")", items)
             addrs = [address for _op, address in refs]
@@ -240,41 +389,82 @@ def check_sentence(sentence, facts, rendered, maps):
     if addrs is not None:
         for address in addrs:
             candidates = accesses.get(address, [])
-            if not any(a["mn"] == mn and (reg is None or a["register"] == reg) for a in candidates):
+            if not any(a["mn"] == mn and (reg is None or a["register"].lstrip("$") == reg.lstrip("$")) for a in candidates):
                 return "MISMATCH", "access at %s" % address
-            fact = next(a for a in candidates if a["mn"] == mn and (reg is None or a["register"] == reg))
+            fact = next(a for a in candidates if a["mn"] == mn and (reg is None or a["register"].lstrip("$") == reg.lstrip("$")))
             if acc and (fact["kind"] != ("load" if direction == "loads" else "store") or fact["width"] != int(width) or not _values_match(fact["target"], target) or (value is not None and not _values_match(fact.get("value") or "", value))):
                 return "MISMATCH", "%s %d-byte %s from %s" % (fact["kind"], fact["width"], mn, fact["target"])
-            if old_acc and (not _values_match(fact["target"], target) or fact["width"] != int(width) or fact["kind"] != ("load" if direction == "Loads" else "store") or (value is not None and not _values_match(fact.get("value") or "", value))):
+            if loc_acc and (fact["kind"] != ("load" if direction == "Loads" else "store") or fact["width"] != int(width) or not _targets_match(fact["target"], target) or (value is not None and not _values_match(fact.get("value") or "", value))):
+                return "MISMATCH", "%s %d-byte %s from %s" % (fact["kind"], fact["width"], mn, fact["target"])
+            if old_acc and (not _targets_match(fact["target"], target) or fact["width"] != int(width) or fact["kind"] != ("load" if direction == "Loads" else "store") or (value is not None and not _values_match(fact.get("value") or "", value))):
                 return "MISMATCH", "%s %d-byte %s from %s" % (fact["kind"], fact["width"], mn, fact["target"])
         return "OK", None
 
     # Calls with all argument slots; captures are greedy so nested [] and () stay intact.
-    m = re.match(r"The `(\w+)` at (" + HEX + r") calls `(.*?)` with (.*)$", text)
+    m = re.match(r"The `(\w+)` at (" + HEX + r") calls (.*?) with (.*)$", text)
     old_call = re.match(r"Calls `(.*?)` via (\S+) with (.*) \(`(\w+)` at (" + HEX + r")\)$", text)
-    if m or old_call:
+    tail_call = re.match(r"Calls (.*?) via (\S+) with (.*) \(`(\w+)` at (" + HEX + r")\)$", text)
+    if m or old_call or tail_call:
         if m:
             op, address, callee, args = m.groups()
+            callee = callee.strip("`")
             expected = calls.get(address)
             is_tail = op == "tail"
-            if not expected or (is_tail and not expected["tail"]) or (not is_tail and expected["mn"] != op) or callee not in expected["callee"]:
+            callee_matches = _callee_matches(callee, expected["callee"]) if expected else False
+            if not expected or (is_tail and not expected["tail"]) or (not is_tail and expected["mn"] != op) or not callee_matches:
                 return "MISMATCH", "call at %s" % address
-        else:
+        elif old_call:
             callee, via, args, op, address = old_call.groups()
             expected = calls.get(address)
-            if not expected or expected["mn"] != op or expected["via"] != via or callee not in expected["callee"]:
+            if not expected or expected["mn"] != op or expected["via"] != via or not _callee_matches(callee, expected["callee"]):
                 return "MISMATCH", "call at %s" % address
-        if not _values_match(args, expected["args"]):
+        else:
+            callee, via, args, op, address = tail_call.groups()
+            expected = calls.get(address)
+            callee_matches = _callee_matches(callee.strip("`"), expected["callee"]) if expected else False
+            if not expected or not expected["tail"] or expected["mn"] != op or expected["via"] != via or not callee_matches:
+                return "MISMATCH", "call at %s" % address
+        if not _values_match(_canonical_calls(args, calls), _canonical_calls(expected["args"], calls)):
             return "MISMATCH", expected["args"]
         return "OK", None
 
     # Branch sentences in current and previous round layouts.
+    always_branch = re.match(r"The `(\w+)` branch at (" + HEX + r") targets (" + HEX + r") and is always taken", text)
+    always_branch2 = re.match(r"At `(\w+)` at (" + HEX + r") \(target (" + HEX + r")\), the branch is always taken", text)
+    if always_branch or always_branch2:
+        op, address, target = always_branch.groups() if always_branch else always_branch2.groups()
+        expected = branches.get(address)
+        if not expected or expected["mn"] != op or expected["target"] != target or not expected["always"]:
+            return "MISMATCH", "branch at %s" % address
+        return "OK", None
+
+    never_branch = re.match(r"The `(\w+)` branch at (" + HEX + r") targets (" + HEX + r") and is never taken: its operands are equal constants, so execution always falls through", text)
+    if never_branch:
+        op, address, target = never_branch.groups()
+        expected = branches.get(address)
+        if not expected or expected["mn"] != op or expected["target"] != target or not expected["never"]:
+            return "MISMATCH", "branch at %s" % address
+        return "OK", None
+
+    unanalyzed_branch = re.match(r"The `(\w+)` branch at (" + HEX + r") targets (" + HEX + r"); its condition is not analyzed", text)
+    if unanalyzed_branch:
+        op, address, target = unanalyzed_branch.groups()
+        expected = branches.get(address)
+        if not expected or expected["mn"] != op or expected["target"] != target:
+            return "MISMATCH", "branch at %s" % address
+        if expected["taken"] != "condition not analyzed" or expected["fall"] != "condition not analyzed":
+            return "MISMATCH", "branch condition"
+        return "OK", None
+
     branch = re.match(r"The `(\w+)` branch at (" + HEX + r") goes to (" + HEX + r") when (.*) and falls through when (.*)$", text)
+    branch4 = re.match(r"The `(\w+)` branch at (" + HEX + r") targets (" + HEX + r"), is taken when (.*), and falls through when (.*)$", text)
     branch2 = re.match(r"At `(\w+)` at (" + HEX + r") \(target (" + HEX + r")\), taken when (.*?)(?:;| and) falls through when (.*)$", text)
     branch3 = re.match(r"The `(\w+)`(?: branch)? at (" + HEX + r") is taken when (.*) and falls through when (.*)$", text)
-    if branch or branch2 or branch3:
+    if branch or branch2 or branch3 or branch4:
         if branch:
             op, address, target, taken, fall = branch.groups()
+        elif branch4:
+            op, address, target, taken, fall = branch4.groups()
         elif branch2:
             op, address, target, taken, fall = branch2.groups()
         else:
@@ -284,6 +474,8 @@ def check_sentence(sentence, facts, rendered, maps):
         if not expected or expected["mn"] != op or (target and expected["target"] != target):
             return "MISMATCH", "branch at %s" % address
         delay_claim = re.search(r"; its `(\w+)` delay slot at (" + HEX + r") runs only when taken and is annulled on fall-through$", fall)
+        if not delay_claim:
+            delay_claim = re.search(r"; its branch-likely delay slot `(.*?)` at (" + HEX + r") runs only when taken and is annulled on fall-through$", fall)
         if delay_claim:
             fall = fall[:delay_claim.start()]
             delay_op, delay_address = delay_claim.groups()
@@ -291,7 +483,9 @@ def check_sentence(sentence, facts, rendered, maps):
                 return "MISMATCH", "branch-likely delay slot"
         taken = re.sub(r" -> (?:B\d+|outside|end of routine)$", "", taken)
         fall = re.sub(r" -> (?:B\d+|outside|end of routine)$", "", fall)
-        if taken != "condition not analyzed" and (not _values_match(taken, expected["taken"]) or not _values_match(fall, expected["fall"])):
+        if taken != "condition not analyzed" and (
+                not _values_match(_canonical_calls(taken, calls), _canonical_calls(expected["taken"], calls)) or
+                not _values_match(_canonical_calls(fall, calls), _canonical_calls(expected["fall"], calls))):
             return "MISMATCH", "taken when %s; falls through when %s" % (expected["taken"], expected["fall"])
         # A branch-likely sentence may explicitly describe annulment/delay behavior.
         if "branch-likely" in text and not expected["likely"]:
@@ -309,15 +503,15 @@ def check_sentence(sentence, facts, rendered, maps):
             address, value, source = path_ret.groups()
             expected = returns.get(address, {}).get("paths", {}).get(source)
             if expected:
-                expected = expected.split("; f0 =", 1)[0]
+                expected = expected.split("; f0 =", 1)[0].split(", f0 =", 1)[0]
         else:
             address, value = ret.groups() if ret else (old_ret.group(2), old_ret.group(1)) if old_ret else ret3.group(1, 2)
-            value = value.split("; f0 =", 1)[0]
+            value = value.split("; f0 =", 1)[0].split(", f0 =", 1)[0]
             if ret3 and ret3.group(3):
                 delay_claim = (ret3.group(4), ret3.group(3))
             expected = returns.get(address, {}).get("value")
             if expected:
-                expected = expected.split("; f0 =", 1)[0]
+                expected = expected.split("; f0 =", 1)[0].split(", f0 =", 1)[0]
         if expected is None:
             return "MISMATCH", "return at %s" % address
         if value.startswith("one of "):
@@ -326,9 +520,10 @@ def check_sentence(sentence, facts, rendered, maps):
             if expected == "?" and address in returns:
                 actual = set(returns[address]["paths"].values())
             if not actual or len(choices) != len(actual) or any(
-                    not any(_values_match(choice, fact) for fact in actual) for choice in choices):
+                    not any(_values_match(_canonical_calls(choice, calls), _canonical_calls(fact, calls))
+                            for fact in actual) for choice in choices):
                 return "MISMATCH", "one of %s" % ", ".join(sorted(actual or {expected}))
-        elif not _values_match(expected, value):
+        elif not _values_match(_canonical_calls(expected, calls), _canonical_calls(value, calls)):
             return "MISMATCH", "v0 = %s" % expected
         if delay_claim and returns.get(address, {}).get("delay") != delay_claim:
             return "MISMATCH", "delay slot %s at %s" % (returns.get(address, {}).get("delay"), address)
@@ -349,6 +544,23 @@ def check_sentence(sentence, facts, rendered, maps):
 def grade_entry(root, entry):
     facts, rendered = facts_for(root, entry)
     maps = _render_maps(facts, rendered)
+    calls = maps[1]
+    for sentence in entry["sentences"]:
+        call = re.match(r"The `\w+` at (" + HEX + r") calls (.*?) with ", sentence.rstrip("."))
+        old_call = re.match(r"Calls `(.*?)` via \S+ with .*? \(`\w+` at (" + HEX + r")\)", sentence.rstrip("."))
+        tail_call = re.match(r"Calls (.*?) via \S+ with .*? \(`\w+` at (" + HEX + r")\)", sentence.rstrip("."))
+        if call:
+            address, callee = call.groups()
+        elif old_call:
+            callee, address = old_call.groups()
+        elif tail_call:
+            callee, address = tail_call.groups()
+        else:
+            continue
+        expected = calls.get(address)
+        target = re.search(r"([^\s]+) \[" + HEX + r"\]", callee)
+        if expected and target and _callee_matches(callee, expected["callee"]):
+            expected.setdefault("aliases", set()).add(target.group(1))
     results = [check_sentence(sentence, facts, rendered, maps) for sentence in entry["sentences"]]
     return results
 
