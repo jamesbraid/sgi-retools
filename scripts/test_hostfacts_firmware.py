@@ -22,6 +22,202 @@ class FirmwareFacts(unittest.TestCase):
             fs = r.facts(False)
             return fs, hostfacts.render(r, fs)
 
+    def test_x86_direction_changes_preserve_registers_flags_and_stack(self):
+        # mov eax,7; cmp eax,8; cld/std; je +1; ret; ret.
+        for direction in ('fc', 'fd'):
+            with self.subTest(direction=direction):
+                fs, text = self.analyze('x86-32', 'b80700000083f808' +
+                                       direction + '7401c3c3')
+                self.assertEqual([e['value'] for e in fs['exits']], ['0x7', '0x7'])
+                self.assertIn('taken when 0x7 == 0x8', text)
+                self.assertEqual(fs['warnings'], [])
+                fs, _ = self.analyze('x86-32', '6a07' + direction + 'e800000000c3')
+                self.assertEqual(fs['calls'][0]['args'][0]['value'], '0x7')
+
+    def test_x86_string_output_reports_per_transfer_accesses(self):
+        # mov edx,0x123403f8; mov esi,0x2000; mov ecx,3; cld;
+        # rep outsw; mov eax,esi; ret.
+        fs, text = self.analyze('x86-32',
+            'baf8033412be00200000b903000000fcf3666f89f0c3')
+        transfers = [a for a in fs['accesses'] if a['address'] == '0x1010']
+        self.assertEqual([(a['kind'], a['width']) for a in transfers],
+                         [('load', 2), ('store', 2)])
+        memory, port = transfers
+        self.assertEqual((memory.get('segment'), memory.get('segment_offset')), ('ds', '0x2000'))
+        self.assertNotIn('absolute', memory)
+        self.assertEqual((port['space'], port['absolute'], port['value']),
+                         ('io', '0x3f8', '?'))
+        self.assertTrue(all(a['iterations'] == '0x3' for a in transfers))
+        self.assertEqual([a['stride'] for a in transfers], [2, 0])
+        self.assertIn('per transfer; normal completion', text)
+        self.assertIn('iterations=0x3', text)
+        self.assertIn('segment=ds offset=0x2000 base unknown', text)
+        self.assertEqual(fs['exits'][0]['value'], '0x2006')
+
+    def test_x86_string_input_uses_es_and_invalidates_saved_memory(self):
+        # push 7; mov edx,0x20; mov edi,0x2000; std; insb;
+        # mov eax,edi; call next; ret.
+        fs, _ = self.analyze('x86-32',
+            '6a07ba20000000bf00200000fd6c89f8e800000000c3')
+        transfers = [a for a in fs['accesses'] if a['address'] == '0x100d']
+        self.assertEqual([(a['kind'], a['width']) for a in transfers],
+                         [('load', 1), ('store', 1)])
+        port, memory = transfers
+        self.assertEqual((port['space'], port['absolute']), ('io', '0x20'))
+        self.assertEqual((memory.get('segment'), memory.get('segment_offset'), memory.get('stride')),
+                         ('es', '0x2000', -1))
+        self.assertNotIn('absolute', memory)
+        self.assertEqual(fs['calls'][0]['args'][0]['value'], '?')
+
+    def test_x86_zero_repeat_count_preserves_index_and_saved_stack(self):
+        # push 7; xor ecx,ecx; rep insd; mov eax,edi; call next; ret.
+        fs, _ = self.analyze('x86-32', '6a0731c9f36d89f8e800000000c3')
+        self.assertEqual([a for a in fs['accesses'] if a['address'] == '0x1004'], [])
+        self.assertEqual(fs['calls'][0]['args'][0]['value'], '0x7')
+        fs, _ = self.analyze('x86-32', 'bf0020000031c9f36d89f8c3')
+        self.assertEqual(fs['exits'][0]['value'], '0x2000')
+
+    def test_x86_unknown_repeat_count_is_conditional_and_finishes_at_zero(self):
+        # cld; rep outsb; mov eax,ecx; ret.
+        fs, text = self.analyze('x86-32', 'fcf36e89c8c3')
+        transfers = [a for a in fs['accesses'] if a['address'] == '0x1001']
+        self.assertEqual(len(transfers), 2)
+        self.assertTrue(all(a['iterations'] == 'ecx' and a['condition'] == 'ecx != 0x0'
+                            for a in transfers))
+        self.assertEqual(fs['exits'][0]['value'], '0x0')
+        self.assertIn('when ecx != 0x0', text)
+
+    def test_x86_unknown_direction_does_not_invent_updated_index(self):
+        # mov esi,0x2000; outsb; mov eax,esi; ret.
+        fs, _ = self.analyze('x86-32', 'be002000006e89f0c3')
+        memory = next((a for a in fs['accesses'] if a['kind'] == 'load'), {})
+        self.assertIsNone(memory.get('stride'))
+        self.assertEqual(fs['exits'][0]['value'], '?')
+
+    def test_x86_string_direction_is_merged_and_clobbered_by_calls(self):
+        # cmp eax,0; je std; cld; jmp outsb; std; outsb; mov eax,esi; ret.
+        fs, _ = self.analyze('x86-32', '83f8007403fceb01fd6e89f0c3')
+        self.assertTrue(all(a.get('stride') in (None, 0) for a in fs['accesses']))
+        self.assertEqual(fs['exits'][0]['value'], '?')
+        # cld; call next; outsb; mov eax,esi; ret.
+        fs, _ = self.analyze('x86-32', 'fce8000000006e89f0c3')
+        self.assertEqual(fs['exits'][0]['value'], '?')
+
+    def test_x86_string_address_size_controls_count_index_and_wrap(self):
+        # mov esi,0x1234fffe; mov ecx,0xabcd0002; cld;
+        # address-size-16 rep outsw; mov eax,esi; ret.
+        fs, _ = self.analyze('x86-32',
+            'befeff3412b90200cdabfc67f3666f89f0c3')
+        transfers = [a for a in fs['accesses'] if a['address'] == '0x100b']
+        self.assertEqual(transfers[0].get('iterations'), '0x2')
+        self.assertEqual(transfers[0].get('count_register'), 'cx')
+        self.assertEqual(transfers[0].get('address_bits'), 16)
+        self.assertEqual(fs['exits'][0]['value'], '0x12340002')
+        # In 16-bit code address-size-32 uses ESI/ECX, operand size stays word.
+        fs, _ = self.analyze('x86-16',
+            '66be0020000066b902000000fc67f36f6689f0c3')
+        transfers = [a for a in fs['accesses'] if a['mnemonic'] == 'rep outsw']
+        self.assertEqual((transfers[0].get('count_register'), transfers[0].get('address_bits')),
+                         ('ecx', 32))
+        self.assertEqual(fs['exits'][0]['value'], '0x2004')
+
+    def test_x86_string_transfer_width_is_independent_of_address_size(self):
+        for arch, prefix, width in (('x86-16', '', 2), ('x86-16', '66', 4),
+                                    ('x86-32', '', 4), ('x86-32', '66', 2)):
+            for opcode in ('6d', '6f'):
+                with self.subTest(arch=arch, prefix=prefix, opcode=opcode):
+                    fs, _ = self.analyze(arch, 'fc' + prefix + opcode + 'c3')
+                    self.assertEqual([a['width'] for a in fs['accesses']], [width, width])
+
+    def test_x86_string_segment_override_remains_unknown(self):
+        # mov esi,0x2000; cld; fs outsb; ret.
+        fs, text = self.analyze('x86-32', 'be00200000fc646ec3')
+        memory = next((a for a in fs['accesses'] if a['kind'] == 'load'), {})
+        self.assertEqual((memory.get('segment'), memory.get('segment_offset')), ('fs', '0x2000'))
+        self.assertNotIn('absolute', memory)
+        self.assertIn('unknown effective address', text)
+
+    def test_x86_truncated_string_prefix_has_no_transfer(self):
+        for code in ('f3', 'f366', 'f36766'):
+            with self.subTest(code=code):
+                fs, _ = self.analyze('x86-32', code)
+                self.assertEqual(fs['accesses'], [])
+
+    def test_x86_repne_string_io_is_not_modelled_as_rep(self):
+        fs, _ = self.analyze('x86-32', 'fcf26fc3')
+        self.assertEqual([a for a in fs['accesses'] if a.get('space') == 'io'], [])
+        self.assertTrue(any('unsupported' in w for w in fs['warnings']))
+
+    def test_x86_string_io_preserves_comparison_flags(self):
+        # cmp eax,7; cld; rep outsb; je +1; ret; ret.
+        fs, text = self.analyze('x86-32', '83f807fcf36e7401c3c3')
+        self.assertIn('taken when eax == 0x7', text)
+
+    def test_x86_string_output_does_not_destroy_saved_stack_words(self):
+        # push 7; cld; outsb; call next; ret. A read cannot overwrite the save.
+        fs, _ = self.analyze('x86-32', '6a07fc6ee800000000c3')
+        self.assertEqual(fs['calls'][0]['args'][0]['value'], '0x7')
+
+    def test_x86_address_size_16_repeat_preserves_upper_counter_bits(self):
+        # mov ecx,0xabcd0002; cld; address-size-16 rep outsb; mov eax,ecx; ret.
+        fs, _ = self.analyze('x86-32', 'b90200cdabfc67f36e89c8c3')
+        self.assertEqual(fs['exits'][0]['value'], '0xabcd0000')
+
+    def test_x86_string_input_cannot_override_destination_segment(self):
+        # A segment prefix does not replace INS's fixed ES destination.
+        fs, _ = self.analyze('x86-32', 'fc646cc3')
+        memory = next((a for a in fs['accesses'] if a['kind'] == 'store'), {})
+        self.assertEqual(memory.get('segment'), 'es')
+
+    def test_x86_string_direction_is_unknown_after_unsupported_effects(self):
+        # cld; cpuid; outsb; mov eax,esi; ret.
+        fs, _ = self.analyze('x86-32', 'fc0fa26e89f0c3')
+        self.assertEqual(fs['exits'][0]['value'], '?')
+        self.assertTrue(any('cpuid: unsupported' in w for w in fs['warnings']))
+
+    def test_x86_string_index_wraps_at_32_bits(self):
+        # mov esi,0xffffffff; cld; outsw; mov eax,esi; ret.
+        fs, _ = self.analyze('x86-32', 'befffffffffc666f89f0c3')
+        self.assertEqual(fs['exits'][0]['value'], '0x1')
+
+    def test_x86_repeat_prefixed_direction_changes_remain_unsupported(self):
+        for arch in ('x86-16', 'x86-32'):
+            setup = 'be0020' if arch == 'x86-16' else 'be00200000'
+            for repeat in ('f2', 'f3'):
+                prefixes = (repeat, '66'+repeat, repeat+'66', '67'+repeat,
+                            repeat+'67', '26'+repeat+'6667', '66'+repeat+'6764',
+                            repeat+'66672e', '673666'+repeat,
+                            '3e66'+repeat+'67', '65'+repeat+'6766')
+                for opcode, name, prior in (('fc', 'cld', 'fd'), ('fd', 'std', 'fc')):
+                    for prefix in prefixes:
+                        with self.subTest(arch=arch, prefix=prefix, name=name):
+                            # Establish the opposite DF first. Merely ignoring
+                            # the invalid encoding must not preserve known DF.
+                            code = setup + prior + prefix + opcode + '6e89f0c3'
+                            site = 0x1000 + len(bytes.fromhex(setup+prior))
+                            fs, _ = self.analyze(arch, code)
+                            instruction = next(i for i in fs['instructions'] if i['addr'] == site)
+                            self.assertEqual(instruction['bytes'], prefix+opcode)
+                            self.assertIn(hex(site)+' '+name+': unsupported effects invalidated',
+                                          fs['warnings'])
+                            memory = next(a for a in fs['accesses'] if 'segment' in a)
+                            self.assertIsNone(memory['stride'])
+                            self.assertEqual(fs['exits'][0]['value'], '?')
+
+    def test_x86_repeat_prefixed_direction_changes_discard_prior_flags_and_saves(self):
+        for repeat in ('f2', 'f3'):
+            for opcode in ('fc', 'fd'):
+                with self.subTest(repeat=repeat, opcode=opcode):
+                    # mov eax,7; cmp eax,8; invalid direction encoding; je;
+                    # ret; ret. Generic unsupported effects lose comparison facts.
+                    fs, _ = self.analyze('x86-32',
+                        'b80700000083f808'+repeat+opcode+'7401c3c3')
+                    branch = next(b for b in fs['blocks'] if 'taken_when' in b)
+                    self.assertEqual(branch['taken_when'], 'Z == 1')
+                    # push 7; invalid direction encoding; call next; ret.
+                    fs, _ = self.analyze('x86-32', '6a07'+repeat+opcode+'e800000000c3')
+                    self.assertEqual(fs['calls'][0]['args'][0]['value'], '?')
+
     def test_m68k_truncated_call_does_not_invent_a_target(self):
         # moveq #7,d0; incomplete jsr absolute-long (six bytes).
         call = '4eb9ffe735c4'

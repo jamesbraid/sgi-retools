@@ -338,20 +338,22 @@ class FirmwareImage:
 
 
 class FirmwareState:
-    def __init__(self, regs=None, memory=None, flags=None):
+    def __init__(self, regs=None, memory=None, flags=None, direction=None):
         self.regs, self.memory, self.flags = regs or {}, memory or {}, flags
+        self.direction = direction
 
     def copy(self):
-        return FirmwareState(dict(self.regs), dict(self.memory), self.flags)
+        return FirmwareState(dict(self.regs), dict(self.memory), self.flags, self.direction)
 
     def merged(self, other):
         # A disagreement is unknown. Do not pick whichever predecessor ran last.
         regs = {k: v for k, v in self.regs.items() if v == other.regs.get(k)}
         memory = {k: v for k, v in self.memory.items() if v == other.memory.get(k)}
-        return FirmwareState(regs, memory, self.flags if self.flags == other.flags else None)
+        return FirmwareState(regs, memory, self.flags if self.flags == other.flags else None,
+                             self.direction if self.direction == other.direction else None)
 
     def key(self):
-        return self.regs, self.memory, self.flags
+        return self.regs, self.memory, self.flags, self.direction
 
 
 class FirmwareRoutine:
@@ -788,8 +790,65 @@ class FirmwareRoutine:
         for name in writes:
             self.setreg(st, name, None)
         st.flags = None
+        st.direction = None
         st.memory.clear()
         self.warnings.add('0x%x %s: unsupported effects invalidated' % (ins.address, ins.mnemonic))
+
+    def x86_mask(self, value, bits):
+        if value is None:
+            return None
+        mask = (1 << bits) - 1
+        return facts.C(value[1] & mask) if facts.is_c(value) else facts.cap(('op', '&', value, facts.C(mask)))
+
+    def x86_low_register(self, st, name):
+        value = self.getreg(st, name)
+        # Partial register reads otherwise keep only constants. String I/O
+        # also needs the low DX/CX/SI/DI expression when its parent is known.
+        if value is None and name != self.fullreg(name):
+            value = self.x86_mask(self.getreg(st, self.fullreg(name)), 16)
+        return value
+
+    def string_io(self, st, ins, events):
+        incoming = ins.insn_name().startswith('ins')
+        mem = ins.operands[0 if incoming else 1]
+        bits = ins.addr_size * 8
+        index_name = ('edi' if incoming else 'esi') if bits == 32 else ('di' if incoming else 'si')
+        count_name = ('ecx' if bits == 32 else 'cx') if 0xf3 in ins.prefix else None
+        count = self.x86_low_register(st, count_name) if count_name else facts.C(1)
+        if facts.is_c(count) and count[1] == 0:
+            return
+        index = self.x86_low_register(st, index_name)
+        port = self.x86_low_register(st, 'dx')
+        width = self.width(ins, mem)
+        stride = width * st.direction if st.direction is not None else None
+        segment = self.reg(ins, mem.mem.segment) if mem.mem.segment else 'ds'
+        common = dict(iterations=self.R(count), count_register=count_name, completion='normal')
+        if count_name and not facts.is_c(count):
+            common['condition'] = (self.R(count) if count is not None else count_name) + ' != 0x0'
+        first = len(events['accesses'])
+        # A segment selector does not supply its base. Keep the known offset
+        # separately instead of presenting it as a linear effective address.
+        if incoming:
+            self.access(events, ins, 'load', width, port, 'port', 0)
+            self.access(events, ins, 'store', width, None, index_name, 0)
+        else:
+            self.access(events, ins, 'load', width, None, index_name, 0)
+            self.access(events, ins, 'store', width, port, 'port', 0)
+        accesses = events['accesses'][first:]
+        memory, io = (accesses[1], accesses[0]) if incoming else accesses
+        memory.update(common, stride=stride, address_bits=bits, segment=segment,
+                      segment_offset=self.R(index), segment_base='unknown')
+        io.update(common, stride=0, address_bits=16, space='io')
+        # Aggregate repeated input can overwrite saved stack values too.
+        if incoming:
+            st.memory.clear()
+        updated = None
+        if stride is not None and count is not None:
+            step = facts.C(count[1] * stride) if facts.is_c(count) else facts.cap(('op', '*', count, facts.C(stride)))
+            updated = self.x86_mask(self.plus(index, step), bits)
+        self.setreg(st, index_name, updated)
+        if count_name:
+            self.setreg(st, count_name, facts.C(0))
 
     def transfer(self, old, record, events):
         st = old.copy()
@@ -818,6 +877,7 @@ class FirmwareRoutine:
                 self.setreg(st, reg, None)
             self.setreg(st, self.retreg, ('ret', name or hex(target) if target is not None else 'unknown'))
             st.flags = None
+            st.direction = None
             st.memory.clear()
             return old.merged(st) if conditional else st
         if self.x86 and kind == 'jump' and op and op[0].type == 3:
@@ -861,6 +921,16 @@ class FirmwareRoutine:
             address = facts.add(self.getreg(st,self.sp),-4)
             self.memory(st,ins,address,4,events,True,value,self.sp,-4,True)
             self.setreg(st,self.sp,address)
+            modeled = True
+        # Capstone drops repeat prefixes from CLD/STD metadata. Their raw
+        # encodings must remain unsupported rather than establish known DF.
+        elif (self.x86 and mn in ('cld', 'std')
+              and not any(b in (0xf2, 0xf3) for b in ins.bytes[:-1])):
+            st.direction = 1 if mn == 'cld' else -1
+            modeled = True
+        elif (self.x86 and ins.insn_name() in ('insb', 'insw', 'insd', 'outsb', 'outsw', 'outsd')
+              and 0xf2 not in ins.prefix):
+            self.string_io(st, ins, events)
             modeled = True
         elif self.x86 and mn in ('in', 'out'):
             data, port = (op[0],op[1]) if mn == 'in' else (op[1],op[0])
@@ -1202,8 +1272,15 @@ class FirmwareRoutine:
         lines += ['', 'accesses (%d)' % len(fs['accesses'])]
         for a in fs['accesses']:
             target = 'abs '+a['absolute'] if 'absolute' in a else a['origin']+' '+sgn(a['origin_offset']) if 'origin' in a else '? (unknown effective address)'
+            string = ''
+            if 'iterations' in a:
+                string = ' iterations=%s%s stride=%s address_bits=%d (per transfer; normal completion)' % (
+                    a['iterations'], ' counter='+a['count_register'] if a['count_register'] else '',
+                    a['stride'] if a['stride'] is not None else '?', a['address_bits'])
+                if a.get('segment'):
+                    string += ' segment=%s offset=%s base unknown' % (a['segment'], a['segment_offset'])
             lines.append('  %s %s w%s %s base=%s disp %s => %s%s%s' % (a['address'],a['kind'],a['width'],a['mnemonic'],a['base'] or '?',sgn(a['offset']),target,
-                         ' value '+a['value'] if a['kind']=='store' else '', (' space='+a['space'] if a.get('space') else '')+(' when '+a['condition'] if a.get('condition') else '')))
+                         ' value '+a['value'] if a['kind']=='store' else '', (' space='+a['space'] if a.get('space') else '')+string+(' when '+a['condition'] if a.get('condition') else '')))
         lines += ['', 'calls (%d)' % len(fs['calls'])]
         for c in fs['calls']:
             lines.append('  %s %s %s [%s]' % (c['address'],c['mnemonic'],c['callee'] or '(unknown callee)',c['target'] or 'unknown target'))
