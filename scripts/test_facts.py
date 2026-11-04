@@ -72,5 +72,23 @@ class RenderTable(unittest.TestCase):
         self.assertEqual(r(('tent', ('in', 'a0'), 4)), 'entry(a0)')
 
 
+class UnanalysedRoutine(unittest.TestCase):
+    def test_empty_routine_has_empty_analysis_state_and_address_facts(self):
+        img = image([])
+        img.abi, img.isa, img.kind = 'n64', 'mips4', 'object'
+        img.gp, img.sections, img.member = None, [], None
+        img.disassemble = lambda addr, size, section: []
+        r = facts.Routine(img, 'alias', 0x1000, 0, '.text', 'symtab', [])
+
+        fs = r.facts(False)
+
+        self.assertEqual(r.in_states, {})
+        self.assertEqual(r.edges, {})
+        self.assertEqual(r.tables, [])
+        self.assertEqual(fs['routine']['address'], '0x1000')
+        self.assertEqual(fs['routine']['size'], 0)
+        self.assertEqual(fs['unreached'], [])
+
+
 if __name__ == '__main__':
     unittest.main()

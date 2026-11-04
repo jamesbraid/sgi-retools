@@ -704,6 +704,9 @@ class Routine:
         self.R = Render(img)
         self.insns = img.disassemble(addr, size, section) if size else []
         self.at = {ins['addr']: i for i, ins in enumerate(self.insns)}
+        self.in_states = {}
+        self.edges = {}
+        self.tables = []
         self.w64 = img.abi in ('n64', 'n32', 'flat') or img.isa in ('mips3', 'mips4')
         self.nargs = 4 if img.abi == 'o32' else 8
         self.rel = img.kind == 'object'
