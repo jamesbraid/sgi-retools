@@ -229,6 +229,45 @@ class MultiUnit(unittest.TestCase):
         self.assertFalse(inv.cites_range('`EramAlloc` at 0xd981360.', 0xd981360, 0))
 
 
+class SharedAddress(unittest.TestCase):
+    # glTexImage3D and glTexImage3DEXT are one function under two names
+    BIN = 'builds/p/usr/gfx/arch/IP30ODSY64/libGLcore.so'
+    NAMES = ['glTexImage3D', 'glTexImage3DEXT']
+    ADDR = 0xb499950
+
+    def ent(self, text, name='glTexImage3DEXT'):
+        return inv.Entry(text, 'understood', frozenset({('id', name)}))
+
+    def cites(self, toks):
+        return self.BIN in toks
+
+    def test_an_entry_with_the_binary_and_exact_address_ties_to_the_row(self):
+        e = self.ent('- `glTexImage3DEXT` in `%s` at 0xb499950 (n64).' % self.BIN)
+        self.assertTrue(inv.names_row_by_address(e, self.NAMES, self.ADDR, self.cites))
+
+    def test_either_alias_may_be_the_entry_subject(self):
+        e = self.ent('- `glTexImage3D` in `%s` at 0xb499950 (n64).' % self.BIN, 'glTexImage3D')
+        self.assertTrue(inv.names_row_by_address(e, self.NAMES, self.ADDR, self.cites))
+
+    def test_a_name_only_mention_does_not(self):
+        e = self.ent('- `glTexImage3DEXT` uploads a volume texture.')
+        self.assertFalse(inv.names_row_by_address(e, self.NAMES, self.ADDR, self.cites))
+
+    def test_another_address_or_an_offset_does_not(self):
+        e = self.ent('- `glTexImage3DEXT` in `%s` at 0xb49995c (n64).' % self.BIN)
+        self.assertFalse(inv.names_row_by_address(e, self.NAMES, self.ADDR, self.cites))
+        e = self.ent('- `glTexImage3DEXT` in `%s` at +0xb499950.' % self.BIN)
+        self.assertFalse(inv.names_row_by_address(e, self.NAMES, self.ADDR, self.cites))
+
+    def test_another_binary_does_not(self):
+        e = self.ent('- `glTexImage3DEXT` in `builds/q/libGLcore.so` at 0xb499950 (n64).')
+        self.assertFalse(inv.names_row_by_address(e, self.NAMES, self.ADDR, self.cites))
+
+    def test_an_entry_about_a_third_name_does_not(self):
+        e = self.ent('- `glResetMinmaxEXT` in `%s` at 0xb499950 (n64).' % self.BIN, 'glResetMinmaxEXT')
+        self.assertFalse(inv.names_row_by_address(e, self.NAMES, self.ADDR, self.cites))
+
+
 class Unverified(unittest.TestCase):
     SUBJ = frozenset(inv.unit_keys('`odsy_EdidCksum`'))
     BODY = ('`odsy_EdidCksum` (`odsy_ddc.o`, offset 0x1c58): Computes the EDID block checksum: it adds the 128 '

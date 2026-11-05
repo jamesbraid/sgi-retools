@@ -3511,6 +3511,15 @@ def build(cfg, a, tmp):
             cited[k] = out
         return cited[k]
 
+    def cites_binary(toks, lab):
+        """True when a path the entry writes is this binary's full label, or names this binary and no other."""
+        for t in toks:
+            t = re.sub(r'^(?:\./|/)+', '', t)
+            t = t[5:] if t.startswith('root/') else t
+            if t == lab or (t in image_keys(lab) and token_images.get(t) == {lab}):
+                return True
+        return False
+
     rows = []
     brows = []
     for img in imgs:
@@ -3529,7 +3538,8 @@ def build(cfg, a, tmp):
                 demote = lambda h, name=name, grp=grp: h.ent is None or grp not in cited_groups(h.ent, name)
             # a name defined in several compilation units cannot be tied to one function by name: only an
             # entry that cites an address inside this row's function credits it. Several names at one
-            # address are rejected outright, at most named-only
+            # address are credited only by an entry that gives the binary and that exact address; it
+            # credits every name there, and a bare mention leaves the row at most named-only
             fi = finfo.get(lab, {})
             row['_multi'] = name in fi.get('multi_unit', ())
             row['_shared'] = name in fi.get('shared_address', ())
@@ -3537,11 +3547,17 @@ def build(cfg, a, tmp):
             hits = docs.name_hits(name)
             if row['_multi']:
                 hits = [h for h in hits if h.ent is not None and cites_range(h.ent.text, addr, size)]
+            if row['_shared']:
+                # the entry that gives this binary and this exact address credits every name there
+                alias = sorted(n for n, e in fl.items() if e[1] == addr and e[0] == sec and n in fi['shared_address'])
+                hits = [h for n in alias for h in docs.name_hits(n)
+                        if ('id', n) in (h.ent.subj if h.ent is not None else ())
+                        and names_row_by_address(h.ent, alias, addr, lambda toks, lab=lab: cites_binary(toks, lab))]
             put_status(row, docs.best(hits, demote))
             if row['_multi'] and row['status'] == 'undocumented' and docs.name_hits(name):
                 row['status'] = 'named-only'
-            if row['_shared'] and RANK[row['status']] > RANK['named-only']:
-                row['status'], row['_open'], row['_computes'] = 'named-only', False, False
+            if row['_shared'] and not hits and docs.name_hits(name):
+                row['status'] = 'named-only'
             rows.append(row)
         base = os.path.basename(img['path'])
         mine = set()
@@ -3630,6 +3646,21 @@ def cites_range(text, addr, size):
     if not addr or not size:
         return False
     return any(not m.group(1) and addr <= int(m.group(2), 16) < addr + size for m in HEXLIT.finditer(text))
+
+
+def names_row_by_address(ent, names, addr, cites_binary):
+    """True when the entry's header line names one of `names` as its subject, writes the exact address
+    `addr` (not an offset) and cites the row's binary. Such an entry is about the bytes at that address,
+    so it ties itself to every name there; an entry that only mentions the name, or sits at another
+    address, does not."""
+    if ent is None or not addr:
+        return False
+    head = ent.text.split('\n', 1)[0]
+    if not any(('id', n) in ent.subj for n in names):
+        return False
+    if not any(not m.group(1) and int(m.group(2), 16) == addr for m in HEXLIT.finditer(head)):
+        return False
+    return cites_binary({m.group(0).strip('.,;:') for m in PATHTOK.finditer(head.replace('`', ' '))})
 
 
 def code_groups(funcs, ucode_rows):
