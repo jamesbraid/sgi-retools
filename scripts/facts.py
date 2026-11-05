@@ -294,7 +294,10 @@ class Image:
             if sec and (nxt is None or nxt > sec[1]):
                 nxt = sec[1]
             sz = (nxt - a) if nxt else 0
-        return (x[2], a, sz, x[3], x[5])
+        # debug-information and inventory names carry a guessed '.text'; the address says which section
+        # holds the code (a linked file's .MIPS.stubs is code outside .text), and objdump -j needs it right
+        sec = (self.section_of(a) if x[5] != 'symtab' else None) or x[3]
+        return (x[2], a, sz, sec, x[5])
 
     def sec_reloc(self, sec, off):
         """The symbol address a relocated word at sec+off holds, in a relocatable object."""

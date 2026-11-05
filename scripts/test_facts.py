@@ -63,6 +63,29 @@ class AmbiguousSymbol(unittest.TestCase):
         self.assertEqual(image(syms).find('helper')[1], 0x100)
 
 
+class SectionFromAddress(unittest.TestCase):
+    """A name from debug information or the inventory says '.text'; the address decides."""
+    SECS = [{'name': '.text', 'address': '0x1000', 'size': 0x100, 'flags': 'AX'},
+            {'name': '.MIPS.stubs', 'address': '0x1100', 'size': 0x2ec, 'flags': 'AX'}]
+
+    def img(self, kind='shared-object'):
+        img = image([(0x1100, 0x2ec, '_stub', '.text', True, 'inventory'),
+                     (0x1000, 0x20, 'real', '.text', True, 'symtab')])
+        img.kind, img.sections = kind, self.SECS
+        del img.section_bounds
+        return img
+
+    def test_stubs_routine_is_read_from_the_stubs_section(self):
+        # asked for .text, objdump returns nothing for the run that follows the leading break
+        self.assertEqual(self.img().find('_stub')[3], '.MIPS.stubs')
+
+    def test_symbol_table_section_is_kept(self):
+        self.assertEqual(self.img().find('real')[3], '.text')
+
+    def test_object_file_keeps_the_given_section(self):
+        self.assertEqual(self.img('object').find('_stub')[3], '.text')
+
+
 class RenderTable(unittest.TestCase):
     def test_table_with_a_computed_base_renders(self):
         # a jump table whose base is itself a symbolic value used to raise a TypeError
