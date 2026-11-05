@@ -709,6 +709,7 @@ class Routine:
         self.at = {ins['addr']: i for i, ins in enumerate(self.insns)}
         self.in_states = {}
         self.edges = {}
+        self._delay_entry = None
         self.tables = []
         self.w64 = img.abi in ('n64', 'n32', 'flat') or img.isa in ('mips3', 'mips4')
         self.nargs = 4 if img.abi == 'o32' else 8
@@ -1129,7 +1130,13 @@ class Routine:
             if visits[i] > 400:
                 continue
             st = self.in_states[i].copy()
-            for j, out in self.successors(i, st):
+            self._delay_entry = None
+            succ = self.successors(i, st)
+            if self._delay_entry is not None:
+                # A delay slot that is also a branch target runs after this branch too, so its
+                # entry state is the meet of every way in, this branch's included.
+                succ = succ + [self._delay_entry]
+            for j, out in succ:
                 if j is None or j >= n or j < 0:
                     continue
                 self.edges[(i, j)] = out
@@ -1148,6 +1155,8 @@ class Routine:
             return [(i + 1, st)]
         self.step(st, ins)
         delay = self.insns[i + 1] if i + 1 < n else None
+        if delay is not None and (i + 1) in self.branch_targets():
+            self._delay_entry = (i + 1, st.copy())
         taken = st.copy()
         callee = None
         if mn in CALLS:
@@ -1264,7 +1273,9 @@ class Routine:
                 rec.branch(i, ins, st, self.in_states[i])
                 if i + 1 < len(self.insns):
                     rec.cur = i + 1
-                    self.step(st, self.insns[i + 1], rec)
+                    # A delay slot that is also a branch target is recorded once, on its own
+                    # visit, from the meet of every state that reaches it.
+                    self.step(st, self.insns[i + 1], None if i + 1 in self.branch_targets() else rec)
                     rec.cur = i
                     rec.after_delay(i, ins, st)
         self.tables = tables

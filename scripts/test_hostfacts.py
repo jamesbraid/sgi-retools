@@ -237,6 +237,41 @@ class UnconditionalBranchDelay(unittest.TestCase):
         self.assertIn('delay slot 0x1004', text)
 
 
+class DelaySlotThatIsAlsoATarget(unittest.TestCase):
+    """One instruction is one access, whichever way it was reached."""
+    T0 = 8
+    WORDS = [
+        daddu(T0, A1, 0),                           # 1000 t0 = a1
+        br(0x04, A3, 0, BASE + 4, BASE + 0x14),     # 1004 beq a3,zero,1014: jumps to the slot below
+        NOP,                                        # 1008
+        daddu(T0, A2, 0),                           # 100c t0 = a2
+        br(0x04, A0, A1, BASE + 0x10, BASE + 0x1c),  # 1010 beq a0,a1,101c
+        lw(V0, 8, T0),                              # 1014 its delay slot, and the target of 1004
+        jr(RA),                                     # 1018
+        NOP,                                        # 101c
+        jr(RA),
+        NOP,
+    ]
+
+    def test_one_record_and_the_paths_disagree(self):
+        _, fs, text = routine(self.WORDS)
+        loads = [a for a in fs['accesses'] if a['address'] == '0x1014']
+        self.assertEqual(len(loads), 1)
+        # a1 on one path and a2 on the other: the base is unknown, not whichever path came first
+        self.assertEqual(loads[0]['base_origin'], '?')
+        self.assertNotIn('origin', loads[0])
+        self.assertEqual(text.count('0x1014 load'), 1)
+        self.assertIn('=> ? (base unknown)', text)
+
+    def test_agreeing_paths_keep_the_base(self):
+        words = list(self.WORDS)
+        words[3] = daddu(self.T0, A1, 0)            # both paths hold a1
+        _, fs, _ = routine(words)
+        loads = [a for a in fs['accesses'] if a['address'] == '0x1014']
+        self.assertEqual(len(loads), 1)
+        self.assertEqual((loads[0]['origin'], loads[0]['origin_offset']), ('a1', 8))
+
+
 class IndirectJumpTable(unittest.TestCase):
     def test_unresolved_indexed_table_is_explicit(self):
         t0, t1, t9 = 8, 9, 25
