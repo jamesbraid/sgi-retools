@@ -209,7 +209,9 @@ class Image:
                         a = int(c[ix['address']], 16)
                     except (ValueError, IndexError):
                         continue
-                    if a:
+                    # address 0 is a real offset in a relocatable object; a row that names no
+                    # section and gives 0 is an unresolved name, not a placement
+                    if a or c[ix['elf_section']]:
                         rows[c[ix['binary']]].append((a, int(c[ix['size']] or 0), c[ix['name']],
                                                       c[ix['elf_section']]))
             _TSV[tsv] = rows

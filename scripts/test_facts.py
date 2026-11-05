@@ -6,7 +6,9 @@ Run from the repository root: python3 scripts/test_facts.py
 import collections
 import os
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -84,6 +86,25 @@ class SectionFromAddress(unittest.TestCase):
 
     def test_object_file_keeps_the_given_section(self):
         self.assertEqual(self.img('object').find('_stub')[3], '.text')
+
+
+class InventoryAddressZero(unittest.TestCase):
+    """Offset 0 is a real place in a relocatable object; a row that names no section is not a place."""
+    ROWS = ('binary\trole\tabi\telf_section\taddress\tsize\tname\tsource\tcode_sha\trejected\tscope\tstatus\tdoc\tsection\n'
+            'usr/cpu/sysgen/IP35boot/pcibr.o\tshared-kernel\tn64\t.text\t0x0\t1188\tfirst_routine\tdwarf\t\t\tin\tundocumented\t\t\n'
+            'usr/cpu/sysgen/IP35boot/pcibr.o\tshared-kernel\tn64\t\t0x0\t\tunresolved_name\tdwarf\t\t\tin\tundocumented\t\t\n')
+
+    def test_zero_address_with_a_section_is_named_and_unresolved_row_is_not(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.makedirs(os.path.join(td, 'scripts'))
+            os.makedirs(os.path.join(td, 'docs', 'inventory'))
+            with open(os.path.join(td, 'docs', 'inventory', 'functions.tsv'), 'w') as f:
+                f.write(self.ROWS)
+            img = image([])
+            img.path, img.member, img.kind = 'root/usr/cpu/sysgen/IP35boot/pcibr.o', None, 'object'
+            with patch.object(facts, 'HERE', os.path.join(td, 'scripts')):
+                img.inventory_names(set())
+        self.assertEqual(img.syms, [(0, 1188, 'first_routine', '.text', True, 'inventory')])
 
 
 class RenderTable(unittest.TestCase):
