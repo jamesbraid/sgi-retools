@@ -62,6 +62,19 @@ class AccessRenderingTests(unittest.TestCase):
 
         self.assertEqual(render_reading.return_value(exit_fact), "one of (ret(foo, bar)), 0x1, 0x2")
 
+    def test_return_keeps_a_loaded_word_choice_as_one_value(self):
+        exit_fact = {"v0": "?", "paths": [
+            {"v0": "[one of 0x2000, 0x2004]"}, {"v0": "table(0x3000)"},
+        ]}
+
+        self.assertEqual(render_reading.return_value(exit_fact),
+                         "one of [one of 0x2000, 0x2004], table(0x3000)")
+
+    def test_return_uses_the_single_path_value_when_the_merged_value_is_unknown(self):
+        exit_fact = {"v0": "?", "paths": [{"v0": "ret(?)"}]}
+
+        self.assertEqual(render_reading.return_value(exit_fact), "ret(?)")
+
     def test_header_preserves_the_requested_alias_name(self):
         routine = SimpleNamespace(nargs=0, insns=[], in_states={})
         facts = {"routine": {"name": "canonical_name", "address": "0x1000", "end": "0x1004",

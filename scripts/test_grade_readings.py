@@ -271,6 +271,25 @@ class SentenceChecks(unittest.TestCase):
 
         self.assertEqual(self.check(sentence), ("OK", None))
 
+    def test_return_choice_that_is_one_loaded_word_stays_whole(self):
+        # "[one of A, B]" is a single word loaded from one of two addresses, not two choices.
+        self.maps[3]["0x1020"]["value"] = "?"
+        self.maps[3]["0x1020"]["paths"] = {
+            "0x100c": "[one of 0x2000, 0x2004]", "0x1010": "table(0x3000)"
+        }
+        sentence = "The return at 0x1020 has v0 = one of [one of 0x2000, 0x2004], table(0x3000)."
+        self.assertEqual(self.check(sentence), ("OK", None))
+        split = "The return at 0x1020 has v0 = one of 0x2000, 0x2004, table(0x3000)."
+        self.assertEqual(self.check(split)[0], "MISMATCH")
+
+    def test_return_value_all_paths_agree_while_merged_value_is_unknown(self):
+        self.maps[3]["0x1020"]["value"] = "?"
+        self.maps[3]["0x1020"]["paths"] = {"0x100c": "ret(?)"}
+        self.assertEqual(self.check("The return at 0x1020 has v0 = ret(?)."), ("OK", None))
+        self.assertEqual(self.check("The return at 0x1020 has v0 = 0x0.")[0], "MISMATCH")
+        self.maps[3]["0x1020"]["paths"] = {"0x100c": "ret(?)", "0x1010": "0x1"}
+        self.assertEqual(self.check("The return at 0x1020 has v0 = ret(?).")[0], "MISMATCH")
+
     def test_return_value_and_delay_slot(self):
         returns = self.maps[3]
         returns["0x1020"]["delay"] = ("0x1024", "nop")

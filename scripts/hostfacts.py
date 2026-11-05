@@ -77,14 +77,18 @@ def is_stack_or_global_access(access):
 
 
 def split_top_level(value, separator=','):
-    """Split a string at separators outside balanced parentheses."""
+    """Split a string at separators outside balanced parentheses and brackets.
+
+    A bracketed term is one loaded word: "[one of 0x1, 0x2]" is a single value read from
+    one of two addresses, not a choice between two values.
+    """
     parts = []
     depth = 0
     start = 0
     for index, char in enumerate(value):
-        if char == '(':
+        if char in '([':
             depth += 1
-        elif char == ')':
+        elif char in ')]':
             depth = max(0, depth - 1)
         elif char == separator and depth == 0:
             parts.append(value[start:index].strip())

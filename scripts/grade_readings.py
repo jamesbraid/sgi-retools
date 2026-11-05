@@ -543,7 +543,13 @@ def check_sentence(sentence, facts, rendered, maps):
                             for fact in actual) for choice in choices):
                 return "MISMATCH", "one of %s" % ", ".join(sorted(actual or {expected}))
         elif not _values_match(_canonical_calls(expected, calls), _canonical_calls(value, calls)):
-            return "MISMATCH", "v0 = %s" % expected
+            # The merged v0 can be "?" while every path agrees on one value (a call's result,
+            # ret(?)); the renderer reports that value, which is true of the return.
+            path_values = set(choice for path_value in returns.get(address, {}).get("paths", {}).values()
+                              for choice in _return_choices(path_value)) if expected == "?" else set()
+            if len(path_values) != 1 or not _values_match(_canonical_calls(next(iter(path_values)), calls),
+                                                          _canonical_calls(value, calls)):
+                return "MISMATCH", "v0 = %s" % expected
         if delay_claim and returns.get(address, {}).get("delay") != delay_claim:
             return "MISMATCH", "delay slot %s at %s" % (returns.get(address, {}).get("delay"), address)
         return "OK", None

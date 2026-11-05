@@ -136,6 +136,12 @@ class Decode(unittest.TestCase):
                 self.assertEqual(hostfacts.decode(word, BASE), (mnemonic, operands))
 
 
+class SplitTopLevel(unittest.TestCase):
+    def test_brackets_and_parentheses_keep_their_commas(self):
+        self.assertEqual(hostfacts.split_top_level('[one of 0x1, 0x2], table(0x3), ret(f, g)'),
+                         ['[one of 0x1, 0x2]', 'table(0x3)', 'ret(f, g)'])
+
+
 class Cop1xAccesses(unittest.TestCase):
     def test_indexed_fp_accesses_have_their_architectural_width(self):
         words = [
