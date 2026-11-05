@@ -13,6 +13,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hostfacts
 
 
+def arm_dp(opcode, rn=0, rd=15, rm=1, immediate=None, flags=False, condition=14, shift=0):
+    word=(condition<<28)|(opcode<<21)|(int(flags)<<20)|(rn<<16)|(rd<<12)
+    word|=(1<<25)|immediate if immediate is not None else shift|rm
+    return struct.pack('<I',word).hex()
+
+
 def arm_elf(code='04109fe5000091e51eff2fe100000000', relocations=(), rela=False,
             thumb=False, mappings=(), symbol_size=None, copy_size=8, elf_type=3,
             dynamic=False, dynamic_changes=None, hide_relocations=False):
@@ -79,6 +85,130 @@ def arm_elf(code='04109fe5000091e51eff2fe100000000', relocations=(), rela=False,
 
 
 class FirmwareFacts(unittest.TestCase):
+    def test_arm_unknown_alu_pc_write_stops_literal_fallthrough(self):
+        fs,_=self.analyze('arm','0cf08ae20700a0e31eff2fe1')
+        self.assertEqual(fs['blocks'][0]['kind'],'jump')
+        self.assertIsNone(fs['blocks'][0]['target'])
+        self.assertEqual(fs['blocks'][0]['successors'],[])
+        self.assertEqual(fs['coverage']['unresolved_transfers'],['0x1000'])
+        self.assertEqual(fs['exits'],[])
+        self.assertEqual(fs['unreached'],['0x1004','0x1008'])
+        self.assertFalse(any(c['value']=='0x7'for c in fs['constants']))
+
+    def test_arm_computed_pc_target_join_does_not_leave_orphan_effects(self):
+        fs,_=self.analyze('arm','0000a0e300f18fe0000081e50100a0e3fbffffea')
+        self.assertEqual([b['first']for b in fs['blocks']],['0x1000','0x1004'])
+        self.assertEqual(fs['blocks'][1]['successors'],[])
+        self.assertIsNone(fs['blocks'][1]['target'])
+        self.assertFalse(any(c['address']=='0x100c'for c in fs['constants']))
+        self.assertEqual(fs['unreached'],['0x1008','0x100c','0x1010'])
+        fs,_=self.analyze('arm','0000a0e3000051e300f18f001eff2fe10100a0e3faffffea')
+        self.assertEqual([b['first']for b in fs['blocks']],['0x1000','0x1004','0x1008','0x100c'])
+        self.assertEqual(fs['exits'][0]['value'],'0x0')
+        self.assertFalse(any(c['address']=='0x1010'for c in fs['constants']))
+
+    def test_arm_explicit_alu_pc_destinations_are_transfers_not_returns(self):
+        cases=[arm_dp(op,rn=0,rm=1)for op in (0,1,2,3,4,5,6,7,12,14)]
+        cases += [arm_dp(15,rm=0),arm_dp(13,rm=14,shift=1<<7),arm_dp(13,rm=14,flags=True),arm_dp(2,rn=14,immediate=0,flags=True)]
+        for code in cases:
+            with self.subTest(code=code):
+                fs,_=self.analyze('arm',code+'0700a0e31eff2fe1')
+                self.assertEqual(fs['blocks'][0]['kind'],'jump')
+                self.assertEqual(fs['blocks'][0]['successors'],[])
+                self.assertEqual(fs['exits'],[])
+
+    def test_arm_conditional_pc_write_keeps_only_the_nonexecuted_path(self):
+        fs,text=self.analyze('arm','000050e3'+arm_dp(4,rn=10,immediate=12,condition=0)+'0700a0e31eff2fe1')
+        b=next(b for b in fs['blocks']if b['first']=='0x1004')
+        self.assertEqual(b['kind'],'conditional')
+        self.assertIsNone(b['target'])
+        self.assertEqual(b['successors'],[{'kind':'falls through','block':'B2'}])
+        self.assertEqual(b['taken_when'],'r0 == 0x0')
+        self.assertEqual(b['falls_through_when'],'r0 != 0x0')
+        self.assertEqual(fs['exits'][0]['value'],'0x7')
+        self.assertIn('0x1004',fs['coverage']['unresolved_transfers'])
+        fs,_=self.analyze('arm','000050e3'+arm_dp(4,rn=10,immediate=12,condition=0,flags=True)+'0000001a0700a0e31eff2fe1')
+        b=next(b for b in fs['blocks']if b['first']=='0x1008')
+        self.assertEqual(b['taken_when'],'r0 != 0x0')
+
+    def test_arm_pc_source_and_coprocessor_flag_forms_do_not_become_jumps(self):
+        cases=[arm_dp(op,rn=15,rd=0,rm=0,flags=True)for op in (8,9,10,11)]
+        cases += ['10ff11ee','00f080e5','008080e8']
+        for code in cases:
+            with self.subTest(code=code):
+                fs,_=self.analyze('arm',code+'0700a0e31eff2fe1')
+                self.assertEqual(fs['blocks'][0]['kind'],'normal')
+                self.assertEqual(fs['exits'][0]['value'],'0x7')
+
+    def test_arm_aligned_add_sub_pc_targets_skip_intervening_effects(self):
+        fs,_=self.analyze('arm','04f08fe2000081e56300a0e30700a0e31eff2fe1')
+        self.assertEqual(fs['blocks'][0]['target'],'0x100c')
+        self.assertEqual(fs['blocks'][0]['successors'],[{'kind':'taken','block':'B3'}])
+        self.assertFalse(any(a['address']=='0x1004'for a in fs['accesses']))
+        self.assertEqual(fs['exits'][0]['value'],'0x7')
+        fs,_=self.analyze('arm',arm_dp(2,rn=15,immediate=4)+'0700a0e31eff2fe1')
+        self.assertEqual(fs['blocks'][0]['target'],'0x1004')
+        self.assertEqual(fs['blocks'][0]['kind'],'jump')
+        fs,_=self.analyze('arm','0ca09fe50cf08ae2000081e50700a0e31eff2fe100100000')
+        self.assertEqual(next(b for b in fs['blocks']if b['first']=='0x1004')['target'],'0x100c')
+        self.assertEqual(fs['exits'][0]['value'],'0x7')
+
+    def test_arm_carry_flags_alignment_and_unknown_shift_do_not_invent_targets(self):
+        cases=[arm_dp(5,rn=15,immediate=0),arm_dp(4,rn=15,immediate=0,flags=True),
+               arm_dp(4,rn=15,immediate=1),arm_dp(4,rn=15,rm=0,shift=2<<7)]
+        for code in cases:
+            with self.subTest(code=code):
+                fs,_=self.analyze('arm',code+'0700a0e31eff2fe1')
+                self.assertEqual(fs['blocks'][0]['kind'],'jump')
+                self.assertIsNone(fs['blocks'][0]['target'])
+                self.assertEqual(fs['exits'],[])
+
+    def test_arm_alu_pc_write_does_not_acquire_a_manual_call(self):
+        fs,_=self.analyze('arm','0fe0a0e10cf08ae20700a0e31eff2fe1')
+        b=next(b for b in fs['blocks']if b['first']=='0x1004')
+        self.assertEqual(b['kind'],'jump')
+        self.assertEqual(b['successors'],[])
+        self.assertEqual(fs['calls'],[])
+        for code in ('0ef0a0e1','1eff2fe1'):
+            fs,_=self.analyze('arm',code)
+            self.assertEqual(fs['blocks'][0]['kind'],'return')
+
+    def test_thumb_add_pc_uses_unaligned_data_pc_and_preserves_thumb_state(self):
+        fs,_=self.analyze('thumb','0420874401606320c04607207047')
+        b=next(b for b in fs['blocks']if b['first']=='0x1002')
+        self.assertEqual(b['target'],'0x100a')
+        self.assertEqual(b['kind'],'jump')
+        self.assertFalse(any(a['address']=='0x1004'for a in fs['accesses']))
+        self.assertEqual(fs['exits'][0]['value'],'0x7')
+        fs,_=self.analyze('thumb','874407207047')
+        self.assertEqual(fs['blocks'][0]['kind'],'jump')
+        self.assertIsNone(fs['blocks'][0]['target'])
+        self.assertEqual(fs['exits'],[])
+
+    def test_arm_elf_pc_control_never_maps_a_runtime_integer_by_coincidence(self):
+        _,_,fs=self.elf_facts(arm_elf('04f08fe2000081e56300a0e30700a0e31eff2fe1',symbol_size=20))
+        self.assertEqual(fs['blocks'][0]['target'],'0x200c')
+        self.assertEqual(fs['blocks'][0].get('target_coordinate_basis'),'linked ELF virtual address')
+        self.assertEqual(fs['exits'][0]['value'],'0x7')
+        _,_,fs=self.elf_facts(arm_elf('0ca09fe50cf08ae2000081e50700a0e31eff2fe100200000',symbol_size=20))
+        b=next(b for b in fs['blocks']if b['first']=='0x2004')
+        self.assertIsNone(b['target'])
+        self.assertEqual(b['successors'],[])
+        self.assertEqual(fs['exits'],[])
+
+    def test_arm_thumb_computed_pc_arithmetic_wraps_at_32_bits(self):
+        for arch,load,code,site,target in [('arm',0xfffffff8,'00f08fe20700a0e3','0xfffffff8','0x0'),
+                                         ('thumb',0xfffffffa,'022087440720','0xfffffffc','0x2')]:
+            with self.subTest(arch=arch):
+                with tempfile.TemporaryDirectory()as directory:
+                    path=os.path.join(directory,'image')
+                    with open(path,'wb')as stream:stream.write(bytes.fromhex(code))
+                    r=hostfacts.routine_for(path,hex(load),size=len(bytes.fromhex(code)),flat=True,load=load,arch=arch);fs=r.facts()
+                b=next(b for b in fs['blocks']if b['first']==site)
+                self.assertEqual(b['target'],target)
+                self.assertEqual(b['kind'],'jump')
+                self.assertEqual(fs['exits'],[])
+
     def test_arm_extracted_load_image_remains_flat_without_elf_opt_in(self):
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, 'load.bin')

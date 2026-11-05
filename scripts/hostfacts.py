@@ -1032,7 +1032,9 @@ class FirmwareRoutine:
                     9: 'hi', 10: 'ls', 11: 'ge', 12: 'lt', 13: 'gt', 14: 'le'}.get(cc)
             if ins.id in (__import__('capstone').arm_const.ARM_INS_BL, __import__('capstone').arm_const.ARM_INS_BLX):
                 return 'conditional-call' if conditional else 'call', op[0].imm if op[0].type == 2 else None, cond
-            if mn.startswith('bx') or (mn.startswith('mov') and len(op) > 1 and op[0].type == 1 and self.reg(ins, op[0].reg) == 'pc'):
+            if mn.startswith('bx') or (ins.insn_name() == 'mov' and not ins.update_flags
+                    and len(op) == 2 and op[0].type == 1 and self.reg(ins, op[0].reg) == 'pc'
+                    and not op[-1].shift.type):
                 reg = self.reg(ins, op[-1].reg) if op[-1].type == 1 else ''
                 return ('conditional-return' if conditional else 'return') if reg == 'lr' else ('conditional' if conditional else 'jump'), None, cond
             if mn.startswith(('pop', 'ldm')) and any(o.type == 1 and self.reg(ins, o.reg) == 'pc' for o in op):
@@ -1044,6 +1046,8 @@ class FirmwareRoutine:
                 return 'conditional' if conditional else 'jump', op[0].imm, cond
             if ins.id in (ac.ARM_INS_CBZ, ac.ARM_INS_CBNZ):
                 return 'conditional', op[-1].imm, 'cbz' if ins.id == ac.ARM_INS_CBZ else 'cbnz'
+            if self.arm_computed_pc_write(ins):
+                return 'conditional' if conditional else 'jump', None, cond
         else:
             if mn.startswith(('ret', 'iret')):
                 return 'return', None, None
@@ -1054,6 +1058,51 @@ class FirmwareRoutine:
             if mn.startswith('j') or mn.startswith('loop'):
                 return 'conditional', op[0].imm if op and op[0].type == 2 else None, mn[1:]
         return 'normal', None, None
+
+    def arm_computed_pc_write(self, ins):
+        """Explicit destination writes, excluding status-only and modeled transfers."""
+        if not self.arm or not ins.operands or ins.operands[0].type != 1:
+            return False
+        if self.reg(ins,ins.operands[0].reg) != 'pc':
+            return False
+        operation=ins.insn_name()
+        if operation in ('cmp','tst','teq','cmn','mrc','mrc2','vmrs','ldr','ldrb','ldrh','bx','bl','blx','pop') or operation.startswith(('ldm','stm')):
+            return False
+        if operation=='mov' and not ins.update_flags and len(ins.operands)==2 and not ins.operands[-1].shift.type:
+            return False
+        if ins.operands[0].access & 2:
+            return True
+        return any(self.reg(ins,r)=='pc' for r in ins.regs_access()[1])
+
+    def arm_computed_pc_target(self, st, ins):
+        # S-bit writes can restore CPSR from an untracked SPSR. Other ALU
+        # operations, carry inputs and unsupported shifts remain unresolved.
+        operation=ins.insn_name();op=ins.operands
+        if ins.update_flags or operation not in ('add','sub'):
+            return None
+        def value(operand):
+            if operand.type==1 and self.reg(ins,operand.reg)=='pc':
+                if operand.shift.type or operand.subtracted:
+                    return None
+                return self.img.code_value(ins.address+(4 if self.arch=='thumb'else 8))
+            return self.operand(st,ins,operand,{'accesses':[],'calls':[]})
+        if len(op)==3:
+            left,right=value(op[1]),value(op[2])
+        elif self.arch=='thumb' and operation=='add' and len(op)==2:
+            left=self.img.code_value(ins.address+4);right=value(op[1])
+        else:
+            return None
+        if operation=='sub':
+            if not facts.is_c(right):
+                return None
+            right=facts.C(-right[1])
+        result=self.plus(left,right)
+        target=self.img.linked_address(result) if self.img.elf else result[1]&0xffffffff if facts.is_c(result) else None
+        if target is None:
+            return None
+        if self.arch=='thumb':
+            return target & ~1
+        return target if target & 3 == 0 else None
 
     def branch_words(self, st, ins, code):
         if code in ('cbz', 'cbnz'):
@@ -1098,6 +1147,17 @@ class FirmwareRoutine:
 
     def control_at(self, st, ins):
         kind, target, cc = self.control(ins)
+        if self.arm_computed_pc_write(ins):
+            if ins.address in getattr(self,'_unresolved_pc_writers',set()):
+                target=None
+            elif getattr(self,'_fixed_pc_targets',None) is not None:
+                target=self._fixed_pc_targets.get(ins.address)
+            else:
+                target=self.arm_computed_pc_target(st,ins)
+            if ins.update_flags:
+                self.warnings.add('0x%x PC-destination instruction has untracked exception-return state' % ins.address)
+            elif target is None:
+                self.warnings.add('0x%x computed PC destination is unresolved; no normal taken-path continuation' % ins.address)
         # Before BLX, ARM code supplied the return address in lr explicitly.
         # A merged or unrelated link value must not turn a jump into a call.
         if (self.arch == 'arm' and kind in ('jump', 'conditional')
@@ -1527,15 +1587,17 @@ class FirmwareRoutine:
             regs[name] = ('in', name)
         regs[self.sp] = ('sp0', 0)
         call_sites, seen = set(), set()
+        pc_targets={};self._unresolved_pc_writers=set()
         # Keep control-flow edges fixed during each register-tracking pass.
         # Recompute from entry when link evidence changes the call sites, so
         # removed continuations cannot leave stale values in a live join.
         while True:
-            signature = frozenset(call_sites)
-            if signature in seen or len(seen) > max(10, len(self.insns)):
-                raise ValueError('indirect-call tracking did not converge; no partial fact sheet emitted')
+            signature = (frozenset(call_sites),tuple(sorted(pc_targets.items())),frozenset(self._unresolved_pc_writers))
+            if signature in seen or len(seen) > max(10, len(self.insns)*4):
+                raise ValueError('control-flow tracking did not converge; no partial fact sheet emitted')
             seen.add(signature)
             self._fixed_calls = call_sites
+            self._fixed_pc_targets=pc_targets
             self.warnings = set(self.initial_warnings)
             self.in_states = {0: FirmwareState(dict(regs))}
             self.out_states, self.edges, self.conditions = {}, {}, {}
@@ -1564,10 +1626,25 @@ class FirmwareRoutine:
             resolved = {self.insns[n]['addr'] for n, st in self.in_states.items()
                         if self.control(self.insns[n]['_cs'])[0] in ('jump', 'conditional')
                         and self.control_at(st, self.insns[n]['_cs'])[0] in ('call', 'conditional-call')}
-            if resolved == call_sites:
+            proposed=dict(pc_targets)
+            for n,st in self.in_states.items():
+                ins=self.insns[n]['_cs']
+                if not self.arm_computed_pc_write(ins):
+                    continue
+                target=self.arm_computed_pc_target(st,ins)
+                if ins.address in self._unresolved_pc_writers:
+                    target=None
+                elif ins.address in pc_targets and pc_targets[ins.address] is not None and target!=pc_targets[ins.address]:
+                    # A changed join cannot leave states from the previous edge.
+                    # Widen this writer permanently to avoid known/unknown cycles.
+                    self._unresolved_pc_writers.add(ins.address);target=None
+                proposed[ins.address]=target
+            if resolved == call_sites and proposed==pc_targets:
                 self._fixed_calls = resolved
+                self._fixed_pc_targets=proposed
                 return
             call_sites = resolved
+            pc_targets=proposed
 
     def facts(self, _unused=False):
         self.analyze()
@@ -1596,6 +1673,10 @@ class FirmwareRoutine:
                      'kind': kind, 'target': hex(target) if target is not None else None,
                      'preds': ['B%d' % p for p, _ in predecessors[n]],
                      'successors': [{'kind': k, 'block': 'B%d' % s} for k,s in self.edges.get(n,[])]}
+            if self.arm_computed_pc_write(ins):
+                block['computed_pc_write']=True
+                block['target_coordinate_basis']='unknown'if target is None else'linked ELF virtual address'if self.img.elf else'flat analysis coordinates'
+                block['target_arch']=self.arch if target is not None else'unknown'
             if kind.startswith('conditional'):
                 block['taken_when'], block['falls_through_when'] = self.branch_words(self.in_states[n], ins, cc)
             fs['blocks'].append(block)
@@ -1670,6 +1751,8 @@ class FirmwareRoutine:
                 lines.append('      falls through when %s -> %s' % (b['falls_through_when'], ', '.join(nexts) or 'outside'))
             else:
                 lines.append('      %s%s' % (b['kind'], ' -> '+b['target'] if b['target'] else ' -> '+', '.join(s['block'] for s in b['successors']) if b['successors'] else ''))
+            if b.get('computed_pc_write'):
+                lines.append('      computed PC write; target coordinate basis: %s; execution state: %s' % (b['target_coordinate_basis'],b['target_arch']))
         lines += ['', 'returns (%d)' % len(fs['exits'])]
         for e in fs['exits']:
             lines.append('  %s: %s = %s; reached from %s%s' % (e['address'],e['register'],e['value'],', '.join(e['from']) or 'entry',' when '+e['condition'] if e.get('condition') else ''))
