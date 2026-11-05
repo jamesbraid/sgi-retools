@@ -235,9 +235,9 @@ class SentenceChecks(unittest.TestCase):
         self.assertEqual(self.check(sentence), ("OK", None))
 
     def test_kona_g23_never_taken_branch(self):
-        rendered = ["  0x1010 `beq a0,zero,1018` never taken (operands are equal constants); falls through; runs"]
+        rendered = ["  0x1010 `beq a0,zero,1018` never taken (its condition can never hold for these operands); falls through; runs"]
         self.maps = grade._render_maps(self.facts, rendered)
-        sentence = ("The `beq` branch at 0x1010 targets 0x1018 and is never taken: its operands are equal constants, "
+        sentence = ("The `beq` branch at 0x1010 targets 0x1018 and is never taken: its condition can never hold for these operands, "
                     "so execution always falls through.")
         self.assertEqual(self.check(sentence), ("OK", None))
 

@@ -170,7 +170,7 @@ def _render_maps(facts, rendered):
         if m and last_call:
             calls[last_call]["args"] = m.group(1)
             continue
-        m = re.match(r"\s+(0x[0-9a-f]+) `(\w+) .*?,([0-9a-f]+)` never taken \(operands are equal constants\); falls through", line)
+        m = re.match(r"\s+(0x[0-9a-f]+) `(\w+) .*?,([0-9a-f]+)` never taken \(its condition can never hold for these operands\); falls through", line)
         if m:
             branches[m.group(1)] = {"mn": m.group(2), "target": "0x" + m.group(3), "taken": None,
                                    "fall": None, "always": False, "never": True,
@@ -453,7 +453,7 @@ def check_sentence(sentence, facts, rendered, maps):
             return "MISMATCH", "branch at %s" % address
         return "OK", None
 
-    never_branch = re.match(r"The `(\w+)` branch at (" + HEX + r") targets (" + HEX + r") and is never taken: its operands are equal constants, so execution always falls through", text)
+    never_branch = re.match(r"The `(\w+)` branch at (" + HEX + r") targets (" + HEX + r") and is never taken: its condition can never hold for these operands, so execution always falls through", text)
     if never_branch:
         op, address, target = never_branch.groups()
         expected = branches.get(address)

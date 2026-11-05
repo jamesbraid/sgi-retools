@@ -129,7 +129,7 @@ def _branch_sentences(routine, facts):
                 ins["mn"], address, target))
             continue
         if kind == "never":
-            output.append("The `%s` branch at %s targets %s and is never taken: its operands are equal constants, so execution always falls through." % (
+            output.append("The `%s` branch at %s targets %s and is never taken: its condition can never hold for these operands, so execution always falls through." % (
                 ins["mn"], address, target))
             continue
         taken, fall = hostfacts.cond_words(routine, block, index)

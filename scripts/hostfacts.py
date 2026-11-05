@@ -636,7 +636,7 @@ def render(r, fs):
             L.append('      0x%x `%s` always taken -> %s; %s runs' % (
                 ins['addr'], txt, tb.id if tb else 'outside', dltxt))
         elif k == 'never':
-            L.append('      0x%x `%s` never taken (operands are equal constants); falls through; %s' % (
+            L.append('      0x%x `%s` never taken (its condition can never hold for these operands); falls through; %s' % (
                 ins['addr'], txt, ('annulled' if likely else 'runs') if dl else dltxt))
         elif k == 'jump':
             tb = ex['target_block']
