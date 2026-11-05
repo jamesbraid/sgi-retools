@@ -22,7 +22,7 @@ tools/check-shared                                   # the pin matches, nothing 
 |---|---|
 | `tools/` | `Containerfile` and `Containerfile.ghidra`, `re-run`, `setup-clone.sh`, `check-shared`, `refresh-union-root`, `ghidra-export.py`, `README-analysis.md` |
 | `tools/chips/` | the register-access census tools (scan, join, report, header generation) |
-| `scripts/` | the code every workspace runs the same way: `inventory.py`, `facts.py`, `hostfacts.py`, `check_claims.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `toolchain.py`, `populate-root`, `pre-push`, `check-leaks.sh` and their tests |
+| `scripts/` | the code every workspace runs the same way: `inventory.py`, `facts.py`, `hostfacts.py`, `check_claims.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `reading_round.py`, `toolchain.py`, `populate-root`, `pre-push`, `check-leaks.sh` and their tests |
 | `scripts/<device>/` | extractors, disassemblers and analysis scripts for one device family (`kona`, `odsy`, `crime`, `chips`, `voyager`, `sysco`, `kudzu`, `gr4`); a script two families share sits in the first family's directory and the other links to it |
 | `ghidra/scripts/` | the Ghidra scripts for IRIX MIPS objects and the export helpers (`Re*.java`) |
 | `ghidra/processors/<name>/` | Ghidra processor extensions with their generators and tests (`kona-ge`, `kona-ged`, `odsy-buzz`, `ge11`) |
