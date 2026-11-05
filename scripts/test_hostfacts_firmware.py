@@ -1373,6 +1373,64 @@ class FirmwareFacts(unittest.TestCase):
         self.assertEqual(fs['exits'][0]['value'],'[r1]')
         self.assertEqual(len(fs['accesses']),2)
 
+    def test_x86_loop_conditions_use_post_decrement_count_and_zero_flag(self):
+        # mov cx/ecx,1; cmp ax/eax,7; loop-family +1; ret; ret.
+        for arch, setup in (('x86-16', 'b90100'), ('x86-32', 'b901000000')):
+            for opcode, taken, fall in (
+                    ('e2', '0x0 != 0x0', '0x0 == 0x0'),
+                    ('e1', '0x0 != 0x0 and (', '0x0 == 0x0 or ('),
+                    ('e0', '0x0 != 0x0 and (', '0x0 == 0x0 or (')):
+                with self.subTest(arch=arch, opcode=opcode):
+                    fs, text = self.analyze(arch, setup+'83f807'+opcode+'01c3c3')
+                    branch = next(b for b in fs['blocks'] if 'taken_when' in b)
+                    self.assertTrue(branch['taken_when'].startswith(taken), branch)
+                    self.assertTrue(branch['falls_through_when'].startswith(fall), branch)
+                    if opcode != 'e2':
+                        self.assertIn('== 0x7' if opcode == 'e1' else '!= 0x7', branch['taken_when'])
+                        self.assertIn('!= 0x7' if opcode == 'e1' else '== 0x7', branch['falls_through_when'])
+                    self.assertIn('taken when '+branch['taken_when'], text)
+                    self.assertIn('falls through when '+branch['falls_through_when'], text)
+
+    def test_x86_counter_branch_address_size_selects_wrap_width(self):
+        # Deliberately nonzero upper half: CX=0, ECX=0x12340000.
+        for arch, setup, cases in (
+                ('x86-32', 'b900003412', (('', '0x1233ffff'), ('67', '0xffff'))),
+                ('x86-16', '66b900003412', (('', '0xffff'), ('67', '0x1233ffff')))):
+            for prefix, count in cases:
+                with self.subTest(arch=arch, prefix=prefix):
+                    fs, _ = self.analyze(arch, setup+prefix+'e201c3c3')
+                    branch = next(b for b in fs['blocks'] if 'taken_when' in b)
+                    self.assertEqual(branch['taken_when'], count+' != 0x0')
+                    self.assertEqual(branch['falls_through_when'], count+' == 0x0')
+
+    def test_x86_jcxz_checks_count_without_decrement_or_flag_test(self):
+        for arch, setup, cases in (
+                ('x86-32', 'b900003412', (('', '0x12340000'), ('67', '0x0'))),
+                ('x86-16', '66b900003412', (('', '0x0'), ('67', '0x12340000')))):
+            for prefix, count in cases:
+                with self.subTest(arch=arch, prefix=prefix):
+                    fs, _ = self.analyze(arch, setup+prefix+'e302909089c8c3')
+                    branch = next(b for b in fs['blocks'] if 'taken_when' in b)
+                    self.assertEqual(branch['taken_when'], count+' == 0x0')
+                    self.assertEqual(branch['falls_through_when'], count+' != 0x0')
+                    self.assertEqual(fs['exits'][0]['value'], '0x12340000' if arch == 'x86-32' else '0x0')
+
+    def test_x86_counter_conditions_preserve_unknowns_and_flags(self):
+        for arch, counter, bits in (('x86-16', 'cx', 16), ('x86-32', 'ecx', 32)):
+            with self.subTest(arch=arch):
+                fs, _ = self.analyze(arch, '0fa2e001c3c3')
+                branch = next(b for b in fs['blocks'] if 'taken_when' in b)
+                self.assertEqual(branch['taken_when'], '? ('+counter+' after decrement, '+str(bits)+'-bit wrap) != 0x0 and (Z == 0)')
+                self.assertEqual(branch['falls_through_when'], '? ('+counter+' after decrement, '+str(bits)+'-bit wrap) == 0x0 or (not (Z == 0))')
+                fs, _ = self.analyze(arch, '0fa2e301c3c3')
+                branch = next(b for b in fs['blocks'] if 'taken_when' in b)
+                self.assertEqual(branch['taken_when'], '? ('+counter+') == 0x0')
+                # CMP flags must survive LOOP; its counter remains conservatively unknown.
+                setup = 'b90100' if arch == 'x86-16' else 'b901000000'
+                fs, _ = self.analyze(arch, setup+'83f807e2007401c3c3')
+                branches = [b for b in fs['blocks'] if 'taken_when' in b]
+                self.assertIn('== 0x7', branches[-1]['taken_when'])
+
     def test_x86_loop_invalidates_the_decremented_counter(self):
         fs,_=self.analyze('x86-32','b902000000e2008b01c3')
         load=next(a for a in fs['accesses'] if a['kind']=='load')

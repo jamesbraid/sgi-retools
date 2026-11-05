@@ -1055,7 +1055,9 @@ class FirmwareRoutine:
                 return 'call', op[0].imm if op and op[0].type == 2 else None, None
             if mn in ('jmp', 'ljmp'):
                 return 'jump', op[0].imm if op and op[0].type == 2 else None, None
-            if mn.startswith('j') or mn.startswith('loop'):
+            if mn.startswith('loop') or mn in ('jcxz', 'jecxz'):
+                return 'conditional', op[0].imm if op and op[0].type == 2 else None, mn
+            if mn.startswith('j'):
                 return 'conditional', op[0].imm if op and op[0].type == 2 else None, mn[1:]
         return 'normal', None, None
 
@@ -1105,6 +1107,24 @@ class FirmwareRoutine:
         return target if target & 3 == 0 else None
 
     def branch_words(self, st, ins, code):
+        if self.x86 and code in ('loop', 'loope', 'loopne', 'jcxz', 'jecxz'):
+            bits = ins.addr_size * 8
+            reg = 'cx' if bits == 16 else 'ecx'
+            count = self.x86_low_register(st, reg)
+            if code.startswith('loop'):
+                count = self.x86_mask(facts.add(count, -1), bits)
+            value = self.R(count)
+            if count is None:
+                value += ' (%s%s)' % (reg, ' after decrement, %d-bit wrap' % bits if code.startswith('loop') else '')
+            zero, nonzero = value + ' == 0x0', value + ' != 0x0'
+            if code in ('jcxz', 'jecxz'):
+                return zero, nonzero
+            if code == 'loop':
+                return nonzero, zero
+            # LOOPcc leaves flags unchanged and tests Z after decrementing
+            # the address-size-selected counter. Either failed test exits.
+            taken, fall = self.branch_words(st, ins, 'e' if code == 'loope' else 'ne')
+            return nonzero + ' and (' + taken + ')', zero + ' or (' + fall + ')'
         if code in ('cbz', 'cbnz'):
             lhs = self.R(self.getreg(st, self.reg(ins, ins.operands[0].reg)))
             return (lhs + ' == 0x0', lhs + ' != 0x0') if code == 'cbz' else (lhs + ' != 0x0', lhs + ' == 0x0')
