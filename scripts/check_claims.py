@@ -466,6 +466,8 @@ def canon(text):
     if mn in ('addiu', 'daddiu', 'ori') and len(ops) == 3 and ops[1] == 'zero':
         out.add('li %s,%s' % (ops[0], ops[2]))
         out.add('li')
+        if mn != 'addiu':
+            out.add('dli %s,%s' % (ops[0], ops[2]))
     if mn in ('or', 'addu', 'daddu') and len(ops) == 3 and ops[2] == 'zero':
         out.add('move %s,%s' % (ops[0], ops[1]))
         out.add('move')
@@ -484,10 +486,70 @@ def canon(text):
         out.add('bgezall')
     if mn in ('dsll32', 'dsrl32', 'dsra32'):
         out.add(mn[:-2])      # "dsll" for a shift of 32 or more: the assembler picks the 32 form
-    if mn in ('subu', 'dsubu') and len(ops) == 3 and ops[1] == 'zero':
-        out.add('negu' if mn == 'subu' else 'dnegu')
+    if mn in ('subu', 'dsubu', 'sub', 'dsub') and len(ops) == 3 and ops[1] == 'zero':
+        al = {'subu': 'negu', 'dsubu': 'dnegu', 'sub': 'neg', 'dsub': 'dneg'}[mn]
+        out.add('%s %s,%s' % (al, ops[0], ops[2]))
+        out.add(al)
+    if mn == 'nor' and len(ops) == 3 and ops[2] == 'zero':
+        out.add('not %s,%s' % (ops[0], ops[1]))
+        out.add('not')
+    if mn == 'sll' and ops == ['zero', 'zero', '0x1']:
+        out.add('ssnop')
+    if mn == 'sll' and ops == ['zero', 'zero', '0x3']:
+        out.add('ehb')
+    if mn == 'bgez' and len(ops) == 2 and ops[0] == 'zero':
+        out.add('b %s' % ops[1])
+        out.add('b')
+    if mn == 'bgezal' and len(ops) == 2 and ops[0] == 'zero':
+        out.add('bal %s' % ops[1])
+    if mn == 'jalr' and len(ops) == 2 and ops[0] == 'ra':
+        out.add('jalr %s' % ops[1])
+    # The other direction: the facts may carry the assembler alias (dli, negu, move, ...) where an entry
+    # quotes the instruction as the renderer writes it, so give the canonical encoding's spelling too.
+    # Each rule is the same encoding as the alias, never a wider match.
+    if mn in ('li', 'dli') and len(ops) == 2:
+        v = _imm(ops[1])
+        if v is not None:
+            if 0 <= v <= 0xffff:
+                out.add('ori %s,zero,%s' % (ops[0], ops[1]))
+            if -0x8000 <= v <= 0x7fff:
+                out.add('addiu %s,zero,%s' % (ops[0], ops[1]))
+                out.add('daddiu %s,zero,%s' % (ops[0], ops[1]))
+    if mn in ('move', 'dmove') and len(ops) == 2:
+        for base in ('or', 'addu', 'daddu'):
+            out.add('%s %s,%s,zero' % (base, ops[0], ops[1]))
+    if mn in _NEG and len(ops) == 2:
+        out.add('%s %s,zero,%s' % (_NEG[mn], ops[0], ops[1]))
+    if mn == 'not' and len(ops) == 2:
+        out.add('nor %s,%s,zero' % (ops[0], ops[1]))
+    if mn == 'nop' and not ops:
+        out.add('sll zero,zero,0x0')
+    if mn == 'ssnop' and not ops:
+        out.add('sll zero,zero,0x1')
+    if mn == 'ehb' and not ops:
+        out.add('sll zero,zero,0x3')
+    if mn == 'b' and len(ops) == 1:
+        out.add('beq zero,zero,%s' % ops[0])
+        out.add('bgez zero,%s' % ops[0])
+    if mn == 'bal' and len(ops) == 1:
+        out.add('bgezal zero,%s' % ops[0])
+    if mn in _BZ and len(ops) == 2:
+        out.add('%s %s,zero,%s' % (_BZ[mn], ops[0], ops[1]))
+    if mn == 'jalr' and len(ops) == 1:
+        out.add('jalr ra,%s' % ops[0])
     out.add(mn)
     return out
+
+
+_NEG = {'negu': 'subu', 'dnegu': 'dsubu', 'neg': 'sub', 'dneg': 'dsub'}
+_BZ = {'beqz': 'beq', 'bnez': 'bne', 'beqzl': 'beql', 'bnezl': 'bnel'}
+
+
+def _imm(s):
+    try:
+        return int(s, 0)
+    except ValueError:
+        return None
 
 
 def insn_match(claim, actual):

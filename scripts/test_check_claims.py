@@ -417,6 +417,51 @@ class OutsideRoutine(unittest.TestCase):
         self.assertEqual(self.high_routine('The `sw` at 0x1000 stores it.'), ['mismatch'])
 
 
+class AliasForms(unittest.TestCase):
+    """An entry may quote an instruction as its canonical encoding or as the assembler alias the facts print."""
+
+    def same(self, a, b):
+        self.assertIn(check_claims.norm_insn(a), {check_claims.norm_insn(f) for f in check_claims.canon(b)}, (a, b))
+        self.assertIn(check_claims.norm_insn(b), {check_claims.norm_insn(f) for f in check_claims.canon(a)}, (b, a))
+
+    def differ(self, a, b):
+        self.assertNotIn(check_claims.norm_insn(a), {check_claims.norm_insn(f) for f in check_claims.canon(b)}, (a, b))
+
+    def test_load_immediate_aliases(self):
+        self.same('ori at,zero,0x80bc', 'dli at,0x80bc')
+        self.same('ori at,zero,0x80bc', 'li at,0x80bc')
+        self.same('addiu v0,zero,-1', 'li v0,-1')
+        self.same('daddiu v0,zero,5', 'dli v0,5')
+
+    def test_load_immediate_does_not_cross_encodings(self):
+        self.differ('addiu at,zero,0x80bc', 'dli at,0x80bc')   # 0x80bc does not fit addiu's signed field
+        self.differ('ori at,zero,-1', 'li at,-1')
+        self.differ('ori at,zero,0x80bd', 'dli at,0x80bc')
+        self.differ('ori v0,zero,0x80bc', 'dli at,0x80bc')
+
+    def test_negate_move_not_aliases(self):
+        self.same('subu v1,zero,s0', 'negu v1,s0')
+        self.same('dsubu v1,zero,s0', 'dnegu v1,s0')
+        self.same('sub v1,zero,s0', 'neg v1,s0')
+        self.same('or v0,a0,zero', 'move v0,a0')
+        self.same('daddu v0,a0,zero', 'move v0,a0')
+        self.same('addu v0,a0,zero', 'move v0,a0')
+        self.same('nor v0,a0,zero', 'not v0,a0')
+        self.differ('subu v1,s0,zero', 'negu v1,s0')
+        self.differ('dsubu v1,zero,s0', 'negu v1,s0')
+
+    def test_branch_and_nop_aliases(self):
+        self.same('beq zero,zero,0x40', 'b 0x40')
+        self.same('bgezal zero,0x40', 'bal 0x40')
+        self.same('bne a0,zero,0x40', 'bnez a0,0x40')
+        self.same('beql a0,zero,0x40', 'beqzl a0,0x40')
+        self.same('sll zero,zero,0x0', 'nop')
+        self.same('sll zero,zero,0x1', 'ssnop')
+        self.same('jalr ra,t9', 'jalr t9')
+        self.differ('beq a0,a1,0x40', 'b 0x40')
+        self.differ('bne a0,zero,0x40', 'beqz a0,0x40')
+
+
 if __name__ == '__main__':
     unittest.main()
 
