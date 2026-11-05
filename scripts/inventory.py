@@ -3491,11 +3491,7 @@ def build(cfg, a, tmp):
     # cites. Builds whose code is the same (equal code_sha) share the credit; any other build is
     # at most located. A name with one code in every build needs no citation.
     name_rows = code_groups(funcs, out['ucode'])
-    token_images = collections.defaultdict(set)     # path written in a document -> binaries it names
-    for img in imgs:
-        for lab in [img['label']] + img['copies']:
-            for k in image_keys(lab):
-                token_images[k].add(img['label'])
+    token_images = path_owners(imgs)     # path written in a document -> binaries it names
     cited = {}
 
     def cited_groups(ent, name):
@@ -3511,21 +3507,16 @@ def build(cfg, a, tmp):
             cited[k] = out
         return cited[k]
 
-    def cites_binary(toks, lab):
-        """True when a path the entry writes is this binary's full label, or names this binary and no other."""
-        for t in toks:
-            t = re.sub(r'^(?:\./|/)+', '', t)
-            t = t[5:] if t.startswith('root/') else t
-            if t == lab or (t in image_keys(lab) and token_images.get(t) == {lab}):
-                return True
-        return False
-
     rows = []
     brows = []
     for img in imgs:
         lab = img['label']
         g = img['group']
         fl = funcs.get(lab, {})
+        at_address = collections.defaultdict(list)     # (section, address) -> the shared names there
+        for n in sorted(fl):
+            if n in finfo.get(lab, {}).get('shared_address', ()):
+                at_address[(fl[n][0], fl[n][1])].append(n)
         for name in sorted(fl, key=lambda n: (fl[n][1] or 0, n)):
             sec, addr, size, srcs, csha = fl[name]
             addr = 0 if addr is None else addr
@@ -3549,10 +3540,10 @@ def build(cfg, a, tmp):
                 hits = [h for h in hits if h.ent is not None and cites_range(h.ent.text, addr, size)]
             if row['_shared']:
                 # the entry that gives this binary and this exact address credits every name there
-                alias = sorted(n for n, e in fl.items() if e[1] == addr and e[0] == sec and n in fi['shared_address'])
+                alias = at_address[(sec, addr)]
                 hits = [h for n in alias for h in docs.name_hits(n)
                         if ('id', n) in (h.ent.subj if h.ent is not None else ())
-                        and names_row_by_address(h.ent, alias, addr, lambda toks, lab=lab: cites_binary(toks, lab))]
+                        and names_row_by_address(h.ent, alias, addr, lambda toks, img=img: cites_binary(toks, img, token_images))]
             put_status(row, docs.best(hits, demote))
             if row['_multi'] and row['status'] == 'undocumented' and docs.name_hits(name):
                 row['status'] = 'named-only'
@@ -3646,6 +3637,29 @@ def cites_range(text, addr, size):
     if not addr or not size:
         return False
     return any(not m.group(1) and addr <= int(m.group(2), 16) < addr + size for m in HEXLIT.finditer(text))
+
+
+def path_owners(imgs):
+    """{path a document can write: set of image labels it names}: every key of each image's label and of
+    the labels of its byte-identical copies, credited to the image that stands for them."""
+    owners = collections.defaultdict(set)
+    for img in imgs:
+        for lab in [img['label']] + img['copies']:
+            for k in image_keys(lab):
+                owners[k].add(img['label'])
+    return owners
+
+
+def cites_binary(toks, img, owners):
+    """True when a path among toks is the full label of the image or of one of its copies, or one of their
+    other path keys that no other image shares (a root/ or ./ prefix is dropped)."""
+    labels = [img['label']] + img['copies']
+    for t in toks:
+        t = re.sub(r'^(?:\./|/)+', '', t)
+        t = t[5:] if t.startswith('root/') else t
+        if t in labels or (any(t in image_keys(l) for l in labels) and owners.get(t) == {img['label']}):
+            return True
+    return False
 
 
 def names_row_by_address(ent, names, addr, cites_binary):

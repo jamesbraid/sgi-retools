@@ -268,6 +268,49 @@ class SharedAddress(unittest.TestCase):
         self.assertFalse(inv.names_row_by_address(e, self.NAMES, self.ADDR, self.cites))
 
 
+class CitesBinary(unittest.TestCase):
+    def img(self, label, copies=()):
+        return {'label': label, 'copies': list(copies)}
+
+    def check(self, imgs, label, toks):
+        owners = inv.path_owners(imgs)
+        return inv.cites_binary(toks, next(i for i in imgs if i['label'] == label), owners)
+
+    def test_a_bare_path_names_the_bare_label_but_not_a_build_that_shares_its_tail(self):
+        imgs = [self.img('usr/gfx/X.so'), self.img('builds/vpro-patch-4103/usr/gfx/X.so')]
+        self.assertTrue(self.check(imgs, 'usr/gfx/X.so', {'usr/gfx/X.so'}))
+        self.assertFalse(self.check(imgs, 'builds/vpro-patch-4103/usr/gfx/X.so', {'usr/gfx/X.so'}))
+
+    def test_a_full_build_path_names_only_its_own_build(self):
+        imgs = [self.img('usr/gfx/X.so'), self.img('builds/vpro-patch-4103/usr/gfx/X.so')]
+        self.assertTrue(self.check(imgs, 'builds/vpro-patch-4103/usr/gfx/X.so', {'builds/vpro-patch-4103/usr/gfx/X.so'}))
+        self.assertFalse(self.check(imgs, 'usr/gfx/X.so', {'builds/vpro-patch-4103/usr/gfx/X.so'}))
+
+    def test_a_tail_shared_by_two_builds_names_neither(self):
+        imgs = [self.img('builds/a/usr/gfx/X.so'), self.img('builds/b/usr/gfx/X.so')]
+        self.assertFalse(self.check(imgs, 'builds/a/usr/gfx/X.so', {'usr/gfx/X.so'}))
+        self.assertFalse(self.check(imgs, 'builds/b/usr/gfx/X.so', {'usr/gfx/X.so'}))
+
+    def test_the_path_of_a_byte_identical_copy_names_the_image(self):
+        imgs = [self.img('usr/gfx/libGL.so', ['builds/b/usr/gfx/libGL.so'])]
+        self.assertTrue(self.check(imgs, 'usr/gfx/libGL.so', {'builds/b/usr/gfx/libGL.so'}))
+        self.assertTrue(self.check(imgs, 'usr/gfx/libGL.so', {'b/usr/gfx/libGL.so'}))
+
+    def test_a_root_or_dot_prefix_is_dropped(self):
+        imgs = [self.img('usr/gfx/X.so')]
+        self.assertTrue(self.check(imgs, 'usr/gfx/X.so', {'root/usr/gfx/X.so'}))
+        self.assertTrue(self.check(imgs, 'usr/gfx/X.so', {'./usr/gfx/X.so'}))
+
+    def test_an_archive_member_is_named_by_archive_and_member(self):
+        imgs = [self.img('usr/lib/lib.a(m.o)'), self.img('usr/lib/lib.a(n.o)')]
+        self.assertTrue(self.check(imgs, 'usr/lib/lib.a(m.o)', {'usr/lib/lib.a(m.o)'}))
+        self.assertTrue(self.check(imgs, 'usr/lib/lib.a(m.o)', {'lib.a(m.o)'}))
+        self.assertFalse(self.check(imgs, 'usr/lib/lib.a(m.o)', {'usr/lib/lib.a(n.o)'}))
+
+    def test_an_unrelated_path_does_not(self):
+        self.assertFalse(self.check([self.img('usr/gfx/X.so')], 'usr/gfx/X.so', {'usr/gfx/Y.so'}))
+
+
 class Unverified(unittest.TestCase):
     SUBJ = frozenset(inv.unit_keys('`odsy_EdidCksum`'))
     BODY = ('`odsy_EdidCksum` (`odsy_ddc.o`, offset 0x1c58): Computes the EDID block checksum: it adds the 128 '
