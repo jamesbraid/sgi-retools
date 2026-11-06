@@ -90,6 +90,62 @@ class RootFallback(unittest.TestCase):
         self.assertEqual(ents[0].binary, '6.5.30/usr/cpu/elsc.o')
 
 
+class CitedPath(unittest.TestCase):
+    """A cited path names its image whatever its first component, and a suffix shared by two images stays unresolved."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.addCleanup(self.td.cleanup)
+        for f in ('IP27/unix', 'IP30/unix', 'IP30/usr/cpu/sysgen/IP30boot/pcibr.o', 'IP27/usr/cpu/sysgen/IP27boot/pcibr.o',
+                  'sbin/stand', 'IP30/usr/lib/libx.a'):
+            os.makedirs(os.path.dirname(os.path.join(self.td.name, 'root', f)), exist_ok=True)
+            open(os.path.join(self.td.name, 'root', f), 'w').close()
+        os.makedirs(os.path.join(self.td.name, 'root', 'IP30', 'dir'))
+        old, check_claims.REPO = check_claims.REPO, self.td.name
+        self.addCleanup(setattr, check_claims, 'REPO', old)
+        self.bins = binaries([])
+
+    def ident(self, text, default=None):
+        ents, _ = entries_of(text)
+        check_claims.identify(ents[0], self.bins, [], default)
+        return ents[0]
+
+    def test_path_with_no_usr_prefix_resolves(self):
+        e = self.ident('- `flushbus` in `IP30/unix` at 0xa80000002001c1c4 (n64).\n  Exact binary: `IP30/unix`.\n')
+        self.assertEqual((e.name, e.binary), ('flushbus', 'IP30/unix'))
+
+    def test_top_level_sbin_resolves(self):
+        e = self.ident('- `f` in `sbin/stand` at 0x10 (n32).\n  Exact binary: `sbin/stand`.\n')
+        self.assertEqual(e.binary, 'sbin/stand')
+
+    def test_leading_image_directory_is_not_dropped(self):
+        e = self.ident('- `f` in `IP30/usr/cpu/sysgen/IP30boot/pcibr.o` at 0x10 (n64).\n'
+                       '  Exact binary: `IP30/usr/cpu/sysgen/IP30boot/pcibr.o`.\n')
+        self.assertEqual(e.binary, 'IP30/usr/cpu/sysgen/IP30boot/pcibr.o')
+
+    def test_archive_member_of_an_existing_archive_resolves(self):
+        e = self.ident('- `f` in `IP30/usr/lib/libx.a(m.o)` at 0x10 (n64).\n')
+        self.assertEqual(e.binary, 'IP30/usr/lib/libx.a(m.o)')
+
+    def test_header_path_alone_resolves(self):
+        e = self.ident('- `f` in `IP27/unix` at 0x10 (n64).\n')
+        self.assertEqual(e.binary, 'IP27/unix')
+
+    def test_suffix_shared_by_two_images_stays_unresolved(self):
+        e = self.ident('- `f` in `unix` at 0x10 (n64).\n')
+        self.assertIsNone(e.binary)
+        e = self.ident('- `f` in `usr/cpu/sysgen/IP30boot/../pcibr.o` at 0x10.\n')
+        self.assertIsNone(e.binary)
+
+    def test_directory_and_missing_path_do_not_resolve(self):
+        self.assertIsNone(self.ident('- `f` in `IP30/dir` at 0x10 (n64).\n').binary)
+        self.assertIsNone(self.ident('- `f` in `IP35/unix` at 0x10 (n64).\n').binary)
+
+    def test_table_cell_without_usr_prefix_resolves(self):
+        e = self.ident('| binary | routine | address |\n|---|---|---|\n| `IP30/unix` | `f` | `0x10` |\n')
+        self.assertEqual(e.binary, 'IP30/unix')
+
+
 class StatedRoutineSize(unittest.TestCase):
     def test_size_is_passed_when_the_symbol_size_is_missing_or_smaller(self):
         with tempfile.TemporaryDirectory() as td:

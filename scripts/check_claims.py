@@ -76,6 +76,9 @@ RELEASE_RE = re.compile(r'(?<![\w.])(6\.\d+(?:\.\d+)?)(?!\w|\.\d)')
 # a table with none of these columns lists something other than routines (options, requests, registers)
 NAME_COLUMNS = ('routine', 'function', 'name', 'symbol')
 PATH_RE = re.compile(r'((?:\d+(?:\.\d+)+(?:-[\w.]+)?/|builds/[\w.+-]+/)?(?:usr|sbin|stand|unix|var)(?:/[\w.+-]+)+(?:\([\w.+-]+\))?)')
+# a path cited in full, whatever its first component (IP30/unix, sbin/stand, IP27/usr/.../pcibr.o, lib.a(m.o))
+EXACT_BINARY_RE = re.compile(r'Exact binary:\s*`([^`\s]+)`')
+IN_PATH_RE = re.compile(r'^\s*(?:[-*]\s*)?`[^`]+`\s+in\s+`([^`\s]+)`')
 HEX = r'0x[0-9a-fA-F]+'
 ORD = {'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'sixth': 6, 'seventh': 7, 'eighth': 8,
        'ninth': 9, 'tenth': 10, 'eleventh': 11, 'twelfth': 12}
@@ -223,6 +226,34 @@ class Binaries:
                 self.by_base[m.group(1)].add(k)
                 self.by_base[k.rsplit('/', 1)[-1].split('(')[0] + '(' + m.group(1) + ')'].add(k)
 
+    def exact(self, ref):
+        """The cited path when it names one image as written: an inventory key, a regular file under root/, or
+        a member of an archive that is one. It is not a suffix match, so it cannot be ambiguous."""
+        ref = ref.strip('`').strip()
+        if not ref or ref.startswith('/') or '..' in ref.split('/'):
+            return None
+        if ref in self.keys:
+            return ref
+        top = os.path.join(REPO, 'root')
+        arc = re.match(r'^([^()]+\.a)\([\w.+-]+\)$', ref)
+        if os.path.isfile(os.path.join(top, arc.group(1) if arc else ref)):
+            return ref
+        return None
+
+    def cited(self, text):
+        """The binary an entry's own citation names in full: its `Exact binary:` line, then the `in PATH` of the
+        header. Only a path that exists as written counts; a release-qualified one may fall back to its plain path."""
+        refs = [m.group(1) for m in EXACT_BINARY_RE.finditer(text)] + [m.group(1) for m in IN_PATH_RE.finditer(text[:600])]
+        for ref in refs:
+            if '/' not in ref:
+                continue
+            found = self.exact(ref)
+            if found is None and RELEASE_PREFIX_RE.match(ref):
+                found = self.exact(RELEASE_PREFIX_RE.sub('', ref, count=1))
+            if found:
+                return found
+        return None
+
     def resolve_path(self, ref, hints):
         """Resolve a path as written first; a release-qualified one that names nothing falls back to its plain path."""
         found = self.resolve(ref, hints)
@@ -285,7 +316,9 @@ def identify(e, bins, hints, default_bin):
         ref = bm.group(1) if bm else b.strip('` ')
         if sub and not ref.startswith('builds/'):
             ref = sub.group(1) + '/' + ref
-        e.binary = bins.resolve_path(ref, hints) if ref else None
+        e.binary = bins.exact(b.strip('` ')) if not sub else None
+        if e.binary is None:
+            e.binary = bins.resolve_path(ref, hints) if ref else None
         a = next((row[k] for k in row if k in ('address', 'addr')), '')
         am = re.search(HEX, a)
         e.address = int(am.group(0), 16) if am else None
@@ -297,7 +330,7 @@ def identify(e, bins, hints, default_bin):
     if e.title:
         e.name, e.address = e.title
         bm = PATH_RE.search(t[:400])
-        e.binary = bins.resolve_path(bm.group(1), hints) if bm else default_bin
+        e.binary = bins.cited(t) or (bins.resolve_path(bm.group(1), hints) if bm else default_bin)
         sm = re.search(r'\bSize: (\d+) bytes', t)
         e.size = int(sm.group(1)) if sm else None
         st = re.findall(r'\b(Established|Inferred|Unverified)\b\.?', t, re.I)
@@ -315,7 +348,10 @@ def identify(e, bins, hints, default_bin):
     lead = t[:400]
     bm = PATH_RE.search(lead)
     ref = None
-    if bm:
+    whole = bins.cited(t)
+    if whole:
+        pass
+    elif bm:
         ref = bm.group(1)
     else:
         sm = re.match(r'\s*`[^`]+`\s*\(`([^`]+)`', t) or re.match(r'\s*`[^`]+`\s+in\s+`?([\w.+()/-]+\.(?:so|o|a\([\w.]+\)))', t) or \
@@ -327,6 +363,8 @@ def identify(e, bins, hints, default_bin):
         if sub and not ref.startswith('builds/'):
             ref = sub.group(1) + '/' + ref
         e.binary = bins.resolve_path(ref, hints)
+    elif whole:
+        e.binary = whole
     elif default_bin:
         e.binary = default_bin
     am = re.search(r'^\s*`[^`]+`\s*\((?:[^()]|\([^()]*\))*?(' + HEX + r')', t) or \
