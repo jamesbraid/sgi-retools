@@ -270,7 +270,7 @@ class Image:
                 return ('', a, size or 0, '', 'given')
             if not names:
                 if size:
-                    return ('', a, size, self.section_of(a) or '', 'given')
+                    return ('', a, size, self.code_section_at(a), 'given')
                 raise SystemExit('facts: no function symbol at 0x%x; give --size to read it anyway' % a)
             x = sorted(names, key=lambda x: (x[5] != 'symtab', -x[1], x[2]))[0]
         else:
@@ -348,6 +348,23 @@ class Image:
                 a = int(s['address'], 16)
                 return (a, a + s['size'])
         return None
+
+    def code_section_at(self, off):
+        """The section holding an address; in a relocatable object an address is an offset into one section.
+
+        With one code section in the object, that is the one. With several, a function symbol covering the
+        offset decides. When neither says which, the address is unresolved, and a grader reports it as such.
+        """
+        if self.kind != 'object':
+            return self.section_of(off) or ''
+        code = [s['name'] for s in self.sections if 'X' in s['flags']]
+        if len(code) == 1:
+            return code[0]
+        hits = {s for a, sz, _name, s, func, _src in self.syms if func and s in code and a <= off < a + max(sz, 1)}
+        if len(hits) == 1:
+            return hits.pop()
+        raise SystemExit('facts: 0x%x in %s is unresolved: the object has %d code sections (%s) and no function '
+                         'symbol at that offset says which' % (off, self.path, len(code), ', '.join(code) or 'none'))
 
     def section_of(self, addr):
         if self.kind == 'object':

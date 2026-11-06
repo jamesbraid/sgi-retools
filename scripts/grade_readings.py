@@ -629,7 +629,8 @@ def main(argv=None):
     for entry in selected:
         try:
             results = grade_entry(args.root, entry)
-        except Exception as error:
+        except (Exception, SystemExit) as error:
+            # facts refuses an unresolvable address with SystemExit; catching it keeps the rest of the document graded
             print("%s:%d %s MISMATCH (%s)" % (args.doc, entry["line"], entry["name"], error))
             input_errors += 1
             continue

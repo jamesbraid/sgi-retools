@@ -23,7 +23,7 @@ MIPS_IV_LIKELY = {'beql', 'bnel', 'blezl', 'bgtzl', 'bltzl', 'bgezl', 'bltzall',
 def image(syms):
     """An Image holding only a symbol table: (address, size, name, section, is_function, source)."""
     img = object.__new__(facts.Image)
-    img.flat, img.path = False, 'x.o'
+    img.flat, img.path, img.kind = False, 'x.o', 'shared-object'
     img.syms = sorted(syms)
     img.byname = collections.defaultdict(list)
     for x in img.syms:
@@ -86,6 +86,31 @@ class SectionFromAddress(unittest.TestCase):
 
     def test_object_file_keeps_the_given_section(self):
         self.assertEqual(self.img('object').find('_stub')[3], '.text')
+
+
+class ObjectOffsetSection(unittest.TestCase):
+    """In a relocatable object an address is an offset into one section; the object must say which."""
+    ONE = [{'name': '.text', 'address': '0x0', 'size': 0x100, 'flags': 'AX'},
+           {'name': '.data', 'address': '0x0', 'size': 0x20, 'flags': 'WA'}]
+    TWO = ONE + [{'name': '.text.init', 'address': '0x0', 'size': 0x80, 'flags': 'AX'}]
+
+    def obj(self, sections, syms=()):
+        img = image(list(syms))
+        img.kind, img.sections = 'object', sections
+        return img
+
+    def test_offset_without_a_symbol_takes_the_only_code_section(self):
+        self.assertEqual(self.obj(self.ONE).find('0x40', 16)[1:4], (0x40, 16, '.text'))
+
+    def test_function_covering_the_offset_names_its_section(self):
+        syms = [(0x20, 0x40, 'fn', '.text.init', True, 'symtab')]
+        self.assertEqual(self.obj(self.TWO, syms).find('0x40', 16)[1:4], (0x40, 16, '.text.init'))
+
+    def test_offset_in_two_code_sections_with_no_covering_symbol_is_unresolved(self):
+        with self.assertRaises(SystemExit) as c:
+            self.obj(self.TWO).find('0x40', 16)
+        self.assertIn('unresolved', str(c.exception))
+        self.assertIn('.text, .text.init', str(c.exception))
 
 
 class InventoryAddressZero(unittest.TestCase):
