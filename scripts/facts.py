@@ -508,6 +508,16 @@ def add(v, k):
     return ('add', v, k)
 
 
+def reloc_sum(high_addend, low_imm):
+    """Symbol offset of a high/low relocation pair. An implicit pair keeps the high half in the lui
+    immediate and the low half in the low-part instruction, and the two add. A linker that carries the whole
+    addend in the high part's explicit entry may repeat its low 16 bits in the low-part instruction, and
+    then the offset is that addend, not the sum."""
+    if low_imm and (high_addend & 0xffff) == (low_imm & 0xffff):
+        return high_addend
+    return high_addend + low_imm
+
+
 def split(v):
     """(root, offset) of a value."""
     if v is None:
@@ -789,7 +799,7 @@ class Routine:
             t, s, a = ins['reloc']
             if t in ('R_MIPS_LO16',):
                 if bv is not None and bv[0] == 'sym' and bv[1] == s:
-                    return b, bv, off, ('sym', s, bv[2] + off)
+                    return b, bv, off, ('sym', s, reloc_sum(bv[2], off))
                 return b, bv, off, ('sym', s, a + off)
             if t == 'R_MIPS_GPREL16':
                 # REL addend in the instruction; a local (section) symbol also adds the object's gp0
@@ -1040,7 +1050,7 @@ class Routine:
             if mn == 'lui' and t == 'R_MIPS_HI16':
                 v = ('sym', rel[1], rel[2] + (sx32(k << 16) if k is not None else 0))
             elif t == 'R_MIPS_LO16' and a is not None and a[0] == 'sym' and a[1] == rel[1]:
-                v = ('sym', rel[1], a[2] + (k or 0))
+                v = ('sym', rel[1], reloc_sum(a[2], k or 0))
             elif t == 'R_MIPS_GPREL16':
                 v = ('sym', rel[1], rel[2] + (k or 0) + (self.img.gp0 if rel[1].startswith('.') else 0))
             else:

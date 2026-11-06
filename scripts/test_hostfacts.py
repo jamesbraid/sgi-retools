@@ -497,5 +497,67 @@ class StackSlotAcrossCalls(unittest.TestCase):
         self.assertEqual(self.reload(words), '[a0+4]')
 
 
+def mips_object(text_words, rel=(), rela=(), rodata=b'\0' * 0x100):
+    """A big-endian ELF32 relocatable MIPS (n32 flag) object with .text, .rodata, .rel.text and .rela.text.
+    rel and rela hold (offset, type, addend) against the .rodata section symbol (addend only for rela)."""
+    text = b''.join(struct.pack('>I', w) for w in text_words)
+    shstr = b'\0.text\0.rodata\0.rel.text\0.rela.text\0.symtab\0.strtab\0.shstrtab\0'
+
+    def off(name):
+        return shstr.index(b'\0' + name.encode() + b'\0') + 1
+    strtab = b'\0fn\0'
+    sym = lambda n, v, sz, info, shn: struct.pack('>IIIBBH', n, v, sz, info, 0, shn)  # noqa: E731
+    symtab = sym(0, 0, 0, 0, 0) + sym(0, 0, 0, 3, 2) + sym(1, 0, len(text), 0x12, 1)   # null, .rodata section, fn
+    relb = b''.join(struct.pack('>II', o, (1 << 8) | t) for o, t, _ in rel)
+    relab = b''.join(struct.pack('>IIi', o, (1 << 8) | t, a) for o, t, a in rela)
+    bodies = [b'', text, rodata, relb, relab, symtab, strtab, shstr]
+    names = [0, off('.text'), off('.rodata'), off('.rel.text'), off('.rela.text'), off('.symtab'), off('.strtab'),
+             off('.shstrtab')]
+    types = [0, 1, 1, 9, 4, 2, 3, 3]
+    flags = [0, 6, 2, 0, 0, 0, 0, 0]
+    links = [0, 0, 0, 5, 5, 6, 0, 0]
+    infos = [0, 0, 0, 1, 1, 2, 0, 0]
+    ents = [0, 0, 0, 8, 12, 16, 0, 0]
+    pos, offs = 52, []
+    for b in bodies:
+        offs.append(pos)
+        pos += len(b)
+    pos = (pos + 3) & ~3
+    hdr = b'\x7fELF\x01\x02\x01' + b'\0' * 9 + struct.pack('>HHIIIIIHHHHHH', 1, 8, 1, 0, 0, pos, 0x20, 52, 0, 0, 40,
+                                                                 len(bodies), 7)
+    out = hdr + b''.join(bodies) + b'\0' * (pos - 52 - sum(len(b) for b in bodies))
+    for k, b in enumerate(bodies):
+        out += struct.pack('>IIIIIIIIII', names[k], types[k], flags[k], 0, offs[k] if k else 0, len(b), links[k],
+                           infos[k], 4, ents[k])
+    return out
+
+
+class RelocationAddends(unittest.TestCase):
+    """A high/low relocation pair names symbol plus one addend. A linker that carries the whole addend in the
+    high part's entry and repeats its low 16 bits in the low part's instruction must not count it twice."""
+    HI16, LO16 = 5, 6
+
+    def facts_of(self, words, rel, rela):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'obj.o')
+            with open(p, 'wb') as f:
+                f.write(mips_object(words, rel, rela))
+            r = hostfacts.routine_for(p, 'fn', size=4 * len(words))
+            fs = r.facts(False)
+            fs['routine']['file'] = 'obj.o'
+            return hostfacts.render(r, fs)
+
+    def test_explicit_high_addend_repeated_in_low_immediate(self):
+        words = [lui(A1, 0), lw(V0, 0x40, A1), I(0x09, A1, 3, 0x40), jr(RA), NOP]
+        text = self.facts_of(words, rel=[(4, self.LO16, 0), (8, self.LO16, 0)], rela=[(0, self.HI16, 0x40)])
+        self.assertIn('=> sym(.rodata) +0x40', text)
+        self.assertNotIn('+0x80', text)
+
+    def test_implicit_pair_adds_the_halves(self):
+        words = [lui(A1, 1), lw(V0, 0x10, A1), jr(RA), NOP]
+        text = self.facts_of(words, rel=[(0, self.HI16, 0), (4, self.LO16, 0)], rela=[])
+        self.assertIn('=> sym(.rodata) +0x10010', text)
+
+
 if __name__ == '__main__':
     unittest.main()
