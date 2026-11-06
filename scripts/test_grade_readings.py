@@ -39,6 +39,15 @@ class EntryLayouts(unittest.TestCase):
                           ])
         self.assertEqual(len(entries[1]["sentences"]), 1)
 
+    def test_entries_report_their_extent_install_path_and_grade(self):
+        lines = ["# Readings", "", "- `a` in `usr/lib/a.a(x.o)` at 0x10 (n64).",
+                 "  Evidence grade: established.", "  It occupies 8 bytes.", "", "prose"]
+        (entry,) = grade.parse_lines(lines)
+
+        self.assertEqual((entry["line"], entry["end"]), (3, 5))
+        self.assertEqual((entry["install"], entry["binary"], entry["grade"]),
+                         ("usr/lib/a.a(x.o)", "usr/lib/a.a:x.o", "established"))
+
     def test_entry_ends_at_first_non_indented_line(self):
         content = """- `routine_a` in `usr/lib/a.so` at 0x1000 (o32).
   It occupies 24 bytes.

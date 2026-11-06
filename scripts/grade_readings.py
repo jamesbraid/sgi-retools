@@ -20,7 +20,13 @@ HEADER = re.compile(r"^- `(?P<name>[^`]+)`(?: in `(?P<binary>[^`]+)` at (?P<addr
 def parse_entries(doc):
     """Read bullet entries and their sentences in the formats used by landed rounds."""
     with open(doc, encoding="utf-8") as source:
-        lines = source.read().splitlines()
+        return parse_lines(source.read().splitlines())
+
+
+def parse_lines(lines):
+    """parse_entries over text already split into lines. Entries also carry `end` (the
+    exclusive index of their last line), `install` (the binary path as written, member
+    in parentheses included) and `grade` (the evidence grade line, if any)."""
     starts = [i for i, line in enumerate(lines) if line.startswith("- ")]
     entries = []
     for start in starts:
@@ -37,6 +43,8 @@ def parse_entries(doc):
         address = header.group("address") or header.group("legacy_address")
         exact = re.search(r"^\s*Exact binary: `([^`]+)`\s*$", meta, re.M)
         binary = exact.group(1) if exact else binary
+        install = binary
+        grade_line = re.search(r"^\s*Evidence grade: (\w+)\.", meta, re.M)
         span = re.search(r"^\s*Range: (" + HEX + r")-(" + HEX + r") \((\d+) bytes\)", meta, re.M)
         size_line = re.search(r"^\s*It occupies (\d+) bytes\.", meta, re.M)
         size = int(header.group("legacy_size") or (span.group(3) if span else 0) or (size_line.group(1) if size_line else 0)) or None
@@ -46,7 +54,8 @@ def parse_entries(doc):
         sentences = [line.strip() for line in block[1:] if line.strip() and not re.match(
             r"(?:Evidence grade:|Exact binary:|Exact build:|Range:|Role:)", line.strip())]
         entries.append({"name": name, "binary": binary, "address": address, "size": size,
-                        "sentences": sentences, "line": start + 1})
+                        "sentences": sentences, "line": start + 1, "end": end,
+                        "install": install, "grade": grade_line.group(1) if grade_line else None})
     return entries
 
 
@@ -131,7 +140,8 @@ def _return_choices(value):
     return [part.strip() for part in re.split(r"\s+or\s+", value)]
 
 
-def facts_for(root, entry):
+def resolve_binary(root, entry):
+    """Return (path, member) of the binary an entry cites."""
     binary_path, separator, member = entry["binary"].partition(":")
     binary = os.path.join(root, binary_path)
     if not os.path.isfile(binary):
@@ -141,7 +151,11 @@ def facts_for(root, entry):
             binary = checkout_candidate
         else:
             raise FileNotFoundError(binary)
-    member = member if separator else None
+    return binary, (member if separator else None)
+
+
+def facts_for(root, entry):
+    binary, member = resolve_binary(root, entry)
     routine = hostfacts.routine_for(binary, entry["address"], member=member, size=entry["size"])
     facts = routine.facts(False)
     facts["instructions"] = {"0x%x" % insn["addr"]: insn["mn"] for insn in routine.insns}
