@@ -38,8 +38,8 @@ class BranchLikely(unittest.TestCase):
         self.assertFalse(MIPS_IV_LIKELY - facts.LIKELY)
         self.assertFalse(MIPS_IV_LIKELY - check_claims.LIKELY_MN)
 
-    def test_claim_text_recognises_the_regimm_forms(self):
-        for mn in ('bltzl', 'bgezl', 'bltzall', 'bgezall'):
+    def test_claim_text_recognises_every_form(self):
+        for mn in sorted(MIPS_IV_LIKELY):
             self.assertRegex('uses `%s zero` here' % mn, check_claims.LIKELY_RE)
 
     def test_always_taken_call_counts_as_likely(self):
