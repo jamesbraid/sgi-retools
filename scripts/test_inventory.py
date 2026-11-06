@@ -133,6 +133,18 @@ class Scope(unittest.TestCase):
         self.assertEqual((row['rows'], row['out_of_scope'], row['undocumented']), (2, 4, 2))
         self.assertEqual(row['pct_understood'], '0.0')
 
+    def test_rows_with_no_address_leave_the_counts_and_are_reported(self):
+        rows = [{'name': 'a', 'status': 'undocumented', '_multi': False, '_shared': False, '_unknown': False},
+                {'name': 'b', 'status': 'understood', '_multi': False, '_shared': False, '_unknown': False},
+                {'name': 'c', 'status': 'named-only', '_multi': False, '_shared': False, '_unknown': True},
+                {'name': 'd', 'status': 'undocumented', '_multi': False, '_shared': False, '_unknown': True,
+                 '_out': True}]
+        row = inv.summary_row('functions', rows, '', 1)
+        # d is out of scope and counted there only; c is address-unknown and in no status count
+        self.assertEqual((row['rows'], row['out_of_scope'], row['address_unknown']), (2, 1, 1))
+        self.assertEqual((row['undocumented'], row['named_only'], row['understood']), (1, 0, 1))
+        self.assertEqual(row['pct_understood'], '50.0')
+
 
 class CodeGroups(unittest.TestCase):
     FUNCS = {'usr/diags/irsaudit': {'nic_setup': ('.text', 0x1007af50, 72, {'dynsym'}, 'ec74f03d23e6'),

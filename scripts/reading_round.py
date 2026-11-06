@@ -131,6 +131,8 @@ def select_targets(rows, doc_names, doc_addrs, link_names=(), link_addrs=()):
     for row in rows:
         if row.get("status") not in STATUSES or row.get("scope") != "in":
             continue
+        if "address-unknown" in (row.get("rejected") or ""):
+            continue
         binary = norm_binary(row["binary"])
         addr = to_int(row["address"])
         if addr is None:

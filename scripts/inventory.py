@@ -81,7 +81,8 @@ COLUMNS = {
     'summary': ['table', 'rows', 'out_of_scope', 'understood', 'understood_with_open', 'understood_distinct', 'templated', 'located', 'named_only',
                 'undocumented', 'no_software_dependency', 'pct_understood', 'pct_located_or_better',
                 'pct_mentioned', 'pct_done', 'unresolved_sites', 'truncated', 'audited_real_pct',
-                'audited_sample', 'audited_date', 'computes', 'reused', 'multi_unit', 'shared_address', 'input'],
+                'audited_sample', 'audited_date', 'computes', 'reused', 'multi_unit', 'shared_address',
+                'address_unknown', 'input'],
 }
 TABLES = ('binaries', 'functions', 'mmio', 'tokens', 'ioctls', 'ucode', 'spec-registers')
 
@@ -3543,6 +3544,7 @@ def build(cfg, a, tmp):
                 at_address[(fl[n][0], fl[n][1])].append(n)
         for name in sorted(fl, key=lambda n: (fl[n][1] or 0, n)):
             sec, addr, size, srcs, csha = fl[name]
+            unknown = addr is None      # code the symbol tables and debug information give no address for
             addr = 0 if addr is None else addr
             row = {'binary': lab, 'role': g['role'], 'abi': abi.get(lab, '-'), 'elf_section': sec,
                    'address': '0x%x' % addr, 'size': size or '', 'name': name, 'source': '+'.join(sorted(srcs)),
@@ -3558,7 +3560,9 @@ def build(cfg, a, tmp):
             fi = finfo.get(lab, {})
             row['_multi'] = name in fi.get('multi_unit', ())
             row['_shared'] = name in fi.get('shared_address', ())
-            row['rejected'] = '+'.join(w for w, f in (('multi-unit', row['_multi']), ('shared-address', row['_shared'])) if f)
+            row['_unknown'] = unknown
+            row['rejected'] = '+'.join(w for w, f in (('multi-unit', row['_multi']), ('shared-address', row['_shared']),
+                                                      ('address-unknown', unknown)) if f)
             hits = docs.name_hits(name)
             if row['_multi']:
                 hits = [h for h in hits if h.ent is not None and cites_range(h.ent.text, addr, size)]
@@ -3614,13 +3618,13 @@ def build(cfg, a, tmp):
         if t == 'functions':
             best = {}
             for r in out['functions']:
-                if r.get('_out'):
+                if r.get('_out') or r.get('_unknown'):
                     continue
                 if r['name'] not in best or RANK[r['status']] > RANK[best[r['name']]['status']]:
                     best[r['name']] = r
             out_names = {r['name'] for r in out['functions'] if r.get('_out')} - set(best)
             srows.append(summary_row('functions (distinct names)', list(best.values()), '', len(out_names)))
-            srows[-1]['multi_unit'] = srows[-1]['shared_address'] = ''
+            srows[-1]['multi_unit'] = srows[-1]['shared_address'] = srows[-1]['address_unknown'] = ''
     for r in srows:
         au = audits.get(r['table'])
         if au:
@@ -3806,8 +3810,13 @@ def read_audits(path):
 
 def summary_row(name, rows, unresolved, out_of_scope=0):
     """The counts of one table. Rows a scope rule excluded (`_out`) are left out of every count and are
-    reported in `out_of_scope`, so the denominator never hides them."""
+    reported in `out_of_scope`, so the denominator never hides them. A function row with no recoverable
+    address (`_unknown`, `rejected` = address-unknown) cannot be read or credited by address, so it is left
+    out of the counts too and reported in `address_unknown`."""
     rows = [r for r in rows if not r.get('_out')]
+    flagged = any('_multi' in r for r in rows)
+    unknown = sum(1 for r in rows if r.get('_unknown'))
+    rows = [r for r in rows if not r.get('_unknown')]
     c = collections.Counter(r['status'] for r in rows)
     distinct = len({r.get('_skel', '') for r in rows if r['status'] == 'understood'})
     templated = sum(1 for r in rows if r.get('_templated'))
@@ -3817,10 +3826,10 @@ def summary_row(name, rows, unresolved, out_of_scope=0):
         return '%.1f' % (100.0 * x / n) if n else '0.0'
     nsd = c['no-software-dependency']
     opened = sum(1 for r in rows if r['status'] == 'understood' and r.get('_open'))
-    flagged = any('_multi' in r for r in rows)
     return {'reused': sum(1 for r in rows if r.get('_reused')),
             'multi_unit': sum(1 for r in rows if r.get('_multi')) if flagged else '',
             'shared_address': sum(1 for r in rows if r.get('_shared')) if flagged else '',
+            'address_unknown': unknown if flagged else '',
             'table': name, 'rows': n, 'out_of_scope': out_of_scope, 'understood': c['understood'], 'understood_with_open': opened,
             'understood_distinct': distinct,
             'templated': templated, 'located': c['located'],
@@ -3896,6 +3905,10 @@ def update_coverage(cfg, srows, imgs, kind, resolved, unres, by_win, sib, inputs
         checks.append('Function rows rejected as ambiguous, at most named-only: %s whose name is defined in several '
                       'compilation units, %s whose address another name shares (a row can be in both).'
                       % (fr['multi_unit'], fr['shared_address']))
+        if fr['address_unknown']:
+            checks.append('Function rows with no recoverable address (`rejected` = address-unknown): %s. They have '
+                          'code but neither the symbol tables nor the debug information give where, so they are '
+                          'left out of every count above and are not open work.' % fr['address_unknown'])
     lines += ['', '\n\n'.join(checks)]
     notes = [r for r in srows if r.get('truncated')]
     for r in notes:

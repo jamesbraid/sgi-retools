@@ -12,15 +12,15 @@ spec = importlib.util.spec_from_file_location("reading_round", os.path.join(HERE
 rr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rr)
 
-HEADER = "binary\trole\taddress\tsize\tname\tscope\tstatus\n"
+HEADER = "binary\trole\taddress\tsize\tname\tscope\tstatus\trejected\n"
 
 
 def inventory(*rows):
     return rr.read_tsv(HEADER + "".join("\t".join(r) + "\n" for r in rows))
 
 
-def row(binary, address, size, name, status="named-only", scope="in", role="shared-library"):
-    return (binary, role, address, size, name, scope, status)
+def row(binary, address, size, name, status="named-only", scope="in", role="shared-library", rejected=""):
+    return (binary, role, address, size, name, scope, status, rejected)
 
 
 def pick(rows, doc_lines=(), links=((), ())):
@@ -61,6 +61,11 @@ class SelectionTests(unittest.TestCase):
         got = pick([row("usr/k/kona.a(m.o)", "0x8", "4", "f")],
                    ["- `f` in `usr/k/kona.a:m.o` at 0x8 (n64)."])
         self.assertEqual(got, [])
+
+    def test_address_unknown_rows_are_never_targets(self):
+        r = row("usr/lib/a.so", "0x0", "4", "unplaced", rejected="address-unknown")
+        got = pick([r, row("usr/lib/a.so", "0x100", "8", "placed")])
+        self.assertEqual([n for _b, n in got], ["placed"])
 
     def test_address_zero_without_size_is_dropped(self):
         got = pick([
