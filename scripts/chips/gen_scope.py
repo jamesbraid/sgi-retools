@@ -62,6 +62,11 @@ CLASSES = [
      r'ide|ide_idbg|ec|ecpplp|sash64)'),
 ]
 
+# Routines of a linked kernel whose names carry no chip name and that the census has no site for, but that the
+# inventory's own scan finds reaching a register window or a token once their address is recovered. A rule
+# cannot exclude such a routine, so they stay in scope. Keyed by the base name of the binary.
+SCAN_FOUND = {'kernel.o': {'add_vice', 'ecc_fixmem', 'err_save_regs'}}
+
 
 def tsv(path):
     with open(path, newline='', encoding='utf-8') as f:
@@ -146,7 +151,8 @@ def build():
         if whole(l):
             continue
         if is_big(l):
-            partial.append((l, cen.get(l, set()) | {n for n in funcs[l] if prefix.match(n)},
+            partial.append((l, cen.get(l, set()) | {n for n in funcs[l] if prefix.match(n)} |
+                            (SCAN_FOUND.get(base(l), set()) & funcs[l]),
                             'routines of a linked kernel or debug monitor whose names carry no chip or chip-error '
                             'name and hold no census access site: machine-independent kernel code'))
         elif l in cen:
