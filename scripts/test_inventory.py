@@ -385,5 +385,56 @@ class AddressZero(unittest.TestCase):
         self.assertEqual(info['address_source'], 'symtab')
 
 
+@unittest.skipIf(ELFFile is None, 'pyelftools is not installed')
+class StaleDwarf(unittest.TestCase):
+    """DWARF addresses are dropped only when the code moved after the debug information was written."""
+
+    class WithDebug(ELFFile if ELFFile else object):
+        def get_section_by_name(self, name):
+            return object() if name == '.debug_info' else super().get_section_by_name(name)
+
+    def functions(self, symbols, dwarf, linked=False):
+        code = bytes(range(128))
+        data = AddressZero.relocatable(code, symbols)
+        if linked:      # the same image as an executable whose only code section, .init, sits at 0x1000
+            data = data.replace(b'.text\0', b'.init\0')
+            data = data[:16] + b'\x00\x02' + data[18:]
+            o = int.from_bytes(data[32:36], 'big') + 40      # section header 1 is .text
+            data = data[:o + 12] + (0x1000).to_bytes(4, 'big') + data[o + 16:]
+        real = inv.dwarf_subprograms
+        inv.dwarf_subprograms = lambda path: dwarf
+        try:
+            return inv.functions_of({'group': {}, 'data': data, 'label': 'x.o'},
+                                    self.WithDebug(io.BytesIO(data)), '/nonexistent')
+        finally:
+            inv.dwarf_subprograms = real
+
+    def test_a_name_defined_in_two_units_does_not_make_dwarf_stale(self):
+        # `dup` is static in two units and the symbol table keeps one; `hidden` is a static the table lacks
+        funcs, info = self.functions([('dup', 32, 32), ('plain', 0, 32)],
+                                     [('plain', 0, 32), ('dup', 32, 64), ('dup', 96, 112), ('hidden', 64, 96)])
+        self.assertEqual(funcs['hidden'][:3], ['.text', 64, 32])
+        self.assertEqual(funcs['hidden'][4], hashlib.sha256(bytes(range(64, 96))).hexdigest()[:12])
+        self.assertEqual(funcs['dup'][1], 32)
+        self.assertEqual(info['address_source'], 'symtab+dwarf')
+
+    def test_dwarf_that_shares_no_address_with_the_symbols_is_dropped(self):
+        funcs, info = self.functions([('moved', 32, 32)], [('moved', 0x4000, 0x4020), ('hidden', 0x4040, 0x4060)])
+        self.assertEqual(funcs['moved'][1], 32)
+        self.assertIsNone(funcs['hidden'][1])
+        self.assertEqual(info['address_source'], 'symtab (dwarf addresses stale, dropped)')
+
+    def test_a_function_that_fills_a_section_of_its_own_keeps_its_address_in_stale_dwarf(self):
+        # `_init` is at the start of .init, the one code section here; DWARF puts the other names elsewhere
+        funcs, info = self.functions([('moved', 0x1020, 32)], [('moved', 0x4000, 0x4020), ('_init', 0x1000, 0x1020),
+                                                              ('other', 0x4040, 0x4060)], linked=True)
+        self.assertEqual(funcs['_init'][:3], ['.init', 0x1000, 0x20])
+        self.assertEqual(funcs['_init'][4], hashlib.sha256(bytes(range(32))).hexdigest()[:12])
+        self.assertEqual(funcs['moved'][1], 0x1020)
+        self.assertIsNone(funcs['other'][1])
+        self.assertEqual(info['address_source'],
+                         'symtab+dwarf (dwarf addresses stale, dropped except sections of their own)')
+
+
 if __name__ == '__main__':
     unittest.main()

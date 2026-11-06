@@ -1699,8 +1699,10 @@ def functions_of(img, elf, path):
     A function's address comes from one source, chosen for the binary: the ELF symbol tables (.symtab,
     .dynsym) first, then the .mdebug procedure table for names the symbol tables lack, and DWARF only for
     names neither has, and only when DWARF can be trusted. DWARF is not trusted in a binary where any
-    function it names sits at an address the symbol tables do not give it (the library was relinked after
-    the debug information was written): its addresses are then dropped and its names kept without one.
+    name has DWARF addresses that share none with the addresses the symbol tables give it (the library was
+    relinked after the debug information was written): its addresses are then dropped and its names kept
+    without one, except for a function that fills a section of its own (`_init` in .init), whose address
+    is that section's start.
     info holds `address_source` (which sources gave this binary's addresses), `multi_unit` (names with
     several definitions at different addresses, one per compilation unit) and `shared_address` (names
     that share an address with another name)."""
@@ -1736,27 +1738,49 @@ def functions_of(img, elf, path):
         defs['mdebug'][name].append((addr, 0, '.text'))
     for name in debug_funcnames(elf):
         defs['funcnames'][name].append((None, 0, ''))
+    linked = elf['e_type'] != 'ET_REL'
+    # executable sections by address, for naming the section a linked image's DWARF address falls in
+    xsecs = sorted((s['sh_addr'], s['sh_addr'] + s['sh_size'], s.name) for i, s in enumerate(elf.iter_sections())
+                   if i in execsec and s['sh_size'])
+
+    def section_at(addr):
+        return next((n for a, e, n in xsecs if a <= addr < e), '.text') if linked else '.text'
+
     if elf.get_section_by_name('.debug_info') is not None:
         for name, lo, hi in dwarf_subprograms(path):
-            if not lo and elf['e_type'] != 'ET_REL':
+            if not lo and linked:
                 continue
-            defs['dwarf'][name].append((lo, (hi - lo) if hi > lo else 0, '.text'))
+            defs['dwarf'][name].append((lo, (hi - lo) if hi > lo else 0, section_at(lo)))
     symbols = collections.defaultdict(list)
     for src in ('symtab', 'dynsym'):
         for name, ds in defs[src].items():
             symbols[name] += ds
     sym_addrs = {n: {a for a, _, _ in ds if a is not None} for n, ds in symbols.items()}
-    stale = any(da and sym_addrs.get(n) and not da <= sym_addrs[n]
+    # A name DWARF gives at several addresses (a static function of the same name in more than one
+    # compilation unit) while the symbol tables give one of them is not stale: only a name whose DWARF
+    # addresses and symbol addresses share none shows that the code moved after the debug information
+    # was written.
+    stale = any(da and sym_addrs.get(n) and not da & sym_addrs[n]
                 for n, da in ((n, {a for a, _, _ in ds if a is not None}) for n, ds in defs['dwarf'].items()))
     names = set()
     for src in defs:
         names |= set(defs[src])
+
+    def anchored(d):
+        # Where the code was moved after the debug information was written (a relink that reordered
+        # .text), a DWARF address still holds for a function that fills a section of its own, such as
+        # `_init` in .init or the lazy-binding stubs in .MIPS.stubs: those sections were not reordered, and
+        # the address is the section's start.
+        lo, size, sec = d
+        s = elf.get_section_by_name(sec) if linked and sec != '.text' else None
+        return s is not None and lo == s['sh_addr'] and lo + size <= s['sh_addr'] + s['sh_size'] + 16
     used, multi = set(), set()
     for name in names:
         tiers = [('symtab' if name in defs['symtab'] else 'dynsym', symbols.get(name, [])),
-                 ('mdebug', defs['mdebug'].get(name, [])), ('dwarf', [] if stale else defs['dwarf'].get(name, []))]
+                 ('mdebug', defs['mdebug'].get(name, [])),
+                 ('dwarf', [d for d in defs['dwarf'].get(name, []) if not stale or anchored(d)])]
         src, ds = next(((sr, [d for d in dd if d[0] is not None]) for sr, dd in tiers if any(d[0] is not None for d in dd)), ('', []))
-        srcs = {sr for sr in defs if name in defs[sr] and not (stale and sr == 'dwarf' and ds)}
+        srcs = {sr for sr in defs if name in defs[sr] and not (stale and sr == 'dwarf' and ds and src != 'dwarf')}
         if ds:
             used.add(src)
             # the lowest definition, as the one row of the name; several at different addresses means
@@ -1775,7 +1799,7 @@ def functions_of(img, elf, path):
     shared = {n for ns in at.values() if len(ns) > 1 for n in ns}
     label = '+'.join(x for x in ('symtab', 'dynsym', 'mdebug', 'dwarf') if x in used) or 'none'
     if stale:
-        label += ' (dwarf addresses stale, dropped)'
+        label += ' (dwarf addresses stale, dropped%s)' % (' except sections of their own' if 'dwarf' in used else '')
     # a missing size runs to the next function of the same section
     by = collections.defaultdict(list)
     for name, e in funcs.items():
