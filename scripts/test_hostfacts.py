@@ -441,5 +441,61 @@ class CallArguments(unittest.TestCase):
         self.assertIn('a0=a0 at entry (arg0), a1=0x12345678, a2=0x5, a3=a3 at entry (arg3)', text)
 
 
+class StackSlotAcrossCalls(unittest.TestCase):
+    """A pointer the routine spilled to its own frame is the same pointer after the call that
+    separates the spill from the reload, unless a stack address could have let the callee rewrite it."""
+    SP, T0, T1, S0 = 29, 8, 9, 16
+    CALL = [jal(0x2000), NOP]
+
+    def reload(self, words):
+        """The base origin of the last load, whose base register is the reloaded slot."""
+        _, fs, _ = routine(words)
+        return fs['accesses'][-1]['base_origin']
+
+    def frame(self, body):
+        return [daddiu(self.SP, self.SP, -32)] + body + [daddiu(self.SP, self.SP, 32), jr(RA), NOP]
+
+    def test_reload_after_a_call_is_the_stored_value(self):
+        words = self.frame([lw(self.T1, 4, A0), sw(self.T1, 0x10, self.SP)] + self.CALL +
+                           [lw(self.T0, 0x10, self.SP), lw(V0, 8, self.T0)])
+        self.assertEqual(self.reload(words), '[a0+4]')
+
+    def test_address_of_the_slot_passed_to_a_call_forgets_it(self):
+        words = self.frame([lw(self.T1, 4, A0), sw(self.T1, 0x10, self.SP), daddiu(A1, self.SP, 0x10)] +
+                           self.CALL + [lw(self.T0, 0x10, self.SP), lw(V0, 8, self.T0)])
+        self.assertEqual(self.reload(words), '?')
+
+    def test_slot_next_to_a_passed_buffer_is_forgotten(self):
+        # the buffer at sp+8 and the word at sp+0xc are one object: the first directly used offset
+        # after the buffer is less than 8 bytes on
+        words = self.frame([lw(self.T1, 4, A0), sw(self.T1, 0xc, self.SP), daddiu(A1, self.SP, 8)] +
+                           self.CALL + [lw(self.T0, 0xc, self.SP), lw(V0, 8, self.T0)])
+        self.assertEqual(self.reload(words), '?')
+
+    def test_slot_past_a_passed_buffer_is_kept(self):
+        # the buffer at sp+0 ends at the slot at sp+0x10, which is a separate object
+        words = self.frame([lw(self.T1, 4, A0), sw(self.T1, 0x10, self.SP), daddiu(A1, self.SP, 0)] +
+                           self.CALL + [lw(self.T0, 0x10, self.SP), lw(V0, 8, self.T0)])
+        self.assertEqual(self.reload(words), '[a0+4]')
+
+    def test_paths_that_disagree_leave_it_unknown(self):
+        words = self.frame([
+            br(0x04, A2, 0, BASE + 4, BASE + 0x1c),              # beq a2,zero,else
+            NOP,
+            lw(self.T1, 4, A0), sw(self.T1, 0x10, self.SP),      # then: slot = [a0+4]
+            br(0x04, 0, 0, BASE + 0x14, BASE + 0x24), NOP,       # b join
+            lw(self.T1, 8, A0), sw(self.T1, 0x10, self.SP),      # else: slot = [a0+8]
+        ] + self.CALL + [lw(self.T0, 0x10, self.SP), lw(V0, 8, self.T0)])
+        self.assertEqual(self.reload(words), '?')
+
+    def test_paths_that_agree_keep_it(self):
+        words = self.frame([
+            lw(self.T1, 4, A0), sw(self.T1, 0x10, self.SP),
+            br(0x04, A2, 0, BASE + 0xc, BASE + 0x1c), NOP,       # beq a2,zero,skip: both arms reach the call
+            lw(self.T1, 4, A0), sw(self.T1, 0x10, self.SP),      # same value again
+        ] + self.CALL + [lw(self.T0, 0x10, self.SP), lw(V0, 8, self.T0)])
+        self.assertEqual(self.reload(words), '[a0+4]')
+
+
 if __name__ == '__main__':
     unittest.main()

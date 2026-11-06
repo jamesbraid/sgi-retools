@@ -35,6 +35,8 @@ same bytes. It states what the instructions do, nothing about what they mean:
 
 Values are symbolic: a0 is the first argument as it arrived, [X+16] the word loaded from X+16,
 ret(f) what f returned, sp+N the stack at entry plus N, sym(S)+N the address of symbol S.
+A word the routine stored in its own frame is reloaded with the value stored when every path
+agrees, also across calls, unless a stack address the routine handed out could reach that slot.
 """
 import argparse
 import bisect
@@ -733,6 +735,12 @@ class Routine:
         self.w64 = img.abi in ('n64', 'n32', 'flat') or img.isa in ('mips3', 'mips4')
         self.nargs = 4 if img.abi == 'o32' else 8
         self.rel = img.kind == 'object'
+        # Stack slots survive a call unless a stack address could reach them. The first pass of run()
+        # collects the stack addresses the routine forms (esc)
+        # and the offsets it reads and writes directly (direct); the second pass uses them.
+        self.collect, self.precise = False, False
+        self.esc, self.direct = set(), {}
+        self._exposed = {}
 
     # ---------------------------------------------------------- semantics
 
@@ -849,6 +857,77 @@ class Routine:
         root, off = split(ev)
         return ('ld', root, off, width)
 
+    @staticmethod
+    def slot_of(ev):
+        if ev is None:
+            return None
+        if ev[0] == 'sp0':
+            return ev[1]
+        if ev[0] == 'add' and ev[1][0] == 'sp0':
+            return ev[1][1] + ev[2]
+        return None
+
+    @staticmethod
+    def stack_offsets(v):
+        """Entry-relative offsets of the stack addresses a value is built from (a word loaded from a
+        stack slot is not one)."""
+        if v is None:
+            return []
+        if v[0] == 'sp0':
+            return [v[1]]
+        if v[0] == 'add':
+            return [x + v[2] for x in Routine.stack_offsets(v[1])]
+        if v[0] == 'op':
+            return [x for y in v[2:] if isinstance(y, tuple) for x in Routine.stack_offsets(y)]
+        return []
+
+    def note_stack_address(self, srcs, v):
+        """Record that a stack address was copied, offset or indexed into another register. When the
+        result is not tracked, the addresses it came from stand in for it."""
+        if v is not None:
+            self.esc.update(self.stack_offsets(v))
+        else:
+            for x in srcs:
+                self.esc.update(self.stack_offsets(x))
+
+    def exposed(self, slot):
+        """Whether a callee could write this stack slot through an address the routine handed out.
+
+        An address at offset K covers the object that starts there. When K is also read or written
+        directly, or a directly used offset follows within 8 bytes, the object runs through the
+        directly used offsets that touch or overlap it. Otherwise it is a buffer that ends at the next
+        directly used offset. Frames lay out separate objects at separate offsets, so a spill slot
+        past a buffer is not part of it; a routine that breaks that layout is the limit of this rule."""
+        if slot in self._exposed:
+            return self._exposed[slot]
+        hit = False
+        for k in self.esc:
+            if slot < k:
+                continue
+            ahead = [d for d in self.direct if d > k]
+            nxt = min(ahead) if ahead else None
+            if k in self.direct:
+                end = k + self.direct[k]
+            elif nxt is None:
+                hit = True
+                break
+            elif nxt - k >= 8:
+                end = nxt
+                if slot < end:
+                    hit = True
+                    break
+                continue
+            else:
+                end = nxt + self.direct[nxt]
+            for d in sorted(self.direct):
+                if k <= d <= end:
+                    end = max(end, d + self.direct[d])
+            if slot < end:
+                hit = True
+                break
+        self._exposed[slot] = hit
+        return hit
+
     def ro_addr(self, a):
         s = self.img.section_of(a & (M64 if self.w64 else 0xffffffff))
         if not s:
@@ -870,6 +949,8 @@ class Routine:
                 return
             b, bv, off, ev = e
             w = LOADS[mn]
+            if self.collect and self.slot_of(ev) is not None:
+                self.direct[self.slot_of(ev)] = max(w, self.direct.get(self.slot_of(ev), 0))
             v = self.load_value(st, ins, ev, w)
             if mn in ('lwc1', 'ldc1', 'lwc2', 'ldc2', 'lwxc1', 'ldxc1'):
                 fm = FREG.match(ops[0])
@@ -900,11 +981,9 @@ class Routine:
             else:
                 val = g(R[0]) if R[0] is not None else None
                 src = ops[0]
-            slot = None
-            if ev is not None and ev[0] == 'sp0':
-                slot = ev[1]
-            elif ev is not None and ev[0] == 'add' and ev[1][0] == 'sp0':
-                slot = ev[1][1] + ev[2]
+            slot = self.slot_of(ev)
+            if self.collect and slot is not None:
+                self.direct[slot] = max(w, self.direct.get(slot, 0))
             if slot is not None:
                 if val is None or mn in ('swl', 'swr', 'sdl', 'sdr', 'sb', 'sh'):
                     st.m.pop(slot, None)
@@ -1068,6 +1147,8 @@ class Routine:
             fm = FREG.match(ops[1])
             fv = st.f.get(int(fm.group(1))) if fm else None
             v = fv[1] if fv is not None and fv[0] == 'bits' else None
+        if self.collect and d != 29:
+            self.note_stack_address([a, bv], v)
         st.set(d, v)
         if rec is not None:
             rec.alu(ins, mn, d, a, k, v)
@@ -1095,11 +1176,16 @@ class Routine:
         st.r[2] = ('ret', callee)
         st.f[0] = ('ret', callee)
         # The callee may write any stack slot whose address the routine handed out (a reply buffer, an
-        # out-parameter), so a slot keeps its value only when it saved an incoming register or gp.
+        # out-parameter). A slot keeps its value when it saved an incoming register or gp, and, once
+        # the routine's stack addresses are known, when none of them can reach it. Until then every
+        # other slot is forgotten.
         for k in list(st.m):
             v = st.m[k]
-            if not (v[0] == 'in' or (is_c(v) and self.img.gp is not None and v[1] == self.img.gp)):
-                del st.m[k]
+            if v[0] == 'in' or (is_c(v) and self.img.gp is not None and v[1] == self.img.gp):
+                continue
+            if self.precise and not self.exposed(k):
+                continue
+            del st.m[k]
 
     # ---------------------------------------------------------- control flow
 
@@ -1136,9 +1222,19 @@ class Routine:
         return ('register', '', None, {'register': name, 'origin': self.R(v)})
 
     def run(self):
-        n = len(self.insns)
-        if not n:
+        if not self.insns:
             return
+        self.collect, self.precise = True, False
+        self.esc, self.direct, self._exposed = set(), {}, {}
+        self.solve()
+        self.collect = False
+        if self.direct:
+            self.precise = True
+            self.tables = []
+            self.solve()
+
+    def solve(self):
+        n = len(self.insns)
         self.in_states = {0: self.entry_state()}
         self.edges = {}     # (from index, to index) -> state on that edge
         work = [0]
