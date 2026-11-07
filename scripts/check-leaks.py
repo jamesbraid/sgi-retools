@@ -21,6 +21,16 @@ per line as STRING<TAB>REASON; a line without a reason is an error. An allowed s
 from a line before it is matched, so the rest of that line is still checked. There are no
 regular-expression allowances. The term and allow files are never themselves checked.
 
+Names check: a line added under docs/ (docs/sources/ holds published documents and is skipped) may
+not carry a source-file-name token (name.c, name.h, name.s, name.cc, name.cxx, with or without a
+directory) or a vendor driver-request name (GFX_, VENICE_, RRM_, FGLRX_ and ODSY_ names, and the
+KONA_ and CRIME_ request families). Such names come from the vendor's source tree or from strings in
+the shipped binaries and are described in words instead. A name that a published source holds (the
+OpenGL sample implementation, Linux, OpenBSD, X.Org, Mesa) goes in the workspace's
+scripts/source-names-allow.txt, one per line as NAME<TAB>REASON; a line without a reason is an error.
+A directory path that names a file in this workspace, and the MIPS floating-point mnemonics
+(c.lt.s, cvt.s and the like), need no entry.
+
 Exit status: 0 clean, 1 hit (each printed as file:line or commit, with the matched text), 2 tool error.
 """
 import os
@@ -32,7 +42,21 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 ZERO = '0' * 40
 EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 TRAILER = re.compile(r'^(Co-Authored-By|Signed-off-by):', re.I | re.M)
-NEVER_CHECKED = ('scripts/leak-terms.txt', 'scripts/leak-allow.txt', '.re-leak-terms')
+NEVER_CHECKED = ('scripts/leak-terms.txt', 'scripts/leak-allow.txt', '.re-leak-terms', 'scripts/source-names-allow.txt')
+# A source-file-name token: an optional directory path, then a name ending in a C or assembler suffix.
+SOURCE_NAME = re.compile(r'(?<![\w./+-])((?:[\w+.-]+/)*)([\w+-]+(?:\.[\w+-]+)*?\.(?:c|h|s|cc|cxx))(?![\w])')
+# MIPS floating-point mnemonics end in .s (single precision) and are not file names.
+FP_MNEMONIC = re.compile(r'^(c\.[a-z]+|cvt\.[a-z]+|(add|sub|mul|div|abs|neg|mov|cvt|sqrt|trunc\.[wl]|round\.[wl]|ceil\.[wl]|'
+                         r'floor\.[wl]|madd|msub|nmadd|nmsub|recip|rsqrt|movz|movn|movf|movt|sel|max|min|mina|maxa|class|'
+                         r'rint|ldc1|swc1|lwc1)(\.[a-z]+)?)\.s$')
+# Driver-request names: whole families by prefix, and the Kona and CRIME request names by stem.
+REQUEST_NAME = re.compile(r'(?<![A-Za-z0-9_])(?:(?:GFX|VENICE|RRM|FGLRX|ODSY)_[A-Z0-9_]+|'
+                          r'KONA_(?:NCLOPS|GET_NCLOPS|DMAWRITE|DMAREAD|DMAPOOL|SELECT_CURSOR|SETCONFIGINFO|START_SELECTFEED|'
+                          r'FINISH_SELECTFEED|DIAG_MAP|DIAG_FLOW|MEM_ALLOC|MEM_REALLOC|MEM_FREE|HEALTH|CHECK_PIPE|'
+                          r'SET_CHANNEL_RECT|GET_XY_CHANNEL|SHARE|DEBUG_IOCTL)[A-Z0-9_]*|'
+                          r'CRIME_(?:TEX_|SETVIDEOTIMING|GET_GBE_RESOURCE)[A-Z0-9_]*)(?![A-Za-z0-9_])')
+NAMES_SCOPE = 'docs/'
+NAMES_SKIP = ('docs/sources/',)
 
 
 class ToolError(Exception):
@@ -108,11 +132,65 @@ def load_allow(top):
     return out
 
 
+def load_name_allow(top):
+    path = os.path.join(top, 'scripts', 'source-names-allow.txt')
+    out = set()
+    if os.path.isfile(path):
+        with open(path, encoding='utf-8') as f:
+            for n, ln in enumerate(f, 1):
+                ln = ln.rstrip('\n')
+                if not ln.strip() or ln.lstrip().startswith('#'):
+                    continue
+                s, _, reason = ln.partition('\t')
+                if not s or not reason.strip():
+                    raise ToolError('%s:%d: an allowed name needs a reason: NAME<TAB>REASON' % (path, n))
+                out.add(s.strip())
+    return out
+
+
+def names_in_scope(path):
+    return path.startswith(NAMES_SCOPE) and not path.startswith(NAMES_SKIP)
+
+
 class Checker:
     def __init__(self, top):
         self.pats = load_patterns() + load_terms(top)
         self.allow = load_allow(top)
+        self.top = top
+        self.name_allow = load_name_allow(top)
         self.hits = 0
+
+    def name_ok(self, path, dirp, base):
+        if FP_MNEMONIC.match(base):
+            return True
+        if base.count('.') > 2 and not base.endswith(('.text.s', '.rodata.s')):
+            return True   # dotted placeholders such as 100.a.b.c, not file names
+        stem = re.sub(r'\.(c|h|s|cc|cxx)$', '', base)
+        if not dirp and len(stem) <= 2:
+            return True
+        if base in self.name_allow or (dirp + base) in self.name_allow:
+            return True
+        if dirp:
+            here = os.path.join(self.top, os.path.dirname(path))
+            for root in (here, self.top):
+                if os.path.isfile(os.path.normpath(os.path.join(root, dirp + base))):
+                    return True
+        return False
+
+    def names(self, where, path, text):
+        """Report source-file names and request names that a line under docs/ adds."""
+        if not names_in_scope(path):
+            return
+        for m in SOURCE_NAME.finditer(text):
+            if not self.name_ok(path, m.group(1), m.group(2)):
+                self.hits += 1
+                print('%s: source-file name %r: describe the routine in words, or list a published name in '
+                      'scripts/source-names-allow.txt: %s' % (where, m.group(0), text.strip()[:120]))
+        for m in REQUEST_NAME.finditer(text):
+            if m.group(0) not in self.name_allow:
+                self.hits += 1
+                print('%s: driver-request name %r: describe the request in words, or list a published name in '
+                      'scripts/source-names-allow.txt: %s' % (where, m.group(0), text.strip()[:120]))
 
     def match(self, text):
         for a in self.allow:
@@ -166,6 +244,7 @@ def check_range(chk, base, head):
     for path, n, text in added_lines(base_tree, head):
         if path not in NEVER_CHECKED:
             chk.line('%s:%d' % (path, n), text)
+            chk.names('%s:%d' % (path, n), path, text)
     for sha, body in messages('%s..%s' % (base, head) if base else head):
         chk.message(sha, body)
 
@@ -194,6 +273,7 @@ def check_all(chk):
             continue
         for n, ln in enumerate(data.decode('utf-8', 'replace').split('\n'), 1):
             chk.line('%s:%d' % (path, n), ln)
+            chk.names('%s:%d' % (path, n), path, ln)
     for sha, body in messages('HEAD'):
         chk.message(sha, body)
 

@@ -139,6 +139,63 @@ class CheckLeaks(unittest.TestCase):
         self.assertEqual(self.check('--range', 'nosuchrev..HEAD').returncode, 2)
         self.assertEqual(self.check('--bogus').returncode, 2)
 
+    def test_source_file_names_in_docs_are_refused(self):
+        # Built from parts so this file does not itself carry the tokens.
+        src = 'kon_' + 'attrib.' + 'c'
+        self.write('docs/a.md', 'a clean line\nthe routine lives in `%s` here\n' % src)
+        self.commit('name a source')
+        r = self.range()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('docs/a.md:2', r.stdout)
+        self.assertIn('source-file name', r.stdout)
+
+    def test_source_names_outside_docs_and_in_published_sources_are_not_checked(self):
+        src = 'kon_' + 'attrib.' + 'c'
+        self.write('notes/a.md', 'see %s\n' % src)
+        self.write('docs/sources/b.md', 'see %s\n' % src)
+        self.commit('elsewhere')
+        self.assertEqual(self.range().returncode, 0)
+
+    def test_name_allow_list_directory_paths_and_float_mnemonics(self):
+        pub = 's_' + 'tex.' + 'c'
+        self.write('docs/a.md', 'a clean line\nsample %s and c.lt.s and cvt.s and x.s and 100.a.b.c\n' % pub)
+        self.commit('mention')
+        self.assertEqual(self.range().returncode, 1)
+        self.write('scripts/source-names-allow.txt', '%s\tin the published sample implementation\n' % pub)
+        self.commit('allow')
+        self.assertEqual(self.check('--all').returncode, 0)
+        self.write('listing/dump.s', 'x\n')
+        self.write('docs/b.md', 'see [dump](../listing/dump.s) and listing/dump.s\n')
+        self.commit('link own file')
+        self.assertEqual(self.check('--all').returncode, 0)
+        self.write('docs/c.md', 'see missing/dump2.s\n')
+        self.commit('link missing file')
+        self.assertEqual(self.check('--all').returncode, 1)
+
+    def test_name_allow_needs_a_reason(self):
+        self.write('scripts/source-names-allow.txt', 's_' + 'tex.' + 'c\n')
+        self.commit('no reason')
+        self.assertEqual(self.range().returncode, 2)
+
+    def test_request_names_are_refused(self):
+        for name in ('GFX_' + 'GETBOARDINFO', 'VENICE_' + 'SET_VIDEO', 'KONA_' + 'DMAWRITE', 'ODSY_' + 'SET_GC',
+                     'RRM_' + 'SWAPBUF', 'CRIME_' + 'TEX_ALLOC'):
+            with self.subTest(name=name):
+                self.write('docs/r.md', 'a clean line\nthe %s request\n' % name)
+                self.commit('request ' + name)
+                r = self.range()
+                self.assertEqual(r.returncode, 1, (name, r.stdout))
+                self.assertIn('driver-request name', r.stdout)
+                self.git('reset', '-q', '--hard', self.base)
+        # A register constant that shares a prefix family but is not a request passes.
+        self.write('docs/r.md', 'the CRIME_' + 'MEM_CONTROL register and KONA_' + 'HP_X_INIT token\n')
+        self.commit('registers')
+        self.assertEqual(self.range().returncode, 0)
+        self.write('scripts/source-names-allow.txt', 'GFX_' + 'LABEL\tpublished in a Linux header\n')
+        self.write('docs/r.md', 'the GFX_' + 'LABEL flag\n')
+        self.commit('allowed request')
+        self.assertEqual(self.range().returncode, 0)
+
 
 if __name__ == '__main__':
     unittest.main()
