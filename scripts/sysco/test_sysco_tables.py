@@ -40,5 +40,37 @@ class SvfTarget(unittest.TestCase):
         self.assertEqual(sysco_tables.svf_target(d), 'XC18V04')
 
 
+class CitedIndex(unittest.TestCase):
+    def setUp(self):
+        self.saved = (sysco_tables.DOCS, sysco_tables._index)
+        sysco_tables.DOCS = [
+            ('docs/z.md', 'see 0xDEADBEEF and 12345678abcd'.lower()),
+            ('docs/firmware-versions.md', 'only 00112233 here, abcdef0 short'),
+            ('docs/a.md', 'deadbeef 00112233 xx12345678 9abcdef01'),
+            ('docs/functions.tsv', 'f00dfeed'),
+            ('docs/protocols.tsv', 'f00dfeed'),
+        ]
+        sysco_tables._index = None
+
+    def tearDown(self):
+        sysco_tables.DOCS, sysco_tables._index = self.saved
+
+    def test_index_agrees_with_scan(self):
+        probes = ['deadbeef', 'DEADBEEF', '00112233', '12345678', '2345678a', '5678abcd', '9abcdef0',
+                  'bcdef01', 'abcdef01', 'f00dfeed', '00000000', 'cdef0123']
+        for p in probes:
+            self.assertEqual(sysco_tables.cited(p), sysco_tables.cited_scan(p), p)
+
+    def test_search_order(self):
+        self.assertEqual(sysco_tables.cited('00112233'), 'docs/firmware-versions.md')
+        self.assertEqual(sysco_tables.cited('deadbeef'), 'docs/z.md')
+        self.assertEqual(sysco_tables.cited('9abcdef0'), 'docs/a.md')
+        self.assertEqual(sysco_tables.cited('f00dfeed'), '')
+
+    def test_other_tokens_still_scan(self):
+        self.assertEqual(sysco_tables.cited('abcdef0'), 'docs/firmware-versions.md')
+        self.assertEqual(sysco_tables.cited('12345678a'), 'docs/z.md')
+
+
 if __name__ == '__main__':
     unittest.main()

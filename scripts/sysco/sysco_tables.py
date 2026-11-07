@@ -92,16 +92,45 @@ def doc_text():
 DOCS = doc_text()
 
 
-def cited(token, kind='plain'):
-    """First document that cites token (lower case hex without 0x)."""
+def _citing_docs():
+    """Documents that cited() searches, in search order."""
+    return [(rel, txt) for rel, txt in sorted(DOCS, key=lambda x: x[0] != 'docs/firmware-versions.md')
+            if not rel.endswith(('/functions.tsv', '/request-codes.tsv', '/io-registers.tsv', '/protocols.tsv'))]
+
+
+_HEX8 = re.compile(r'[0-9a-f]{8}')
+_HEX8_AT = re.compile(r'(?=([0-9a-f]{8}))')
+_index = None
+
+
+def _hex8_index():
+    """Map each eight-digit hex string to the first document containing it, built once from DOCS."""
+    global _index
+    if _index is None:
+        _index = {}
+        for rel, txt in _citing_docs():
+            for m in _HEX8_AT.finditer(txt):
+                _index.setdefault(m.group(1), rel)
+    return _index
+
+
+def cited_scan(token):
+    """Substring scan of every document, one pass per call. Reference for the indexed lookup."""
     t = token.lower()
-    for rel, txt in sorted(DOCS, key=lambda x: x[0] != 'docs/firmware-versions.md'):
-        if rel.endswith('/functions.tsv') or rel.endswith('/request-codes.tsv') or rel.endswith('/io-registers.tsv') \
-                or rel.endswith('/protocols.tsv'):
-            continue
+    for rel, txt in _citing_docs():
         if t in txt:
             return rel
     return ''
+
+
+def cited(token, kind='plain'):
+    """First document that cites token (lower case hex without 0x)."""
+    t = token.lower()
+    if _HEX8.fullmatch(t):
+        # An eight-digit string is a substring of a document exactly when it is one of the
+        # overlapping eight-character windows of it, so the index answers what the scan would.
+        return _hex8_index().get(t, '')
+    return cited_scan(t)
 
 
 def hexform(a):
