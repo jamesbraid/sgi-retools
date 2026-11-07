@@ -1,0 +1,4 @@
+# Vendor driver-request names and the prose label every generated table writes in their place.
+# One per line as NAME<TAB>LABEL. A request name matches only as a whole word. The generators read this
+# file from the directory of inventory.py, so a workspace that links that script reads the same map.
+ODSY_SET_GC	the set graphics-context Odyssey driver request

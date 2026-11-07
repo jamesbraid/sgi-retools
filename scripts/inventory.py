@@ -3099,6 +3099,42 @@ def table_rows(src, tmp):
 
 # ===================================================================== inventories
 
+REQUEST_LABELS_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'request-name-labels.tsv')
+_REQUEST_LABELS = None
+
+
+def request_labels():
+    """(labels, pattern) from request-name-labels.tsv: the label of each request name, and one pattern
+    that finds any of them as a whole word. The pattern is None when the map is empty."""
+    global _REQUEST_LABELS
+    if _REQUEST_LABELS is None:
+        labels = {}
+        with open(REQUEST_LABELS_FILE, encoding='utf-8') as f:
+            for n, ln in enumerate(f, 1):
+                ln = ln.rstrip('\n')
+                if not ln.strip() or ln.lstrip().startswith('#'):
+                    continue
+                name, sep, label = ln.partition('\t')
+                if not sep or not name.strip() or not label.strip():
+                    sys.exit('%s:%d: a request name needs its label: NAME<TAB>LABEL' % (REQUEST_LABELS_FILE, n))
+                labels[name.strip()] = label.strip()
+        pat = None
+        if labels:
+            alts = '|'.join(re.escape(n) for n in sorted(labels, key=len, reverse=True))
+            pat = re.compile(r'(?<![A-Za-z0-9_])(%s)(?![A-Za-z0-9_])' % alts)
+        _REQUEST_LABELS = (labels, pat)
+    return _REQUEST_LABELS
+
+
+def scrub_request_names(text):
+    """The text with each vendor driver-request name replaced by its prose label. Every generated table
+    cell passes through here, so a name in the map never reaches a table."""
+    labels, pat = request_labels()
+    if pat is None or not isinstance(text, str):
+        return text
+    return pat.sub(lambda m: labels[m.group(1)], text)
+
+
 def tsv_cell(x):
     return str(x).replace('\t', ' ').replace('\n', ' ')
 
@@ -3107,7 +3143,7 @@ def write_tsv(path, table, rows):
     with open(path, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\t'.join(COLUMNS[table]) + '\n')
         for r in rows:
-            f.write('\t'.join(tsv_cell(r.get(c, '')) for c in COLUMNS[table]) + '\n')
+            f.write('\t'.join(tsv_cell(scrub_request_names(r.get(c, ''))) for c in COLUMNS[table]) + '\n')
 
 
 def short_list(items, k=6):

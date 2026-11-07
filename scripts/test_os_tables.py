@@ -78,5 +78,22 @@ class Check(unittest.TestCase):
         self.assertIn('formats.tsv', str(e.exception))
 
 
+class RequestLabels(unittest.TestCase):
+    """A vendor driver-request name never reaches a generated table: the label is written in its place."""
+
+    def test_panics_row_gets_the_label(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        ot.write(d, 'panics.tsv', ['binary', 'function', 'address', 'callee', 'sites', 'scope', 'status'],
+                 [('6.5.30/unix.IP30', 'ODSY_SET_GC', '0xa800000020363f60', 'cmn_err', 1, 'out', 'undocumented')])
+        with open(os.path.join(d, 'panics.tsv'), encoding='utf-8') as f:
+            text = f.read()
+        self.assertIn('the set graphics-context Odyssey driver request\t0xa800000020363f60', text)
+        self.assertNotIn('ODSY_SET_GC', text)
+
+    def test_name_inside_a_longer_word_is_left_alone(self):
+        self.assertEqual(ot.inventory.scrub_request_names('ODSY_SET_GCX'), 'ODSY_SET_GCX')
+
+
 if __name__ == '__main__':
     unittest.main()

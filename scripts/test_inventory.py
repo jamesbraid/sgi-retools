@@ -10,6 +10,8 @@ import importlib.util
 import io
 import os
 import re
+import shutil
+import tempfile
 import unittest
 
 try:
@@ -568,6 +570,20 @@ class GpLiterals(unittest.TestCase):
         self.assertEqual(u.out_mmio, {})
         self.assertEqual(dict(u.unresolved), {('6.5.30/unix.IP99', 'XTALK'): 1})
         self.assertEqual(u.touch, {('6.5.30/unix.IP99', 'f')})
+
+
+class RequestLabels(unittest.TestCase):
+    """A vendor driver-request name in a function row is written as its label."""
+
+    def test_functions_row_gets_the_label(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        path = os.path.join(d, 'functions.tsv')
+        inv.write_tsv(path, 'functions', [{'binary': '6.5.30/unix.IP30', 'name': 'ODSY_SET_GC', 'address': '0x30'}])
+        with open(path, encoding='utf-8') as f:
+            text = f.read()
+        self.assertIn('the set graphics-context Odyssey driver request', text)
+        self.assertNotIn('ODSY_SET_GC', text)
 
 
 if __name__ == '__main__':

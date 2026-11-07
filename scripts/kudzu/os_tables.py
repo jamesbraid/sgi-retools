@@ -57,6 +57,8 @@ os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'scripts'))
 
+import inventory  # noqa: E402  (the request-name labels live with it)
+
 RELEASE = None
 PANIC_CALLEES = ('panic', 'cmn_err', 'assfail', 'nopanicdebugger',
                  'printf', 'sync_printf', 'dri_printf', 'icmn_err', 'icmn_err_tag', 'cmn_err_tag')
@@ -161,7 +163,7 @@ def write(out, name, header, rows):
     with open(os.path.join(out, name), 'w', encoding='utf-8') as f:
         f.write('\t'.join(header) + '\n')
         for r in rows:
-            f.write('\t'.join(str(x) for x in r) + '\n')
+            f.write('\t'.join(str(inventory.scrub_request_names(x)) for x in r) + '\n')
     print('%s: %d rows' % (name, len(rows)))
 
 
@@ -267,7 +269,9 @@ def generate(out, coverage_path=None):
         for n, size, members in structs(k):
             st.append((lab, n, size, members, 'in' if spre.match(n) else 'out', 'documented' if n in pages else 'undocumented'))
         for fn, addr, callee, n in panics(k):
-            pn.append((lab, fn, addr, callee, n, fscope.get((lab, fn), 'out'), 'documented' if fn in known else 'undocumented'))
+            # functions.tsv carries the prose label of a request name, so look the row up under that label.
+            pn.append((lab, fn, addr, callee, n, fscope.get((lab, inventory.scrub_request_names(fn)), 'out'),
+                       'documented' if fn in known else 'undocumented'))
     write(out, 'syscalls.tsv', ['binary', 'table', 'number', 'index', 'handler', 'nargs', 'flags', 'arg_table',
                                 'scope', 'status'], sc)
     write(out, 'structs.tsv', ['binary', 'name', 'bytes', 'members', 'scope', 'status'], st)
