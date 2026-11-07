@@ -189,6 +189,14 @@ class EntryAddress(unittest.TestCase):
                       'The call at 0x4309aa uses it.\n')
         self.assertEqual(e.address, 0x4308f0)
 
+    def test_extent_statement_beats_a_callback_byte_routine(self):
+        # crime libglcore-o32.md GetBoardInfo: the callback sentence says "a separate 56-byte routine".
+        e = self.addr('- `GetBoardInfo` in `libGLcore.so` ([o32 build](../root/usr/gfx/arch/IP32CRM/libGLcore.so)): '
+                      'asks the kernel, 176 bytes at offset 0xd941bb8. It calls `scaninvent` with the callback '
+                      'address 0xd941b80. The callback at 0xd941b80 is a separate 56-byte routine: it returns 1.\n')
+        self.assertEqual(e.address, 0xd941bb8)
+        self.assertEqual(e.size, 176)
+
     def test_heading_clause_stops_at_the_colon(self):
         e = self.addr('- `f` in usr/gfx/x.so: sets it up, then the `jal` at 0xd9c1e38 calls the helper.\n')
         self.assertIsNone(e.address)

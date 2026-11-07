@@ -382,9 +382,13 @@ def identify(e, bins, hints, default_bin):
         re.search(r'(' + HEX + r'),\s*\d+ bytes', lead) or re.search(r'at address (' + HEX + r')\b', t) or \
         re.search(r'\b(?:instructions|bytes) at (?:address |offset )?(' + HEX + r')\b', t)
     e.address = int(am.group(1), 16) if am else None
-    sm = re.search(r'occupies (\d+) bytes', t) or re.search(r'\b(\d+)-byte routine\b', t) or re.search(r'(\d+) bytes at (?:address|offset) ' + HEX, t) or \
+    # Likewise the size: the entry's own extent statement first, and a bare "N-byte routine" (often a callback
+    # described in a later sentence) only as a last resort.
+    sm = re.search(r'occupies (\d+) bytes', t) or re.search(r'(\d+) bytes at (?:address|offset) ' + HEX, t) or \
+        re.search(r'\b(\d+)-byte routine (?:at|from) ', t) or \
         re.search(HEX + r',\s*(\d+) bytes', lead) or \
-        re.search(r'\bRange:\s*' + HEX + r'\s*-\s*' + HEX + r'\s*\((\d+) bytes\)', t)
+        re.search(r'\bRange:\s*' + HEX + r'\s*-\s*' + HEX + r'\s*\((\d+) bytes\)', t) or \
+        re.search(r'\b(\d+)-byte routine\b', t)
     e.size = int(sm.group(1)) if sm else None
     st = re.findall(r'\b(Established|Inferred|Unverified)\b\.?', t, re.I)
     e.status = st[-1] if st else ''
