@@ -482,6 +482,31 @@ class OutsideRoutine(unittest.TestCase):
             self.assertEqual([x[1] for x in r], ['ok'] * len(r), text)
             self.assertTrue(r, text)
 
+    def test_caller_and_other_routine_clauses_from_real_entries_are_exempt(self):
+        for text in (
+                '`start` reaches it with the `j` at 0xa0010338, to the next word.',
+                '`getchar` and `getc` each call `Read` for one byte and take this call at 0xa002d344 and 0xa002d398.',
+                'The only reference is the `j` at 0xa0010990.',
+                'It returns no value; the one `jal` is at 0xa0026774.',
+                '`_hook_exceptions` stores it in the delay slot of its second `__cache_wb_inval` call at 0xa0029b8c.',
+                '`_init_spb` stores its address at 0xa0001014 with the `sw` at 0xa0027288.',
+                'This releases the record that `heart_piomap_alloc` makes (that routine calls `kmem_zalloc` with `li a0,40` at 0xa80000002003f314).',
+                'The same routines reach this one: `xtalk_pio_addr` (call at 0xc0000000000971ec), `pcibr_piomap_free`.',
+                'The dispatcher clears that doubleword before the call (the store at 0xc000000000255c48), so it is clear.'):
+            r = self.results(text)
+            self.assertTrue(r, text)
+            self.assertEqual([x[1] for x in r], ['ok'] * len(r), text)
+
+    def test_own_routine_subject_does_not_exempt(self):
+        # "f" is the entry's name (OutsideRoutine.results): the clause is about this routine
+        self.assertEqual([x[1] for x in self.results('`f` stores the flag with the `sw` at 0x9000.')], ['mismatch'])
+
+    def test_values_are_not_instruction_addresses(self):
+        for text in ('It ends with a word store of zero at offset 16392 (0x4008) and later the same zero store at 0x4008.',
+                     'It issues one invalidate-all at 0x80000000: `cache` operation 0x2 after the test.',
+                     'The call passes 0x401000 (the 0x401000 is `lui` 0x40 and `ori` 0x1000).'):
+            self.assertEqual([x for x in self.results(text) if x[1] == 'mismatch'], [], text)
+
     def test_branch_target_outside_the_routine_is_exempt(self):
         self.assertEqual(self.results('The `bne` at 0x1100 branches to 0x9000 on error.'), [])
         r = self.results('The `beq` at 0x1100, 0x1104 branches to 0x9000; the `b` at 0x9008 is the target.')

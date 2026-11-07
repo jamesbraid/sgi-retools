@@ -654,7 +654,15 @@ OTHER_PLACE_RE = re.compile(
     r'targets?|(?:in|inside|within|of|from|by|into)\s+(?:the\s+)?'
     r'(?:(?:\w+\s+){0,2}(?:routine|function|handler|helper|stub|thunk|entry|callback)\s+)?`[A-Za-z_][\w.$]*`|'
     r'(?:the|its|a|another|that|this)\s+(?:\w+\s+){0,2}(?:routine|function|handler|helper|stub|thunk|callback)\s+at)(?!\w)'
-    r'|\b(?:in|inside|within|of|from|by)\s+(?:the\s+)?[A-Za-z_]\w*\s+(?:\(\s*)?at\s+0x', re.I)
+    r'|\b(?:in|inside|within|of|from|by)\s+(?:the\s+)?[A-Za-z_]\w*\s+(?:\(\s*)?at\s+0x'
+    # a caller or another routine told in other words: "reaches it with the `j` at", "take this call at",
+    # "the only reference is the `j` at", "the one `jal` is at", "its second call at", "that routine calls ...
+    # at", "the static helper", "`name` (call at", "that doubleword (the store at"
+    r'|\breach(?:es)? it\b|\btakes? this call\b|\bonly reference\b|\bthe one `(?:jal|j|call)`'
+    r'|\b(?:its|their)\s+(?:\w+\s+)?(?:`[^`]+`\s+)?calls?\s+at\b'
+    r'|\b(?:that|another|other)\s+routine\b|\bthe\s+(?:static\s+)?helper\b'
+    r'|`[A-Za-z_][\w.$]*`\s*\((?:the\s+)?(?:call|jal|store|load|jump|branch)s?\s+at\b'
+    r'|\bthat\s+(?:double|half)?word\b[^.;()]{0,30}\((?:the\s+)?\w+\s+at\b', re.I)
 
 
 OTHER_BUILD_RE = re.compile(r'\b(?:[NO]32|N64)\b[^.;]*$')
@@ -1818,6 +1826,10 @@ class Checker:
                 continue    # an encoded instruction word in parentheses
             if re.match(r'\s*(?:to|-|\.\.)\s*0x', t[m.end():m.end() + 8]) or re.search(r'` and `[^`]*$', t[max(0, m.start() - 30):m.start() + 1]):
                 continue
+            if m.group(4) and re.match(r'\s+(?:operation|op|code)\b', t[m.end():m.end() + 12]):
+                continue    # "0x80000000: `cache` operation 0x2": a cache-op address and its operation
+            if m.group(4) and re.match(r'\s*' + HEX, t[m.end():m.end() + 12]):
+                continue    # "0x401000 is `lui` 0x40 and `ori` 0x1000": a value built from two instructions
             if not re.match(r'(?:[a-z][a-z0-9]*(?:\.[a-z0-9]+)*)(?:\s+\$?[a-z0-9]+(?:,|\s*$|\()|\s*$)', ins) or \
                     ins.split()[0] not in MNEMONICS:
                 continue    # a symbol, a string or a C expression, not an instruction
@@ -1902,6 +1914,20 @@ class Checker:
                 else:
                     self.ok('insn-address', claim)
 
+    SUBJECT_VERB = re.compile(r'`([A-Za-z_][\w.$]*)`(?:\s*\([^()]*\))?\s+(?:\w+\s+)?'
+                              r'(?:stores?|loads?|calls?|reach(?:es)?|writes?|reads?|installs?|clears?|sets?|jumps?|'
+                              r'branch(?:es)?|makes?|takes?|returns?)\b')
+
+    def foreign_subject(self, start):
+        """The name of another routine the clause up to start makes the subject ("`_init_spb` stores its address
+        with the `sw` at A"), or None: the instruction cited next is that routine's."""
+        pre = self.text[max(0, start - 300):start]
+        pre = pre[max([m.end() for m in re.finditer(r'[.;:]\s|\n\s*\n', pre)] or [0]):]
+        for m in self.SUBJECT_VERB.finditer(pre):
+            if m.group(1) != self.e.name and m.group(1).split()[0] not in MNEMONICS:
+                return '`%s`' % m.group(1)
+        return None
+
     def outside(self, claim, a, pos, start, kind='', obj=''):
         """An instruction address cited in the entry that lies outside its routine is a mismatch, unless the clause
         puts it somewhere else, which is recorded as ok: a named caller, callee or target (OTHER_PLACE_RE), another
@@ -1915,6 +1941,10 @@ class Checker:
             why = 'the clause names another place (%s)' % mo.group(0)
         elif OTHER_BUILD_RE.search(self.text[max(0, start - 45):start]):
             why = 'the clause names another build'
+        elif self.foreign_subject(start):
+            why = 'the clause is about %s' % self.foreign_subject(start)
+        elif re.search(r'\b\d+\s*\(0x%x\)' % a, self.text, re.I):
+            why = 'a value (the entry gives it as a number and in hex)'
         elif kind == 'call' and re.search(r'\b[a-z]\w*[A-Z_]\w*\s+$', self.text[max(0, start - 40):start]):
             why = 'the call is named by the routine it calls'
         elif obj and re.search(r'\b(?:table|flag|counter|word|buffer|array|slot)\b', obj):
