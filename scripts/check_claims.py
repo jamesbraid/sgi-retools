@@ -921,8 +921,12 @@ class Checker:
             want = self.WIDTH_WORDS.get(kind)
             v = int(m.group(2), 0)
             pre = t[max(0, m.start() - 40):m.start()]
-            if re.search(r'\b(?:float|single|double|pair|two|three|four|eight|several|\d+)\s*$', pre) or \
+            if re.search(r'\b(?:float|single|double|pair|two|three|four|eight|several|stack|saved|\d+)\s*$', pre) or \
                     re.search(r'\b(no|not|never|without)\b[^.;]{0,25}$', pre):
+                continue
+            if re.match(r'\s+of\s+(?:the|each|every|that|its)\s+(?!context\b)', t[m.end():m.end() + 30]):
+                # "the halfword at +4 of the resource-manager record": the offset is from another base
+                self.unchecked('width', m.group(0), 'the offset is from a named object, not a base the facts track')
                 continue
             if self._at_locator(m, want, v):
                 continue
@@ -992,8 +996,8 @@ class Checker:
         for x in (t.find('. ', m.end()),):
             if x >= 0:
                 stops.append(x)
-        nxt = re.search(r'\+(?:0x[0-9a-f]+|\d+)\b', t[m.end():])
-        if nxt:
+        nxt = re.search(r'\+(?:0x[0-9a-f]+|\d+)\b|\b(?:byte|half-?word|(?:double-?)?word)\b', t[m.end():])
+        if nxt:    # the next offset or the next access width starts another claim
             stops.append(m.end() + nxt.start())
         cls = 'width' if want >= 4 else 'width-narrow'
         handled = False
@@ -1031,6 +1035,9 @@ class Checker:
         clause = t[lo:min(his) if his else len(t)]
         if want in widths or (want == 4 and 8 in widths and re.search(r'64-bit word|8-byte|doubleword', clause)):
             self.ok(cls, m.group(0))
+        elif len({a.get('base_origin') or a.get('base') for a in acc}) > 1:
+            self.unchecked(cls, m.group(0), 'several base registers have an access at %s, with widths %s; the claim names no base'
+                           % (where, '/'.join(map(str, widths))))
         else:
             a = acc[0]
             self.mismatch(cls, m.group(0), '%s accesses %s with width %s (%s)' % (
@@ -1747,6 +1754,9 @@ class Checker:
             pre = t[max(0, m.start() - 80):m.start()]
             post = t[m.end():m.end() + 80]
             if re.search(r'\b(N32|64-bit|o32|public|caller)\b(?:[^.;]|\.\w)*$', pre):
+                continue
+            if re.search(r'\baddress\s*$', pre):
+                self.unchecked('stack', m.group(0), 'the address of the slot, passed or formed; not a stack word')
                 continue
             acc = c.stack.get(v, [])
             stores = [a for a in acc if a['kind'] == 'store'] or \

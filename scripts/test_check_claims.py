@@ -288,11 +288,69 @@ class FakeCtx:
         self.offsets_access, self.raw_offsets, self.offsets_addr, self.abs_loads = {}, {}, {}, {}
         self.numbers, self.fs = set(), {'loops': []}
         for a in accesses:     # the non-stack accesses the flow walk found: (offset, width, text)
-            rec = {'offset': a[0], 'origin_offset': a[0], 'width': a[1], 'text': a[2]}
+            rec = {'offset': a[0], 'origin_offset': a[0], 'width': a[1], 'text': a[2],
+                   'base': a[3] if len(a) > 3 else 'a0'}
             self.offsets_access.setdefault(a[0], []).append(rec)
             self.raw_offsets.setdefault(a[0], []).append(rec)
         for a in addresses:
             self.offsets_addr.setdefault(a[0], []).append({'offset': a[0], 'text': a[1]})
+
+
+class WidthBases(unittest.TestCase):
+    """A width claim is judged against the accesses of the base the claim means. The texts are shortened from
+    crime, kona and kudzu entries."""
+
+    def verdicts(self, text, ctx):
+        e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='f', status='established')
+        rep = []
+        check_claims.Checker(e, ctx, rep, None, None).width()
+        return [(r['class'], r['verdict']) for r in rep]
+
+    def test_stack_word_is_not_a_word_of_the_base(self):
+        # calc_err_info: "ANDs the stack word at +8" while a halfword is read at +8 of another base
+        ctx = FakeCtx({}, accesses=[(8, 2, 'lh t0,8(a1)')])
+        self.assertEqual(self.verdicts('It ANDs the stack word at +8 with each of seven masks.', ctx), [])
+
+    def test_offset_of_a_named_record_is_unchecked(self):
+        # nfbSetStereoBuffer: "the byte at +4 of the resource-manager record (bit 9 of the halfword at +4)"
+        ctx = FakeCtx({}, accesses=[(4, 4, 'lw t0,4(a1)')])
+        self.assertEqual(self.verdicts('If bit 1 of the halfword at +4 of the resource-manager record is set it clears it.', ctx),
+                         [('width', 'unchecked')])
+
+    def test_locator_of_the_next_clause_does_not_judge_the_claim(self):
+        # htp_write: the `lw` is the load of the function table's first word, not the byte at record +88
+        ctx = FakeCtx({0x1100: 'lw t9,0(a2)'}, accesses=[(88, 1, 'lbu t0,88(a1)')])
+        text = ('When the byte at record +88 is 2 it calls the routine stored at the first word of that function '
+                'table (`lw` at 0x1100).')
+        self.assertEqual(self.verdicts(text, ctx), [('width-narrow', 'ok')])
+
+    def test_two_bases_with_an_access_at_the_offset_are_unchecked(self):
+        # kudzu ql_reset_interface: the word at +4 of the response entries, a halfword at +4 of the registers
+        ctx = FakeCtx({}, accesses=[(4, 2, 'lh s0,4(a5)', 'a5'), (4, 2, 'lh s1,4(a6)', 'a6')])
+        ctx.offsets_access[4][0]['base_origin'] = 'a5'
+        ctx.offsets_access[4][1]['base_origin'] = 'a6'
+        self.assertEqual(self.verdicts('It stores 0xdead in the word at +4.', ctx), [('width', 'unchecked')])
+
+    def test_one_base_still_mismatches(self):
+        ctx = FakeCtx({}, accesses=[(4, 2, 'lh s0,4(a5)', 'a5')])
+        self.assertEqual(self.verdicts('It stores 0xdead in the word at +4.', ctx), [('width', 'mismatch')])
+
+
+class StackAddress(unittest.TestCase):
+    def verdicts(self, text, stack):
+        ctx = types.SimpleNamespace(stack=stack, frame=64, img=None)
+        e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='f', status='established')
+        rep = []
+        check_claims.Checker(e, ctx, rep, None, None).stack()
+        return [(r['class'], r['verdict']) for r in rep]
+
+    def test_address_of_the_slot_passed_in_an_argument_is_not_a_store(self):
+        # CopyConvolutionFilter1DEXT: "the internal format in `a3` and the address sp+0 in `a4`"
+        self.assertEqual(self.verdicts('It stores the format in `a3` and the address sp+0 in `a4`.', {}),
+                         [('stack', 'unchecked')])
+
+    def test_stored_slot_claim_is_still_judged(self):
+        self.assertEqual(self.verdicts('It stores the count at sp+8.', {}), [('stack', 'mismatch')])
 
 
 class UnreachedCode(unittest.TestCase):
