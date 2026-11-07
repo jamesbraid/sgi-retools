@@ -64,6 +64,9 @@ sys.path.insert(0, HERE)
 import facts  # noqa: E402
 
 # classes whose mismatches block a push (near-zero false positives on the Established entries)
+# Classes that state a property of the whole routine's code: a mismatch is no evidence when the facts
+# left part of the routine unreached.
+PARTIAL_CLASSES = ('return', 'stack', 'callee', 'offset', 'immediate', 'store-order', 'store-value')
 BLOCKING = ('address', 'size', 'got', 'duplicate', 'delay-slot', 'insn-address', 'insn-outside', 'addiu-word',
             'branch-likely', 'offset', 'width-absolute')
 
@@ -690,6 +693,8 @@ class Ctx:
             else:
                 self.error_unknown = True
         self.unresolved_calls = any(c['kind'] == 'register' for c in fs['calls'])
+        # code no path from the entry reaches (usually behind a jump table the facts cannot resolve)
+        self.partial = bool(fs.get('unreached'))
         self.numbers = set()
         for x in fs['immediates']:
             v = x['immediate']
@@ -800,6 +805,10 @@ class Checker:
                             'status': self.e.status})
 
     def mismatch(self, cls, claim, fact, reason):
+        if cls in PARTIAL_CLASSES and getattr(self.c, 'partial', False):
+            # the claim says what the routine does or does not do, and the facts did not see all of it
+            self.unchecked(cls, claim, 'part of the routine is not reached by the analysis (%s)' % reason)
+            return
         self.out(cls, 'mismatch', claim, fact, reason)
 
     def ok(self, cls, claim, fact=''):

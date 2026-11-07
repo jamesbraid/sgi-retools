@@ -295,6 +295,34 @@ class FakeCtx:
             self.offsets_addr.setdefault(a[0], []).append({'offset': a[0], 'text': a[1]})
 
 
+class UnreachedCode(unittest.TestCase):
+    """A claim about what the routine returns or stores is unchecked, not a mismatch, when the facts did not
+    reach all of it (a jump table they cannot resolve): the kona `KONAprivate` and crime `_tlbmap` shape."""
+
+    def run_returns(self, text, partial):
+        ctx = types.SimpleNamespace(fs={'exits': [1]}, returns=lambda: ({22, 1}, False), partial=partial, img=None)
+        e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='f', status='established')
+        rep = []
+        check_claims.Checker(e, ctx, rep, None, None).returns()
+        return [(r['class'], r['verdict']) for r in rep]
+
+    def test_return_value_of_the_missing_part_is_unchecked(self):
+        self.assertEqual(self.run_returns('A failed copy returns 14 to the caller.', True), [('return', 'unchecked')])
+
+    def test_return_value_with_the_whole_routine_seen_is_a_mismatch(self):
+        self.assertEqual(self.run_returns('A failed copy returns 14 to the caller.', False), [('return', 'mismatch')])
+
+    def test_held_claims_stay_held_when_code_is_unreached(self):
+        self.assertEqual(self.run_returns('It returns 22 to the caller.', True), [('return', 'ok')])
+
+    def test_address_mismatch_is_not_downgraded(self):
+        ctx = types.SimpleNamespace(partial=True, img=None)
+        rep = []
+        e = types.SimpleNamespace(text='', table=None, binary=None, id='t', name='f', status='established')
+        check_claims.Checker(e, ctx, rep, None, None).mismatch('address', 'x', 'y', 'z')
+        self.assertEqual([r['verdict'] for r in rep], ['mismatch'])
+
+
 class AtLocator(unittest.TestCase):
     def run_checks(self, text, ctx):
         e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='f', status='established')
