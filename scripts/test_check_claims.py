@@ -353,6 +353,42 @@ class StackAddress(unittest.TestCase):
         self.assertEqual(self.verdicts('It stores the count at sp+8.', {}), [('stack', 'mismatch')])
 
 
+class CalleesOfCallees(unittest.TestCase):
+    """A call or a return value an entry tells of a routine it calls is not the entry's own. The texts come from
+    the kudzu `qlattach` and `huberror_process_rrb_error` entries."""
+
+    def checker(self, text, **kw):
+        img = types.SimpleNamespace(abi=None, byname={'ql_init': [], 'ql_init_board': [], 'memory_present': []}, dynsym={},
+                                    func_name_at=lambda a: None, syms=[])
+        ctx = types.SimpleNamespace(img=img, callees={'ql_init', 'memory_present'}, call_targets=set(),
+                                    fs={'got_loads': [], 'calls': [], 'exits': [1]}, unresolved_calls=False,
+                                    returns=lambda: ({25}, False), partial=False, **kw)
+        e = types.SimpleNamespace(text=text, table=None, binary=None, id='t', name='qlattach', status='established')
+        rep = []
+        return check_claims.Checker(e, ctx, rep, None, None), rep
+
+    def test_calls_in_a_callees_description_are_not_the_entrys(self):
+        chk, rep = self.checker('Controller: `ql_init(vertex, block)` (which starts the watchdog timer on first '
+                                'use and calls `ql_init_board`); -1 counts a failure.')
+        chk.callee()
+        self.assertEqual([r for r in rep if r['class'] == 'callee' and r['verdict'] == 'mismatch'], [])
+
+    def test_a_call_the_entry_itself_makes_is_still_judged(self):
+        chk, rep = self.checker('It locks the record and calls `ql_init_board` once.')
+        chk.callee()
+        self.assertEqual([r['verdict'] for r in rep], ['mismatch'])
+
+    def test_callees_return_value_is_not_the_entrys(self):
+        chk, rep = self.checker('Type 0 checks `memory_present(a1)` and gives 0 with no message when it returns 0 to the caller.')
+        chk.returns()
+        self.assertEqual(rep, [])
+
+    def test_own_return_value_after_a_call_is_still_judged(self):
+        chk, rep = self.checker('It calls `memory_present(a1)` and returns 0 to the caller.')
+        chk.returns()
+        self.assertEqual([r['verdict'] for r in rep], ['mismatch'])
+
+
 class UnreachedCode(unittest.TestCase):
     """A claim about what the routine returns or stores is unchecked, not a mismatch, when the facts did not
     reach all of it (a jump table they cannot resolve): the kona `KONAprivate` and crime `_tlbmap` shape."""

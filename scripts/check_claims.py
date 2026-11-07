@@ -1170,6 +1170,8 @@ class Checker:
                 continue
             if re.search(r'\b(?:helper|routine|function|stub|which|that)\s+(?:that\s+|which\s+)?$', pre):
                 continue    # "a 52-byte helper that calls X": the helper's call
+            if re.search(r'\b(?:which|whose)\b', re.split(r'[.;:]\s', pre)[-1]):
+                continue    # "`ql_init(...)` (which starts the timer and calls X)": the callee's call
             am = re.match(r'\s*\((?:at )?(' + HEX + r')', t[m.end():m.end() + 16])
             if am and int(am.group(1), 16) in c.call_targets | {int(x.get('target', '0'), 16) for x in c.fs['calls']}:
                 self.ok('callee', m.group(0), 'call reaches the stated address')
@@ -1380,6 +1382,9 @@ class Checker:
                 pre = s[max(0, m.start() - 60):m.start()]
                 if re.search(r'\b(callee|call|it calls|routine at|which|that)\b(?:[^.;]|\.\w)*$', pre) and 'returns' in m.group(0):
                     continue
+                if 'returns' in m.group(0) and re.search(r'\b(?:when|if|once|unless|while)\s+(?:it|they|the call|the callee|`[^`]+`|[\w$]+)\s*$', pre) \
+                        and re.search(r'`[^`]+`|\bcalls?\b', s[:m.start()]):
+                    continue    # "gives 0 when `memory_present` returns 0": the callee's return
                 if v in vals:
                     self.ok('return', m.group(0))
                 elif unknown:
