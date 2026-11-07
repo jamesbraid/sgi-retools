@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Kernel tables the shared inventory does not measure: system calls, kernel structures and panic sites.
 
-Usage: scripts/os_tables.py [--out docs/inventory] [--release 6.5.30]
+Usage: scripts/os_tables.py [--out docs/inventory] [--release 6.5.30] [--check]
 
 --release limits the tables to the kernels of one release under root/. Without it every root/<release>/unix.IP*
-is read, so a release whose kernels are not yet documented adds rows the docs do not describe.
+is read, so a release whose kernels are not yet documented adds rows the docs do not describe. The committed
+tables cover every release under root/, so regenerate them without --release; a run with it rewrites them
+with that release's rows alone.
+
+--check generates the tables and the docs/coverage.md block into a scratch directory and compares them with the
+committed files, exits 1 and names each file that differs, and changes nothing in the repository. The status
+columns read docs/*.md and the scope columns read docs/inventory/functions.tsv and binaries.tsv, so a docs
+change or a new scope group makes the committed tables stale until they are regenerated.
 
 Run it from the repository root with root/ populated, inside the toolchain container
 (tools/re-run python3 scripts/os_tables.py). It writes three tab-separated tables beside the output of
@@ -212,8 +219,8 @@ def scope_report(out, scope):
     return rows
 
 
-def coverage_block(out, scope_rows):
-    """Rewrite the os-inventory block of docs/coverage.md."""
+def coverage_block(out, scope_rows, path=None):
+    """Rewrite the os-inventory block of docs/coverage.md (or of a copy of it at path)."""
     def tsv(name):
         with open(os.path.join(out, name), encoding='utf-8') as f:
             return [ln.rstrip('\n').split('\t') for ln in f][1:]
@@ -226,7 +233,7 @@ def coverage_block(out, scope_rows):
     for g, sc, nb, fi, fo, _ in scope_rows:
         lines.append('| %s | %s | %d | %d | %d |' % (g, sc, nb, fi, fo))
     lines.append('<!-- os-inventory:end -->')
-    p = os.path.join(REPO, 'docs', 'coverage.md')
+    p = path or os.path.join(REPO, 'docs', 'coverage.md')
     text = open(p, encoding='utf-8').read()
     block = '\n'.join(lines)
     if '<!-- os-inventory:begin -->' in text:
@@ -236,14 +243,8 @@ def coverage_block(out, scope_rows):
     open(p, 'w', encoding='utf-8').write(text)
 
 
-def main():
+def generate(out, coverage_path=None):
     import json
-    out = os.path.join(REPO, 'docs', 'inventory')
-    if '--out' in sys.argv:
-        out = sys.argv[sys.argv.index('--out') + 1]
-    global RELEASE
-    if '--release' in sys.argv:
-        RELEASE = sys.argv[sys.argv.index('--release') + 1]
     from elftools.elf.elffile import ELFFile
     scope = json.load(open(os.path.join(REPO, 'scripts', 'scope.json')))
     spre = re.compile('(?:%s)' % '|'.join(scope['structure_prefixes']))
@@ -285,7 +286,44 @@ def main():
         rows.append((t, len(inn), len(data) - len(inn), sum(1 for r in inn if r[ti] == 'documented'),
                      sum(1 for r in inn if r[ti] == 'undocumented')))
     write(out, 'summary-os.tsv', ['table', 'in_scope', 'out_of_scope', 'documented', 'undocumented'], rows)
-    coverage_block(out, scope_report(out, scope))
+    coverage_block(out, scope_report(out, scope), coverage_path)
 
 
-main()
+def check(out):
+    """Regenerate into a scratch directory and compare with the committed tables and coverage block."""
+    import filecmp
+    import shutil
+    import tempfile
+    scratch = tempfile.mkdtemp(prefix='os_tables-')
+    try:
+        cov = os.path.join(scratch, 'coverage.md')
+        shutil.copyfile(os.path.join(REPO, 'docs', 'coverage.md'), cov)
+        tables = os.path.join(scratch, 'inventory')
+        os.mkdir(tables)
+        generate(tables, cov)
+        stale = [os.path.relpath(os.path.join(out, n), REPO) for n in sorted(os.listdir(tables))
+                 if not os.path.exists(os.path.join(out, n)) or not filecmp.cmp(os.path.join(tables, n), os.path.join(out, n), shallow=False)]
+        if not filecmp.cmp(cov, os.path.join(REPO, 'docs', 'coverage.md'), shallow=False):
+            stale.append('docs/coverage.md')
+    finally:
+        shutil.rmtree(scratch)
+    if stale:
+        sys.exit('stale, regenerate with scripts/os_tables.py: ' + ', '.join(stale))
+    print('os tables match the committed files')
+
+
+def main():
+    out = os.path.join(REPO, 'docs', 'inventory')
+    if '--out' in sys.argv:
+        out = sys.argv[sys.argv.index('--out') + 1]
+    global RELEASE
+    if '--release' in sys.argv:
+        RELEASE = sys.argv[sys.argv.index('--release') + 1]
+    if '--check' in sys.argv:
+        check(out)
+    else:
+        generate(out)
+
+
+if __name__ == '__main__':
+    main()
