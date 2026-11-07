@@ -2437,7 +2437,10 @@ class Unit:
         for b in m.bases:
             if b['type'] == 'return' and callee and re.fullmatch(b['function'], callee) and \
                     self.applies(b, self.img):
-                regs[2] = ('w', b['window'], num(b.get('offset', 0)), b.get('label', 'return of ' + callee))
+                # a null offset says the routine returns a pointer into the window at an offset the caller
+                # chose (a mapping routine's address argument): later accesses count as unresolved
+                off = b.get('offset', 0)
+                regs[2] = ('w', b['window'], None if off is None else num(off), b.get('label', 'return of ' + callee))
 
     def compare(self, mn, ops, addr, rules):
         if len(ops) != 3:

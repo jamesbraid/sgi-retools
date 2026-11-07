@@ -550,6 +550,25 @@ class GpLiterals(unittest.TestCase):
             keys, touch = self.replayed(rules)
             self.assertEqual((keys, touch), ([], set()))
 
+    def test_a_returned_window_pointer_without_an_offset_counts_as_unresolved(self):
+        """`return` bases with a null offset: the routine maps a window at a caller-chosen offset."""
+        cfg = {'windows': [{'name': 'XTALK', 'size': '0x1000000'}],
+               'bases': [{'type': 'return', 'function': 'map_window', 'window': 'XTALK', 'offset': None}]}
+        insns = [[0x1000, 'jal', ['4000'], None, 'map_window'], [0x1004, 'nop', [], None, None],
+                 [0x1008, 'ld', ['$9', '16($2)'], None, None], [0x100c, 'jr', ['$31'], None, None],
+                 [0x1010, 'nop', [], None, None]]
+        img = {'elf': ELFFile(io.BytesIO(self.kernel())), 'tmp': 'unused', 'label': '6.5.30/unix.IP99',
+               'path': '6.5.30/unix.IP99', 'group': {}, 'functab': {}}
+        saved = inv.run_objdump, inv.split_runs
+        inv.run_objdump, inv.split_runs = (lambda path: [('f', insns)]), (lambda funcs, tab: funcs)
+        try:
+            u = inv.Unit(inv.Model(cfg), cfg, [img]).run()
+        finally:
+            inv.run_objdump, inv.split_runs = saved
+        self.assertEqual(u.out_mmio, {})
+        self.assertEqual(dict(u.unresolved), {('6.5.30/unix.IP99', 'XTALK'): 1})
+        self.assertEqual(u.touch, {('6.5.30/unix.IP99', 'f')})
+
 
 if __name__ == '__main__':
     unittest.main()
