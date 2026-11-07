@@ -146,6 +146,54 @@ class CitedPath(unittest.TestCase):
         self.assertEqual(e.binary, 'IP30/unix')
 
 
+class EntryAddress(unittest.TestCase):
+    """identify() takes the entry's own address from its heading or extent statement, not from the first
+    "at 0x..." in a long entry. The texts are shortened from real crime, kona and odsy entries."""
+
+    def addr(self, text):
+        ents, _ = entries_of(text)
+        check_claims.identify(ents[0], binaries([]), [], 'usr/gfx/x.so')
+        return ents[0]
+
+    def test_occupies_statement_beats_the_routine_named_later(self):
+        e = self.addr('- `__glim_LineWidth` in usr/gfx/arch/IP32CRM/libGLcore.so: sets the width, and in the older '
+                      '32-bit build it occupies 216 bytes at address 0xd9c1efc; stores the result (the routine at '
+                      '0xd9c1e38, which is the rounding helper) at +476.\n')
+        self.assertEqual(e.address, 0xd9c1efc)
+        self.assertEqual(e.size, 216)
+
+    def test_occupies_statement_beats_the_other_builds_copy(self):
+        e = self.addr('- `f` in usr/gfx/x.so: does it. It occupies 40 bytes at address 0x1000; the other build\'s copy '
+                      'is 68 bytes at 0xd97c7f0.\n')
+        self.assertEqual(e.address, 0x1000)
+
+    def test_address_semicolon_occupies(self):
+        e = self.addr('- `vfmtRead` in `usr/gfx/ircombine`: Address 0x1008c9e0; occupies 772 bytes. It calls the '
+                      '`jal` at 0x1008ca18.\n')
+        self.assertEqual(e.address, 0x1008c9e0)
+        self.assertEqual(e.size, 772)
+
+    def test_target_address(self):
+        e = self.addr('- `portf` in usr/gfx/x.so: Target address 0x0da25250 holds the port; the `jal` at 0x0da25300 '
+                      'calls it.\n')
+        self.assertEqual(e.address, 0xda25250)
+
+    def test_n_byte_routine_at(self):
+        e = self.addr('- `Coverage` in usr/gfx/x.so: a 1828-byte routine at 0xd95d560 that is called from the '
+                      'point code at 0xd95d410.\n')
+        self.assertEqual(e.address, 0xd95d560)
+        self.assertEqual(e.size, 1828)
+
+    def test_bytes_at_offset(self):
+        e = self.addr('- `miEllipseAngleToSlope` in `crm.so`: converts an angle. 420 bytes at offset 0x4308f0. '
+                      'The call at 0x4309aa uses it.\n')
+        self.assertEqual(e.address, 0x4308f0)
+
+    def test_heading_clause_stops_at_the_colon(self):
+        e = self.addr('- `f` in usr/gfx/x.so: sets it up, then the `jal` at 0xd9c1e38 calls the helper.\n')
+        self.assertIsNone(e.address)
+
+
 class StatedRoutineSize(unittest.TestCase):
     def test_size_is_passed_when_the_symbol_size_is_missing_or_smaller(self):
         with tempfile.TemporaryDirectory() as td:

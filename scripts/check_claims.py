@@ -367,14 +367,19 @@ def identify(e, bins, hints, default_bin):
         e.binary = whole
     elif default_bin:
         e.binary = default_bin
+    # The entry's own address comes from its heading clause or an explicit statement of its extent, not from
+    # the first "at 0x..." anywhere in a multi-sentence entry (which is often an instruction or another routine).
     am = re.search(r'^\s*`[^`]+`\s*\((?:[^()]|\([^()]*\))*?(' + HEX + r')', t) or \
-        re.search(r'^\s*`[^`]+`\s+in\s+.+?\s+at\s+(' + HEX + r')\b', t) or \
         re.search(r'occupies \d+ bytes at (?:address |offset )(' + HEX + r')\b', t) or \
+        re.search(r'\b(?:Target address|Address) (' + HEX + r')\b', t) or \
+        re.search(r'\b\d+-byte routine (?:at|from) (?:offset |address )?(' + HEX + r')\b', t) or \
         re.search(r'\d+ bytes at (?:address |offset )(' + HEX + r')\b', t) or \
+        re.search(r'^\s*`[^`]+`\s+in\s+[^:;]+?\s+at\s+(' + HEX + r')\b', t) or \
+        re.search(r'\bat offset (' + HEX + r')\b', t) or \
         re.search(r'(' + HEX + r'),\s*\d+ bytes', lead) or re.search(r'at address (' + HEX + r')\b', t) or \
         re.search(r'\b(?:instructions|bytes) at (?:address |offset )?(' + HEX + r')\b', t)
     e.address = int(am.group(1), 16) if am else None
-    sm = re.search(r'occupies (\d+) bytes', t) or re.search(r'(\d+) bytes at (?:address|offset) ' + HEX, t) or \
+    sm = re.search(r'occupies (\d+) bytes', t) or re.search(r'\b(\d+)-byte routine\b', t) or re.search(r'(\d+) bytes at (?:address|offset) ' + HEX, t) or \
         re.search(HEX + r',\s*(\d+) bytes', lead) or \
         re.search(r'\bRange:\s*' + HEX + r'\s*-\s*' + HEX + r'\s*\((\d+) bytes\)', t)
     e.size = int(sm.group(1)) if sm else None
