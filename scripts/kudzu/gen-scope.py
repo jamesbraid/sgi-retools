@@ -13,7 +13,8 @@ A routine that the inventory scan finds reaching a register window, a token or a
 excluded: the run refuses. scope.json lists such routines under `keep`, as
 {"binary": GLOB, "names": [...], "why": "..."}; every file the glob matches (relative to root/; the
 glob of an archive member, `x.a(m.o)`, matches the whole archive) gets its own rule that leaves those
-names in scope. With docs/inventory/functions.tsv present, a kept name that no matching binary defines
+names in scope; these rules come after the group rules, so the rule numbers that the functions table
+reports for the rest do not change when a keep entry is added. With docs/inventory/functions.tsv present, a kept name that no matching binary defines
 fails the script, so a stale entry cannot hide.
 """
 import collections
@@ -95,7 +96,7 @@ def build(scope, expand, size=None, digest=None):
         for fs in by_digest.values():
             for f in fs:
                 copies[f] = fs
-    rules = []
+    rules, variants = [], []        # a rule with kept names goes after all the others
     for g, files in expanded:
         if g['scope'] == 'in' or not files:
             continue
@@ -106,9 +107,10 @@ def build(scope, expand, size=None, digest=None):
             kept = tuple(sorted({n for c in same for n in kept_names(keep, c)}))
             by_kept.setdefault(kept, []).append(f)
         for kept, fs in by_kept.items():
-            rules.append({'binaries': fs, 'reason': reason,
-                          'patterns': [pattern(g['scope'], scope.get('narrow_prefixes', []), kept)]})
-    return groups, rules, claimed
+            (variants if kept else rules).append(
+                {'binaries': fs, 'reason': reason,
+                 'patterns': [pattern(g['scope'], scope.get('narrow_prefixes', []), kept)]})
+    return groups, rules + variants, claimed
 
 
 def check_keep(scope, functions_tsv):

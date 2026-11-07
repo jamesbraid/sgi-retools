@@ -51,10 +51,10 @@ class Build(unittest.TestCase):
     def test_a_kept_name_is_left_in_scope_only_in_the_binaries_the_glob_names(self):
         keep = [{'binary': '*IP27boot/k.o', 'names': ['timeout'], 'why': 'reads a clock'}]
         _, rules, _ = gs.build(scope(keep), expand)
-        self.assertEqual([r['binaries'] for r in rules], [['6.5.30/IP27boot/k.o'], ['6.5.30/IP35boot/k.o'],
-                                                          FILES['b']])
-        self.assertEqual(excluded(rules[0], self.NAMES), ['bcopy', 'tpu_open'])
-        self.assertEqual(excluded(rules[1], self.NAMES), ['bcopy', 'timeout', 'tpu_open'])
+        self.assertEqual([r['binaries'] for r in rules], [['6.5.30/IP35boot/k.o'], FILES['b'],
+                                                          ['6.5.30/IP27boot/k.o']])
+        self.assertEqual(excluded(rules[0], self.NAMES), ['bcopy', 'timeout', 'tpu_open'])
+        self.assertEqual(excluded(rules[2], self.NAMES), ['bcopy', 'tpu_open'])
 
     def test_a_kept_name_matches_exactly_not_as_a_prefix(self):
         keep = [{'binary': '*', 'names': ['timeout'], 'why': 'x'}]
@@ -65,6 +65,7 @@ class Build(unittest.TestCase):
         keep = [{'binary': '*x.a(x.o)', 'names': ['nfs_clock'], 'why': 'x'}]    # an archive member names its archive
         _, rules, _ = gs.build(scope(keep), expand)
         self.assertEqual(excluded(rules[-1], ['nfs_clock', 'nfs_read']), ['nfs_read'])
+        self.assertEqual(rules[0]['binaries'], FILES['a'])    # the group without keeps keeps its number
 
     def test_a_byte_identical_copy_shares_the_keep_entry_of_its_twin(self):
         files = {'a': ['6.5.30/IP35boot/p.o'], 'b': ['6.5.30/IP35boot/p_part.o', '6.5.30/IP35boot/q.o']}
