@@ -10,8 +10,10 @@ the toolchain environment of AGENTS.md (MIPS objdump, dwarfdump, pyelftools).
 The script is the same in every workspace. Everything that belongs to one
 graphics family -- which files are in scope and what role each plays, the
 register windows and how code reaches them, where command tokens come from,
-which kernel tables dispatch ioctls, the microcode images and any register
-tables from a specification -- is in scripts/inventory-config.json.
+which kernel tables dispatch ioctls, the microcode images, any register
+tables from a specification and the small-data sections (`gp_literals`) in which
+a linked kernel with no GOT keeps its address constants -- is in
+scripts/inventory-config.json.
 
 It writes eight tables to docs/inventory/ and rewrites the block between the
 inventory markers in docs/coverage.md:
@@ -1989,7 +1991,7 @@ def parse_reloc(rtype, target):
 class ImageInfo:
     """What the replay needs from the ELF image: GOT, stubs, constant memory, gp0."""
 
-    def __init__(self, elf):
+    def __init__(self, elf, gp_sections=None):
         self.elf = elf
         self.rel = elf.header['e_type'] == 'ET_REL'
         self.got_names = {}
@@ -1998,6 +2000,10 @@ class ImageInfo:
         self.ro = []        # (lo, hi, data) read-only sections by address (linked images)
         self.secdata = {}   # name -> data (relocatable images)
         self.gp0 = 0
+        # (lo, hi, data) of the small-data sections of a linked image with no GOT: the compiler's literal
+        # pool, read through gp. Only the sections the config's gp_literals rule names.
+        self.gp_lit = []
+        self.gp_sections = gp_sections or ()
         self.gsz = 8 if elf.elfclass == 64 else 4
         try:
             self.load()
@@ -2016,24 +2022,14 @@ class ImageInfo:
                 elif s['sh_addr']:
                     self.ro.append((s['sh_addr'], s['sh_addr'] + s['sh_size'], s.data()))
         self.ro.sort()
+        if self.rel or self.gp_sections:
+            self.load_gp()
+        if self.gp_sections and not self.rel:
+            for s in e.iter_sections():
+                if s.name in self.gp_sections and s['sh_type'] == 'SHT_PROGBITS' and s['sh_addr']:
+                    self.gp_lit.append((s['sh_addr'], s['sh_addr'] + s['sh_size'], s.data()))
+            self.gp_lit.sort()
         if self.rel:
-            ri = e.get_section_by_name('.reginfo')
-            if ri is not None and len(ri.data()) >= 24:
-                self.gp0 = struct.unpack('>i', ri.data()[20:24])[0]
-            op = e.get_section_by_name('.MIPS.options')
-            if op is not None:
-                d = op.data()
-                p = 0
-                while p + 8 <= len(d):
-                    kind, size = d[p], d[p + 1]
-                    if size == 0:
-                        break
-                    if kind == 1:
-                        if e.elfclass == 64 and size >= 40:
-                            self.gp0 = struct.unpack('>q', d[p + 32:p + 40])[0]
-                        elif size >= 32:
-                            self.gp0 = struct.unpack('>i', d[p + 28:p + 32])[0]
-                    p += size
             return
         dyn = e.get_section_by_name('.dynamic')
         dsym = e.get_section_by_name('.dynsym')
@@ -2067,6 +2063,37 @@ class ImageInfo:
                 w, = struct.unpack('>I', d[off:off + 4])
                 if (w >> 16) in (0x2418, 0x6418) and (w & 0xffff) < len(names):
                     self.stubs[base + off - 12] = names[w & 0xffff]
+
+    def load_gp(self):
+        """gp0 from the register-information record: .reginfo, or the .MIPS.options entry of kind 1."""
+        e = self.elf
+        ri = e.get_section_by_name('.reginfo')
+        if ri is not None and len(ri.data()) >= 24:
+            self.gp0 = struct.unpack('>i', ri.data()[20:24])[0]
+        op = e.get_section_by_name('.MIPS.options')
+        if op is not None:
+            d = op.data()
+            p = 0
+            while p + 8 <= len(d):
+                kind, size = d[p], d[p + 1]
+                if size == 0:
+                    break
+                if kind == 1:
+                    if e.elfclass == 64 and size >= 40:
+                        self.gp0 = struct.unpack('>q', d[p + 32:p + 40])[0]
+                    elif size >= 32:
+                        self.gp0 = struct.unpack('>i', d[p + 28:p + 32])[0]
+                p += size
+
+    def read_gp(self, disp, width):
+        """The constant a linked image keeps at gp + disp in a configured small-data section, or None."""
+        addr = (self.gp0 + disp) & ((1 << 64) - 1)
+        i = bisect.bisect_right(self.gp_lit, (addr, float('inf'), b'')) - 1
+        if i >= 0:
+            lo, hi, d = self.gp_lit[i]
+            if lo <= addr and addr + width <= hi:
+                return int.from_bytes(d[addr - lo:addr - lo + width], 'big', signed=True)
+        return None
 
     def read(self, addr, width):
         i = bisect.bisect_right(self.ro, (addr, float('inf'), b'')) - 1
@@ -2181,7 +2208,8 @@ class Unit:
         for img in self.images:
             if img['elf'] is None or img['group'].get('scan') is False:
                 continue
-            info = ImageInfo(img['elf'])
+            lits = [sec for r in self.cfg.get('gp_literals', []) if self.applies(r, img) for sec in r['sections']]
+            info = ImageInfo(img['elf'], lits)
             funcs = split_runs(run_objdump(img['tmp']), img.get('functab', {}))
             self.code.append((img, info, funcs))
         # the routine each run starts, by address: a call into a routine objdump did not label names the
@@ -2813,6 +2841,10 @@ class Unit:
             loc = info.got_local.get(disp)
             if loc is not None:
                 return ('c', loc)
+            if info.gp_lit and mn in ('ld', 'lw', 'lwu'):
+                c = info.read_gp(disp, 8 if mn == 'ld' else 4)
+                if c is not None:
+                    return ('c', c)
             return None
         if bv and bv[0] == 'c' and not info.rel and mn in ('ld', 'lw', 'lwu'):
             c = info.read(bv[1] + disp, 8 if mn == 'ld' else 4)

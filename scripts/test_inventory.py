@@ -481,5 +481,75 @@ class StaleDwarf(unittest.TestCase):
         self.assertEqual(info['address_source'], 'symtab (dwarf addresses stale, dropped)')
 
 
+@unittest.skipIf(ELFFile is None, 'pyelftools is not installed')
+class GpLiterals(unittest.TestCase):
+    """A linked kernel without a GOT keeps its address constants in small-data sections and loads them through
+    gp; the scan reads them only for the images a gp_literals rule names."""
+    POOL = 0xc000000001000000       # .sdata address
+    GP = POOL + 0x10
+    LIT = 0x9200000001000000        # the literal at POOL + 8
+
+    @classmethod
+    def kernel(cls):
+        """A big-endian 64-bit MIPS ET_EXEC image: .MIPS.options (gp), .sdata (the literal), .shstrtab."""
+        import struct
+        opts = struct.pack('>BBHI', 1, 40, 0, 0) + struct.pack('>II4IQ', 0, 0, 0, 0, 0, 0, cls.GP)
+        sdata = struct.pack('>QQQQ', 0, cls.LIT, 0, 0)
+        shstr = b'\0.MIPS.options\0.sdata\0.shstrtab\0'
+        parts = [(opts, 1, 0x7000000d, 2, cls.POOL - 0x1000), (sdata, 15, 1, 3, cls.POOL), (shstr, 22, 3, 0, 0)]
+        shdrs, off = struct.pack('>2I4Q2I2Q', *([0] * 10)), 64
+        for data, nm, ty, fl, addr in parts:
+            shdrs += struct.pack('>2I4Q2I2Q', nm, ty, fl, addr, off, len(data), 0, 0, 8, 0)
+            off += len(data)
+        body = b''.join(d for d, *_ in parts)
+        ehdr = b'\x7fELF\x02\x02\x01' + b'\0' * 9 + struct.pack('>HHIQQQIHHHHHH', 2, 8, 1, 0, 0, 64 + len(body),
+                                                                  0x30000000, 64, 0, 0, 64, 4, 3)
+        return ehdr + body + shdrs
+
+    def info(self, sections):
+        return inv.ImageInfo(ELFFile(io.BytesIO(self.kernel())), sections)
+
+    def test_reads_the_literal_at_gp_plus_displacement(self):
+        info = self.info(['.sdata'])
+        self.assertEqual(info.gp0 & (1 << 64) - 1, self.GP)
+        self.assertEqual(info.read_gp(-8, 8) & (1 << 64) - 1, self.LIT)
+        self.assertEqual(info.read_gp(-16, 8), 0)
+        self.assertIsNone(info.read_gp(0x100, 8))         # past the section
+        self.assertIsNone(info.read_gp(-0x1000, 8))       # before it
+
+    def test_an_image_the_config_does_not_name_reads_nothing(self):
+        info = self.info([])
+        self.assertEqual(info.gp_lit, [])
+        self.assertIsNone(info.read_gp(-8, 8))
+
+    def replayed(self, rules):
+        """Offsets the Hub window reaches in `ld t0,-8(gp); ld t1,0x90(t0); jr ra`, under the given gp_literals."""
+        cfg = {'windows': [{'name': 'HUB', 'size': '0x800000'}],
+               'bases': [{'type': 'constant', 'lo': '0x9200000001000000', 'hi': '0x9200000001800000',
+                          'window': 'HUB', 'translate': False}],
+               'gp_literals': rules}
+        insns = [[0x1000, 'ld', ['$8', '-8($28)'], None, None], [0x1004, 'ld', ['$9', '144($8)'], None, None],
+                 [0x1008, 'jr', ['$31'], None, None], [0x100c, 'nop', [], None, None]]
+        img = {'elf': ELFFile(io.BytesIO(self.kernel())), 'tmp': 'unused', 'label': '6.5.30/unix.IP99',
+               'path': '6.5.30/unix.IP99', 'group': {}, 'functab': {}}
+        saved = inv.run_objdump, inv.split_runs
+        inv.run_objdump, inv.split_runs = (lambda path: [('f', insns)]), (lambda funcs, tab: funcs)
+        try:
+            u = inv.Unit(inv.Model(cfg), cfg, [img]).run()
+        finally:
+            inv.run_objdump, inv.split_runs = saved
+        return sorted(k for k in u.out_mmio), u.touch
+
+    def test_a_gp_load_of_a_window_literal_reaches_the_window(self):
+        keys, touch = self.replayed([{'binaries': ['*unix.IP99'], 'sections': ['.sdata']}])
+        self.assertEqual(keys, [('HUB', 0x90)])
+        self.assertEqual(touch, {('6.5.30/unix.IP99', 'f')})
+
+    def test_without_a_rule_the_same_load_reaches_nothing(self):
+        for rules in ([], [{'binaries': ['*unix.IP27'], 'sections': ['.sdata']}]):
+            keys, touch = self.replayed(rules)
+            self.assertEqual((keys, touch), ([], set()))
+
+
 if __name__ == '__main__':
     unittest.main()
