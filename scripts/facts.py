@@ -903,38 +903,14 @@ class Routine:
     def exposed(self, slot):
         """Whether a callee could write this stack slot through an address the routine handed out.
 
-        An address at offset K covers the object that starts there. When K is also read or written
-        directly, or a directly used offset follows within 8 bytes, the object runs through the
-        directly used offsets that touch or overlap it. Otherwise it is a buffer that ends at the next
-        directly used offset. Frames lay out separate objects at separate offsets, so a spill slot
-        past a buffer is not part of it; a routine that breaks that layout is the limit of this rule."""
+        An address at offset K reaches every slot from K up to the top of the frame (the entry stack
+        pointer): the callee fills a request or reply struct of a size the routine does not show, and
+        the members the routine reads back can be sparse (words at K+4, K+8 and K+0x34), so the run of
+        directly used offsets is no bound on the object. Slots below K stay known. A frame address
+        at or above the entry stack pointer reaches the caller's frame from K up."""
         if slot in self._exposed:
             return self._exposed[slot]
-        hit = False
-        for k in self.esc:
-            if slot < k:
-                continue
-            ahead = [d for d in self.direct if d > k]
-            nxt = min(ahead) if ahead else None
-            if k in self.direct:
-                end = k + self.direct[k]
-            elif nxt is None:
-                hit = True
-                break
-            elif nxt - k >= 8:
-                end = nxt
-                if slot < end:
-                    hit = True
-                    break
-                continue
-            else:
-                end = nxt + self.direct[nxt]
-            for d in sorted(self.direct):
-                if k <= d <= end:
-                    end = max(end, d + self.direct[d])
-            if slot < end:
-                hit = True
-                break
+        hit = any(slot >= k and (slot < 0 or k >= 0) for k in self.esc)
         self._exposed[slot] = hit
         return hit
 

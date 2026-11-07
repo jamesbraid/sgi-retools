@@ -472,9 +472,23 @@ class StackSlotAcrossCalls(unittest.TestCase):
                            self.CALL + [lw(self.T0, 0xc, self.SP), lw(V0, 8, self.T0)])
         self.assertEqual(self.reload(words), '?')
 
-    def test_slot_past_a_passed_buffer_is_kept(self):
-        # the buffer at sp+0 ends at the slot at sp+0x10, which is a separate object
+    def test_slot_past_a_passed_buffer_is_forgotten(self):
+        # the callee fills a struct of a size the routine does not show: every slot from the passed
+        # address up to the top of the frame may change
         words = self.frame([lw(self.T1, 4, A0), sw(self.T1, 0x10, self.SP), daddiu(A1, self.SP, 0)] +
+                           self.CALL + [lw(self.T0, 0x10, self.SP), lw(V0, 8, self.T0)])
+        self.assertEqual(self.reload(words), '?')
+
+    def test_slot_far_past_a_sparse_request_struct_is_forgotten(self):
+        # a request struct with members at +4 and +8 and a flag at +0x14, as the odyssey object
+        # destroy routine builds: the flag is written before the call and tested after it
+        words = self.frame([lw(self.T1, 4, A0), sw(self.T1, 0x14, self.SP), sw(self.T1, 4, self.SP),
+                            sw(self.T1, 8, self.SP), daddiu(A1, self.SP, 0)] +
+                           self.CALL + [lw(self.T0, 0x14, self.SP), lw(V0, 8, self.T0)])
+        self.assertEqual(self.reload(words), '?')
+
+    def test_slot_below_a_passed_buffer_is_kept(self):
+        words = self.frame([lw(self.T1, 4, A0), sw(self.T1, 0x10, self.SP), daddiu(A1, self.SP, 0x14)] +
                            self.CALL + [lw(self.T0, 0x10, self.SP), lw(V0, 8, self.T0)])
         self.assertEqual(self.reload(words), '[a0+4]')
 
