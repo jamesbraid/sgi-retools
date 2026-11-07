@@ -21,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location('inventory', os.path.join(HERE, 'inventory.py'))
 inv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(inv)
+mips_xlate = inv.mips_xlate
 
 FILLER_ONLY = ('- `mCramToWram` (`memove.S` line 32, at 0xd4a2): **inferred**, copies a block from control memory '
                'to working memory. It gives lanes 1 and 2 their own register-1 offsets (adds of 1 and 2 at 0xd4a3 '
@@ -405,7 +406,7 @@ class StaleDwarf(unittest.TestCase):
         def get_section_by_name(self, name):
             return object() if name == '.debug_info' else super().get_section_by_name(name)
 
-    def functions(self, symbols, dwarf, linked=False):
+    def functions(self, symbols, dwarf, linked=False, xlate=None):
         code = bytes(range(128))
         data = AddressZero.relocatable(code, symbols)
         if linked:      # the same image as an executable whose only code section, .init, sits at 0x1000
@@ -413,13 +414,14 @@ class StaleDwarf(unittest.TestCase):
             data = data[:16] + b'\x00\x02' + data[18:]
             o = int.from_bytes(data[32:36], 'big') + 40      # section header 1 is .text
             data = data[:o + 12] + (0x1000).to_bytes(4, 'big') + data[o + 16:]
-        real = inv.dwarf_subprograms
+        real, real_xlate = inv.dwarf_subprograms, inv.mips_xlate.of_elf
         inv.dwarf_subprograms = lambda path: dwarf
+        inv.mips_xlate.of_elf = lambda elf: xlate
         try:
             return inv.functions_of({'group': {}, 'data': data, 'label': 'x.o'},
                                     self.WithDebug(io.BytesIO(data)), '/nonexistent')
         finally:
-            inv.dwarf_subprograms = real
+            inv.dwarf_subprograms, inv.mips_xlate.of_elf = real, real_xlate
 
     def test_a_name_defined_in_two_units_does_not_make_dwarf_stale(self):
         # `dup` is static in two units and the symbol table keeps one; `hidden` is a static the table lacks
@@ -446,6 +448,37 @@ class StaleDwarf(unittest.TestCase):
         self.assertIsNone(funcs['other'][1])
         self.assertEqual(info['address_source'],
                          'symtab+dwarf (dwarf addresses stale, dropped except sections of their own)')
+
+    # the linked image has its code at 0x1000..0x1080; DWARF puts the functions at 0x4000.. before a reorder
+    TABLE = [(0x4000, 0x1020, 32), (0x4040, 0x1040, 32), (0x4060, 0x1060, 8)]
+
+    def test_xlate_gives_the_dwarf_only_functions_their_real_addresses(self):
+        funcs, info = self.functions([('moved', 0x1020, 32)],
+                                     [('moved', 0x4000, 0x4020), ('hidden', 0x4040, 0x4060), ('_init', 0x1000, 0x1020)],
+                                     linked=True, xlate=mips_xlate.Xlate(0x1000, 0x1068, self.TABLE))
+        self.assertEqual(funcs['hidden'][:3], ['.init', 0x1040, 32])
+        self.assertEqual(funcs['hidden'][4], hashlib.sha256(bytes(range(0x40, 0x60))).hexdigest()[:12])
+        self.assertEqual(funcs['moved'][1], 0x1020)
+        self.assertEqual(funcs['_init'][1:3], [0x1000, 0x20])      # a section of its own stays where it is
+        self.assertEqual(info['address_source'], 'symtab+dwarf (dwarf addresses translated through .MIPS.Xlate)')
+
+    def test_xlate_leaves_a_function_that_leaves_its_range_without_an_address(self):
+        funcs, info = self.functions([('moved', 0x1020, 32)],
+                                     [('moved', 0x4000, 0x4020), ('hidden', 0x4040, 0x4060), ('wide', 0x4060, 0x4080),
+                                      ('lost', 0x9000, 0x9010)],
+                                     linked=True, xlate=mips_xlate.Xlate(0x1000, 0x1068, self.TABLE))
+        self.assertEqual(funcs['hidden'][1], 0x1040)
+        self.assertIsNone(funcs['wide'][1])       # 32 bytes in a range of 8
+        self.assertIsNone(funcs['lost'][1])       # in no range
+        self.assertEqual(info['address_source'], 'symtab+dwarf (dwarf addresses translated through .MIPS.Xlate)')
+
+    def test_xlate_that_contradicts_the_symbols_is_not_trusted(self):
+        wrong = mips_xlate.Xlate(0x1000, 0x1068, [(0x4000, 0x1040, 32), (0x4040, 0x1060, 8)])
+        funcs, info = self.functions([('moved', 0x1020, 32)], [('moved', 0x4000, 0x4020), ('hidden', 0x4040, 0x4060)],
+                                     linked=True, xlate=wrong)
+        self.assertIsNone(funcs['hidden'][1])
+        self.assertEqual(funcs['moved'][1], 0x1020)
+        self.assertEqual(info['address_source'], 'symtab (dwarf addresses stale, dropped)')
 
 
 if __name__ == '__main__':

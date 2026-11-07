@@ -53,6 +53,8 @@ os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'scripts'))
 
+import mips_xlate  # noqa: E402
+
 STATUSES = ('undocumented', 'named-only', 'located', 'understood', 'no-software-dependency')
 RANK = {'understood': 4, 'no-software-dependency': 3, 'located': 2, 'named-only': 1, 'undocumented': 0}
 NSD_PHRASE = re.compile(r'no\s+shipped\s+software\s+or\s+published\s+source', re.I)
@@ -1757,15 +1759,14 @@ def functions_of(img, elf, path):
         for name, ds in defs[src].items():
             symbols[name] += ds
     sym_addrs = {n: {a for a, _, _ in ds if a is not None} for n, ds in symbols.items()}
-    # A name DWARF gives at several addresses (a static function of the same name in more than one
-    # compilation unit) while the symbol tables give one of them is not stale: only a name whose DWARF
-    # addresses and symbol addresses share none shows that the code moved after the debug information
-    # was written.
-    stale = any(da and sym_addrs.get(n) and not da & sym_addrs[n]
-                for n, da in ((n, {a for a, _, _ in ds if a is not None}) for n, ds in defs['dwarf'].items()))
-    names = set()
-    for src in defs:
-        names |= set(defs[src])
+
+    def stale_dwarf():
+        # A name DWARF gives at several addresses (a static function of the same name in more than one
+        # compilation unit) while the symbol tables give one of them is not stale: only a name whose DWARF
+        # addresses and symbol addresses share none shows that the code moved after the debug information
+        # was written.
+        return any(da and sym_addrs.get(n) and not da & sym_addrs[n]
+                   for n, da in ((n, {a for a, _, _ in ds if a is not None}) for n, ds in defs['dwarf'].items()))
 
     def anchored(d):
         # Where the code was moved after the debug information was written (a relink that reordered
@@ -1775,6 +1776,30 @@ def functions_of(img, elf, path):
         lo, size, sec = d
         s = elf.get_section_by_name(sec) if linked and sec != '.text' else None
         return s is not None and lo == s['sh_addr'] and lo + size <= s['sh_addr'] + s['sh_size'] + 16
+    stale = stale_dwarf()
+    # A library the linker reordered carries `.MIPS.Xlate`, which maps the addresses DWARF still holds to the
+    # image's. The table is trusted only when, applied to every DWARF address, it leaves no name with DWARF
+    # and symbol addresses that share none. An address it does not cover whole (the function does not lie
+    # in one of its ranges) is left without one, and the row is address-unknown.
+    translated = False
+    xl = mips_xlate.of_elf(elf) if stale and linked else None
+    if xl is not None:
+        before = {n: list(ds) for n, ds in defs['dwarf'].items()}
+        for n, ds in before.items():
+            moved = []
+            for d in ds:
+                t = xl.translate(d[0], d[1]) if d[0] else None
+                moved.append(d if anchored(d) else (t, d[1], section_at(t)) if t is not None else (None, 0, ''))
+            defs['dwarf'][n] = moved
+        if stale_dwarf():
+            defs['dwarf'].clear()
+            defs['dwarf'].update(before)
+        else:
+            stale, translated = False, True
+    names = set()
+    for src in defs:
+        names |= set(defs[src])
+
     used, multi = set(), set()
     for name in names:
         tiers = [('symtab' if name in defs['symtab'] else 'dynsym', symbols.get(name, [])),
@@ -1799,7 +1824,9 @@ def functions_of(img, elf, path):
             at[(e[0], e[1])].add(name)
     shared = {n for ns in at.values() if len(ns) > 1 for n in ns}
     label = '+'.join(x for x in ('symtab', 'dynsym', 'mdebug', 'dwarf') if x in used) or 'none'
-    if stale:
+    if translated:
+        label += ' (dwarf addresses translated through .MIPS.Xlate)'
+    elif stale:
         label += ' (dwarf addresses stale, dropped%s)' % (' except sections of their own' if 'dwarf' in used else '')
     # a missing size runs to the next function of the same section
     by = collections.defaultdict(list)
