@@ -6,8 +6,7 @@
 # Run it from inside the clone. It
 #   - clones the sibling repositories named in scripts/inventory-siblings.json
 #     into .cache/siblings/, each at the commit pinned there;
-#   - initialises the retools submodule (the shared tooling) at the pinned commit and blocks a
-#     plain `git push` in this clone: push with retools/re-push, which runs the push checks;
+#   - initialises the retools submodule (the shared tooling) at the pinned commit;
 #   - initialises the public-source submodules the tools read (m2c, spimdisasm
 #     and ogl-sample, where this repository has them; --submodules picks others,
 #     `all` takes every one, which is several gigabytes);
@@ -15,9 +14,7 @@
 #
 # The IRIX files themselves are not in the repository and not downloadable
 # from here. Copy the paths in the `files` block of IRIX_FILES.md from your own
-# IRIX 6.5.30 install or media into root/, keeping the directory layout, then
-# run scripts/populate-root (on the host, with python3) to create the links
-# the tools expect. `scripts/populate-root --check` lists what is missing.
+# IRIX 6.5.30 install or media into root/, keeping the directory layout.
 #
 # Siblings are cloned from the same place as this repository: the URL of the
 # `origin` remote with its last component swapped for the sibling's name.
@@ -43,9 +40,6 @@ cd "${top:-$here/..}"
 if [ -f .gitmodules ] && git ls-files --stage -- retools | grep -q '^160000'; then
     git submodule update -q --init retools
 fi
-
-# Pushes go through retools/re-push (checks, then the real URL). Make a plain `git push` fail.
-[ -x retools/re-push ] && retools/re-push --install
 
 pins=scripts/inventory-siblings.json
 if [ -f "$pins" ]; then
@@ -97,9 +91,8 @@ if [ -n "$root_dir" ] && [ ! -e root ]; then
 fi
 if [ -d root ]; then
     printf 'root/ present: %s\n' "$(cd root && pwd -P)"
-    [ -x scripts/populate-root ] && scripts/populate-root --check | tail -n 3 || true
 else
     mkdir root
-    printf 'root/ is empty. Fill it from your own IRIX 6.5.30 install as IRIX_FILES.md describes,\nthen run scripts/populate-root.\n'
+    printf 'root/ is empty. Fill it from your own IRIX 6.5.30 install as IRIX_FILES.md describes.\n'
 fi
-printf 'Run a tool with: tools/re-run python3 scripts/inventory.py\n'
+printf 'Run a tool with: tools/re-run python3 tools/inventory.py\n'

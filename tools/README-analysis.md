@@ -21,8 +21,8 @@ Run it through the export wrapper:
 
 An object without `.mdebug`, or a 64-bit object (those carry DWARF, which Ghidra reads itself), is reported
 and left alone. A routine compiled without `-g` gets its name, address and lines but no signature, because
-the table holds no type records for it. `scripts/mdebug.py` decodes the same table in Python (`--procs`,
-`--types`, `--signatures`) and is the reference for the format tests in `scripts/test_mdebug.py`.
+the table holds no type records for it. `tools/mdebug.py` decodes the same table in Python (`--procs`,
+`--types`, `--signatures`) and is the reference for the format tests in `tools/test_mdebug.py`.
 Limits: no parameter types for a pointer to function, `long` is 4 bytes, bit fields that straddle their
 storage unit are dropped, and aggregates with the same tag are merged (the first definition with members wins).
 
@@ -30,7 +30,7 @@ storage unit are dropped, and aggregates with the same tag are merged (the first
 
     tools/re-run --syscalls root/6.5.30/unix.IP35 --out .cache/syscalls.tsv [--cross-check DIR --report FILE]
 
-`scripts/syscall_table.py` finds each table of 24-byte entries (argument count and flags, handler, argument
+`tools/syscall_table.py` finds each table of 24-byte entries (argument count and flags, handler, argument
 table) by shape, ties it to the dispatcher's pointer-and-count pair, confirms the layout from the dispatcher
 code, and writes one row per entry with the handler named from the kernel's own symbol table. The call-number
 base is read from the dispatcher. `--cross-check DIR` compares numbering with copies of public lists
@@ -40,7 +40,7 @@ base is read from the dispatcher. `--cross-check DIR` compares numbering with co
 
     tools/re-run --syssgi root/6.5.30/unix.IP35 --out .cache/selectors.tsv [--cross-check DIR --report FILE]
 
-`scripts/syssgi_selectors.py` explores the `syssgi` function with the selector as a symbolic value, reading
+`tools/syssgi_selectors.py` explores the `syssgi` function with the selector as a symbolic value, reading
 jump tables and following compare trees, and writes the code address each selector reaches and the first
 routine that code calls. Selectors that share a target are flagged. Selectors that never narrow to a single
-value are not listed. Tests for the walker and the list parsers: `scripts/test_syssgi_selectors.py`.
+value are not listed. Tests for the walker and the list parsers: `tools/test_syssgi_selectors.py`.

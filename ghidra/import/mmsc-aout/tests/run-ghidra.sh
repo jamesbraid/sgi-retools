@@ -6,7 +6,7 @@
 #
 # Run from the workspace root inside the Ghidra container (tools/re-run --ghidra --)
 # after making the map table in the toolchain container:
-#   tools/re-run python3 retools/scripts/sysco/mmsc_aout.py IMAGE --tsv OUTDIR/map.tsv
+#   tools/re-run python3 retools/tools/sysco/mmsc_aout.py IMAGE --tsv OUTDIR/map.tsv
 # Writes OUTDIR/ghidra.dump and ghidra.log.
 set -eu
 MOD=$(cd "$(dirname "$0")/.." && pwd)

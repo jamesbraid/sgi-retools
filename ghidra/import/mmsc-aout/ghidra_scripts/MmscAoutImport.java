@@ -3,7 +3,7 @@
  * Runs as a headless -preScript on a raw (BinaryLoader) import of mmscfw.bin
  * with language x86:LE:32:default. The raw import makes one block holding the
  * whole file at address zero; this script drops it and builds the real map
- * from the table scripts/sysco/mmsc_aout.py writes with --tsv, so Ghidra and
+ * from the table tools/sysco/mmsc_aout.py writes with --tsv, so Ghidra and
  * the capstone loader share one parser:
  *
  *   text  file bytes at the entry address, read and execute

@@ -6,7 +6,7 @@
 #   tools/re-run --syscalls KERNEL... [OPTIONS...]
 #   tools/re-run --syssgi KERNEL... [OPTIONS...]
 #
-#   tools/re-run python3 scripts/inventory.py
+#   tools/re-run python3 tools/inventory.py
 #   tools/re-run mips64-linux-gnuabi64-objdump -h root/unix
 #   tools/re-run                       # a shell in the container
 #   tools/re-run --ghidra analyzeHeadless /tmp/ghidra-projects p -import root/unix
@@ -31,8 +31,8 @@
 # the repository itself as the workspace. Decompiler and BSim output is
 # navigation, not evidence. tools/ghidra-export.py has the full list.
 #
-# --syscalls KERNEL... runs scripts/syscall_table.py: the system call table of each linked
-# kernel as TSV on stdout. --syssgi KERNEL... runs scripts/syssgi_selectors.py: the syssgi()
+# --syscalls KERNEL... runs tools/syscall_table.py: the system call table of each linked
+# kernel as TSV on stdout. --syssgi KERNEL... runs tools/syssgi_selectors.py: the syssgi()
 # selector dispatch. Both take --out FILE, --cross-check DIR (a directory of public lists) and
 # --report FILE; see the top of each script. Kernel paths are inside the repository (root/ works).
 #
@@ -43,8 +43,7 @@
 # the container, so the link works. A link that resolves into a system
 # directory of the container (/usr, /etc, /var and so on) is refused: make
 # root/ a real directory instead. Links inside root/ that point outside it are
-# not followed. scripts/populate-root writes into root/: run it on the host
-# (it only needs python3), not here.
+# not followed.
 #
 #   RE_ENGINE=CMD   container command to use instead of podman
 #   RE_NOTTY=1      never allocate a terminal
@@ -65,8 +64,8 @@ while [ $# -gt 0 ]; do
         --workspace) workspace=$2; shift 2 ;;
         --ghidra) ghidra=1; shift ;;
         --ghidra-export) export=${2:?--ghidra-export needs an object}; shift 2; break ;;
-        --syscalls) tool=scripts/syscall_table.py; shift; break ;;
-        --syssgi) tool=scripts/syssgi_selectors.py; shift; break ;;
+        --syscalls) tool=tools/syscall_table.py; shift; break ;;
+        --syssgi) tool=tools/syssgi_selectors.py; shift; break ;;
         --) shift; break ;;
         -h|--help) sed -n '2,/^set -eu/{/^set -eu/!p;}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) break ;;
