@@ -23,6 +23,10 @@ import os
 import struct
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from glcore_probe import Probe, CTX, STACK, DONE, ARGREGS, CTXSZ  # noqa: E402
 import mips_shim  # noqa: E402
@@ -104,7 +108,7 @@ def mode_record(rgba, dbl, depth, sizes=(0, 0, 0, 0), index_bits=0, lvl=0):
 
 def main():
     path = sys.argv[1]
-    inv = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'inventory', 'functions.tsv')
+    inv = os.path.join(find_workspace(), 'docs', 'inventory', 'functions.tsv')
     r = Run(path, inv)
 
     def describe(name, rec):

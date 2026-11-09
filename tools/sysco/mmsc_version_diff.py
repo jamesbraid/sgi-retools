@@ -40,7 +40,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mmsc_aout as ma  # noqa: E402
 import capstone  # noqa: E402
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, TOOLS)
+from _workspace import find_workspace  # noqa: E402
+REPO = find_workspace()
 OUT = os.path.join(REPO, 'docs', 'version-diffs')
 if '--out' in sys.argv:
     OUT = os.path.abspath(sys.argv[sys.argv.index('--out') + 1])

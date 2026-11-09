@@ -29,7 +29,11 @@ import re
 import struct
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, TOOLS)
+from _workspace import find_workspace  # noqa: E402
+REPO = find_workspace()
 
 SIGNALS = ('HSYNC', 'VSYNC', 'CSYNC', 'CBLANK', 'TRISYNC', 'FIELD_START', 'FIELD', 'FRAME_START',
            'VIDEO_ACTIVE', 'LINE_START', 'STEREO_OUT', 'IMPREG_LD', 'XMAPREG_LD', 'VOF_VDRC_EN')

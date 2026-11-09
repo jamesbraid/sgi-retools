@@ -51,6 +51,10 @@ import struct
 import subprocess
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # the shared toolchain.py
 import toolchain  # noqa: E402
@@ -593,8 +597,7 @@ def main():
     ap.add_argument('--all-stores', action='store_true')
     ap.add_argument('--no-calls', action='store_true')
     ap.add_argument('--entry-t9', type=lambda s: int(s, 0))
-    ap.add_argument('--inventory', default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                         '..', 'docs', 'inventory', 'functions.tsv'))
+    ap.add_argument('--inventory', default=os.path.join(find_workspace(), 'docs', 'inventory', 'functions.tsv'))
     args = ap.parse_args()
     lo, hi = (int(x, 0) for x in args.window.split('-'))
     img = Image(args.binary, args.inventory)

@@ -23,11 +23,15 @@ import struct
 import subprocess
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import toolchain  # noqa: E402
 from elftools.elf.elffile import ELFFile  # noqa: E402
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+ROOT = find_workspace()
 PATH = 'usr/gfx/arch/IP27KONA64/libGLcore.so'
 LIB = os.path.join(ROOT, 'root', PATH)
 ELF = ELFFile(open(LIB, 'rb'))

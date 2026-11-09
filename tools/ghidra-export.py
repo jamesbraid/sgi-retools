@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Plan and finish a Ghidra decompile export or BSim load of one ELF object.
 
-Not run directly: `tools/re-run --ghidra-export OBJECT [OPTIONS]` runs `prepare`,
+Not run directly: `retools/tools/re-run --ghidra-export OBJECT [OPTIONS]` runs `prepare`,
 then Ghidra in its own image, then `finish`, and prints where the JSON landed.
 `prepare` and `finish` run in the toolchain image (they need pyelftools).
 
-Options (after OBJECT, a path inside the repository):
+Options (after OBJECT, a path inside the workspace):
   --decompile-symbol NAME|GLOB|@0xADDR   a function by name, a glob with *, or an
                                           address (not for a relocatable object);
                                           repeatable

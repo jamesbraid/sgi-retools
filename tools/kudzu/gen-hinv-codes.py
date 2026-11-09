@@ -25,11 +25,12 @@ import csv
 import re
 import struct
 import subprocess
+import os
 import sys
 
 from elftools.elf.elffile import ELFFile
 
-sys.path.insert(0, 'scripts')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 import toolchain  # noqa: E402
 
 HINV = 'root/6.5.30/sbin/hinv'

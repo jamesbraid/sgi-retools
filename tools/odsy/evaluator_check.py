@@ -22,6 +22,10 @@ import os
 import random
 import struct
 import sys
+
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
 from math import comb
 
 import unicorn.mips_const as mc
@@ -95,8 +99,7 @@ def main():
     ap.add_argument('binary')
     ap.add_argument('--max-order', type=int, default=7)
     ap.add_argument('--sizes', default='1,2,3,4')
-    ap.add_argument('--inventory', default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                         '..', 'docs', 'inventory', 'functions.tsv'))
+    ap.add_argument('--inventory', default=os.path.join(find_workspace(), 'docs', 'inventory', 'functions.tsv'))
     a = ap.parse_args()
     sizes = [int(x) for x in a.sizes.split(',')]
     for deriv in (False, True):

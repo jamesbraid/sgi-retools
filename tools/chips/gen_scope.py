@@ -22,7 +22,9 @@ import os
 import re
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+REPO = find_workspace()
 CFG = os.path.join(REPO, 'scripts', 'inventory-config.json')
 
 KEEP_OBJECTS = '''pcibr.o pciio.o pciio_ppb.o pciiox.o pic.o xbridge.o xbow.o xswitch.o xtalk.o xconn.o xbmon.o hubspc.o

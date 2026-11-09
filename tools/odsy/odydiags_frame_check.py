@@ -53,11 +53,15 @@ import os
 import struct
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import buzz_ucode_dataflow as df  # noqa: E402
 from buzz_ucode_disasm import records  # noqa: E402
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'root',
+ROOT = os.path.join(find_workspace(), 'root',
                     'builds', 'odydiags-6.5.15', 'usr', 'diags', 'ody')
 WR_HW = '_odsy_diag_wr_hw'
 FIFO = {0x110000: 'F', 0x100000: 'P'}

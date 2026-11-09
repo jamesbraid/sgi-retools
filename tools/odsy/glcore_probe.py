@@ -23,6 +23,10 @@ import os
 import struct
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 from elftools.elf.elffile import ELFFile
 from unicorn import (Uc, UcError, UC_ARCH_MIPS, UC_MODE_BIG_ENDIAN, UC_MODE_MIPS64, UC_HOOK_CODE,
                      UC_HOOK_MEM_UNMAPPED, UC_HOOK_MEM_WRITE)
@@ -126,8 +130,7 @@ def main():
     ap.add_argument('address', type=lambda s: int(s, 0))
     ap.add_argument('args', nargs='*', type=lambda s: int(s, 0))
     ap.add_argument('--fill', choices=('zero', 'ones'), default='zero')
-    ap.add_argument('--inventory', default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                         '..', 'docs', 'inventory', 'functions.tsv'))
+    ap.add_argument('--inventory', default=os.path.join(find_workspace(), 'docs', 'inventory', 'functions.tsv'))
     a = ap.parse_args()
     log, v0 = Probe(a.binary, a.inventory).run(a.address, a.args, a.fill)
     print('\n'.join(log))

@@ -54,10 +54,11 @@ import sys
 import collections
 
 os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, 'scripts'))
-# The shared modules that inventory.py imports sit beside this file's parent, not in the workspace's scripts.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, TOOLS)
+from _workspace import find_workspace  # noqa: E402
+REPO = find_workspace()
 
 import inventory  # noqa: E402  (the request-name labels live with it)
 

@@ -35,8 +35,11 @@ import re
 import subprocess
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, 'scripts'))
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, TOOLS)
+from _workspace import find_workspace  # noqa: E402
+REPO = find_workspace()
 
 DIE_RE = re.compile(r'^<\s*(\d+)><0x([0-9a-fA-F]+)>\s+DW_TAG_(\w+)\s*$')
 ATTR_RE = re.compile(r'^\s+DW_AT_(\w+)\s*(.*?)\s*$')
