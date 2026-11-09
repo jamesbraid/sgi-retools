@@ -177,7 +177,7 @@ def types_spec(path, relocatable):
 
 
 def parser():
-    p = argparse.ArgumentParser(prog='tools/re-run --ghidra-export OBJECT')
+    p = argparse.ArgumentParser(prog='retools/tools/re-run --ghidra-export OBJECT')
     p.add_argument('--decompile-symbol', action='append', default=[], metavar='NAME')
     p.add_argument('--decompile-list', metavar='FILE')
     p.add_argument('--decompile-all', action='store_true')
@@ -417,7 +417,7 @@ def finish(argv):
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in ('prepare', 'finish'):
-        die('usage: ghidra-export.py prepare|finish ... (run it through tools/re-run --ghidra-export)')
+        die('usage: ghidra-export.py prepare|finish ... (run it through retools/tools/re-run --ghidra-export)')
     return {'prepare': prepare, 'finish': finish}[sys.argv[1]](sys.argv[2:]) or 0
 
 

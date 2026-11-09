@@ -95,4 +95,4 @@ else
     mkdir root
     printf 'root/ is empty. Fill it from your own IRIX 6.5.30 install as IRIX_FILES.md describes.\n'
 fi
-printf 'Run a tool with: tools/re-run python3 tools/inventory.py\n'
+printf 'Run a tool with: retools/tools/re-run python3 retools/tools/inventory.py\n'

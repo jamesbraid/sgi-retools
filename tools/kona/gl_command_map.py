@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Map each public GL entry point to the command words its immediate-mode sender stores.
 
-Usage: scripts/gl_command_map.py [--binary FILE] [--out FILE] [--ge-header FILE]
+Usage: retools/tools/kona/gl_command_map.py [--binary FILE] [--out FILE] [--ge-header FILE]
 
 The chain, for each entry stub in the N32 libGLcore:
 

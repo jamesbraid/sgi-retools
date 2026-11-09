@@ -2,7 +2,7 @@
 """Tabulate the board-to-host read header words the N32 libGLcore builds, by running its own routines.
 
 Usage: read_header_sweep.py BINARY
-Run it as `tools/re-run python3 scripts/read_header_sweep.py BINARY`: the image has numpy, unicorn and pyelftools.
+Run it as `retools/tools/re-run python3 retools/tools/odsy/read_header_sweep.py BINARY`: the image has numpy, unicorn and pyelftools.
 
 For each window kind it runs, under Unicorn (the machinery of glcore_probe.py):
   1. __glOdysseyImageDescribeWindow (0x0d989710) on a mode record filled to describe the visual,

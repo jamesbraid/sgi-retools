@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Print the blend-control state each quad of the blend test is drawn under.
 
-Usage: scripts/odydiags_blend_state.py DUMP [DUMP ...]
-       ODYDIAGS_STREAMS=DIR scripts/odydiags_blend_state.py
+Usage: retools/tools/odsy/odydiags_blend_state.py DUMP [DUMP ...]
+       ODYDIAGS_STREAMS=DIR retools/tools/odsy/odydiags_blend_state.py
 
 Each DUMP is a decoded command stream of the blend test, as written by
 odydiags_frame_check.py --dump (one line per command: index, flag, word,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Mechanical fact sheet for one MIPS routine in one build.
 
-Usage: tools/facts.py BINARY[:MEMBER] ROUTINE [--size N] [--flat --load ADDR [--isa mips3|mips4]]
+Usage: retools/tools/facts.py BINARY[:MEMBER] ROUTINE [--size N] [--flat --load ADDR [--isa mips3|mips4]]
                         [--error-routine REGEX ...] [--no-insns] [--out FILE]
 
 BINARY is a shared object, an executable (a linked kernel), a relocatable object or an archive

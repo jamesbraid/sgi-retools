@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/extract_libglcore_mgras.py
+retools/tools/gr4/extract_libglcore_mgras.py
 
 Extracts all DWARF metadata, functions, line tables, and disassembly from
 libglcore/libGLcore.so (MIPS-III N32 OpenGL driver for SGI Impact / MGRAS / GR4).

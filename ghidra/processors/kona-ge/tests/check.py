@@ -4,7 +4,7 @@
 Usage: check.py [OUTDIR]   (default .cache/kona-ge; run-ghidra.sh writes it)
 
   (a) every listed word of ucode/KONA/ge.u: Ghidra's fields equal those of
-      scripts/ge_disasm.py (ucode/ge_listing/), field for field;
+      retools/tools/kona/ge_disasm.py (ucode/ge_listing/), field for field;
   (b) irsaudit's 172-word instruction test (ucode/ge_inst_results.tsv):
       each output word decodes as the output store, and each operation the
       operation table of ucode/ge_ops.md fixes decodes as that operation;

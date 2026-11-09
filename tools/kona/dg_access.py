@@ -13,7 +13,7 @@ instruction address, access, ARM address, bus address, the shift of an
 index register added to it (blank for a constant address), and the value
 stored when it is a known constant.
 
-    scripts/dg_access.py ucode/arm1.s > ucode/dg_access.tsv
+    retools/tools/kona/dg_access.py ucode/arm1.s > ucode/dg_access.tsv
 
 With --functions LISTING ACCESS_TSV it prints instead one markdown table
 row per display-side function of the listing (dg*, i2c_*, eeprom_*, the

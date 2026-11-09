@@ -2,7 +2,7 @@
 """Tests of the MMSC version diff: the help-table pattern and the object-level statuses.
 
 Run in the toolchain container, since the module imports capstone:
-    tools/re-run python3 scripts/test_mmsc_version_diff.py
+    retools/tools/re-run python3 retools/tools/sysco/test_mmsc_version_diff.py
 """
 import collections
 import os

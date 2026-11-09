@@ -13,7 +13,8 @@ mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
 proj=$(mktemp -d /tmp/kona-types-proj.XXXXXX)
 trap 'rm -rf "$proj"' EXIT
-SP="ghidra/import/kona-arm/ghidra_scripts;ghidra/types/kona-types/ghidra_scripts;ghidra/types/kona-types/tests"
+G=$(cd "$(dirname "$0")/../../.." && pwd)
+SP="$G/import/kona-arm/ghidra_scripts;$G/types/kona-types/ghidra_scripts;$G/types/kona-types/tests"
 
 rm -f "$OUT/arm1.u.dump"
 analyzeHeadless "$proj" p -import ucode/KONA/arm1.u -loader BinaryLoader \

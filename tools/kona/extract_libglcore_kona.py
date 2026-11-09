@@ -3,7 +3,7 @@
 # Adapted from scripts/extract_libglcore_mgras.py in https://github.com/techomancer/gr4 for the KONA
 # workspace; board-specific tables were removed.
 """
-scripts/extract_libglcore_kona.py
+retools/tools/kona/extract_libglcore_kona.py
 
 Extracts DWARF metadata, functions, line tables and disassembly from a
 libGLcore.so (MIPS N32 / 64 OpenGL driver) into per-compilation-unit assembly.

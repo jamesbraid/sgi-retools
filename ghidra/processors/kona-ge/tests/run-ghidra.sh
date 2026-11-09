@@ -10,7 +10,7 @@
 # and ghidra/processors/kona-ge/tests/check.py then compares them with the Python
 # disassembler and the documents.
 set -eu
-MOD=ghidra/processors/kona-ge
+MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/kona-ge}
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
@@ -29,7 +29,7 @@ export HOME="$cfg" XDG_CONFIG_HOME="$cfg/.config" XDG_CACHE_HOME="$cfg/.cache"
 export JAVA_TOOL_OPTIONS="-Duser.home=$cfg"
 ext="$cfg/.config/ghidra/ghidra_${ver}_$rel/Extensions"
 mkdir -p "$ext"
-ln -s "$(pwd)/$MOD" "$ext/kona-ge"
+ln -s "$MOD" "$ext/kona-ge"
 
 sleigh "$MOD/data/languages/kona_ge.slaspec" >/dev/null
 

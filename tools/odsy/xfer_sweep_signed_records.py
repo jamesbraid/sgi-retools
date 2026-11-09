@@ -11,13 +11,13 @@ signed COLOR_INDEX shorts and ints).
 
 Usage, from the repository root with root/ filled (IRIX_FILES.md):
 
-    tools/re-run python3 scripts/xfer_sweep_signed_records.py
+    retools/tools/re-run python3 retools/tools/odsy/xfer_sweep_signed_records.py
 
 It runs the 4924-byte routine at 0xd9bd800 of the IP30 32-bit libGLcore under Unicorn
 over 14 pixel formats, 18 destination classes and the six integer component types
 (BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT), once with bit 7 of
 +0x7b70 clear and once set. Library calls and the context's function-pointer entries are
-stubbed as in scripts/attrib_roundtrip.py, which this uses; the result is what the
+stubbed as in retools/tools/odsy/attrib_roundtrip.py, which this uses; the result is what the
 shipped code computes from those inputs, not what the board does with the record.
 
 Output: the count of signed/unsigned pairs whose first 24 record bytes agree apart from

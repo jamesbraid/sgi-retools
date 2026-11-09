@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract the buzz_ucode array from the kernel objects and describe it.
 
-Usage: scripts/extract_buzz_ucode.py [--stats]
+Usage: retools/tools/odsy/extract_buzz_ucode.py [--stats]
 
 Reads odsy_kernel/odsy_init.o (IP30) and odsy_kernel_ip35/odsy_init.o (IP35),
 finds the global object symbol `buzz_ucode` in .data, and writes its bytes

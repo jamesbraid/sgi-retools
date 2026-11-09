@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """General request codes of the Origin 300 L1 package in every set that carries it.
 
-Usage: tools/re-run python3 scripts/l1_request_catalogue.py [--out docs/version-diffs]
-       tools/re-run python3 scripts/l1_request_catalogue.py --series early
+Usage: retools/tools/re-run python3 retools/tools/sysco/l1_request_catalogue.py [--out docs/version-diffs]
+       retools/tools/re-run python3 retools/tools/sysco/l1_request_catalogue.py --series early
 
 --series early covers the early series (1.0.2 to 1.18.3, version_diff.EARLY_SETS) and writes
 l1-early-request-catalogue.tsv and l1-early-request-changes.tsv; its reference column is 1.18.3.
@@ -16,7 +16,7 @@ Writes two TSV files under docs/version-diffs/:
   l1-request-changes.tsv    one row per code that is added, removed, moved to another
                             handler, or whose handler text changes, between consecutive sets
 
-The dispatch is the same run of the compare chain that scripts/version_diff.py uses
+The dispatch is the same run of the compare chain that retools/tools/sysco/version_diff.py uses
 (every code from 0x0000 to 0x7fff, interpreted concretely). Only the general request
 chain is read here; the command loop (task 3), the flash and power-bay tasks and the
 peer forwarding paths are not in this catalogue.

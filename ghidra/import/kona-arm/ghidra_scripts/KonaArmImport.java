@@ -26,7 +26,7 @@
 //  - names functions and data from the image's debug table (arm1.u), or,
 //    for an image without one, by matching each call target's words against
 //    arm1.u with branch and pc-relative offsets masked (the rule of
-//    scripts/arm1_disasm.py), then the display-request table and, for
+//    retools/tools/kona/arm1_disasm.py), then the display-request table and, for
 //    tport.bin, the labels of ucode/tport.md;
 //  - names every ARM-side register and port from ucode/arm1_registers.tsv;
 //  - types the static token list (vector_end) entry by entry, labels each
@@ -276,7 +276,7 @@ public class KonaArmImport extends GhidraScript {
 	}
 
 	// Name the call targets of an image without symbols by arm1.u's masked
-	// words (scripts/arm1_disasm.py --tport); the rest become fn_<address>.
+	// words (retools/tools/kona/arm1_disasm.py --tport); the rest become fn_<address>.
 	void nameByMatch() throws IOException {
 		Path ref = repo.resolve("root/usr/gfx/ucode/KONA/arm1.u");
 		Map<Long, int[]> sigs = new HashMap<>();
@@ -396,7 +396,7 @@ public class KonaArmImport extends GhidraScript {
 
 	// The display-request table: arm1.u's DGDispatchTable {count, handler},
 	// or in an image without symbols the {name, count, handler} table that
-	// starts with the request "Test" (scripts/arm1_disasm.py --tport).
+	// starts with the request "Test" (retools/tools/kona/arm1_disasm.py --tport).
 	void requestTable() throws Exception {
 		for (Map.Entry<Long, List<String>> e : names.entrySet()) {
 			if (e.getValue().contains("DGDispatchTable")) {

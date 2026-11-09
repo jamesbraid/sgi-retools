@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests of fifo_words.py that need no binary: constant folding, the stack, joins and delay slots.
 
-Run from the repository root: python3 scripts/test_fifo_words.py
+Run from the repository root: python3 retools/tools/odsy/test_fifo_words.py
 """
 import importlib.util
 import os

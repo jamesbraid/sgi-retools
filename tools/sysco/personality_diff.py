@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare the ColdFire packages of one L1 container routine by routine against the Origin 300 package.
 
-Usage: tools/re-run python3 scripts/personality_diff.py [--release 6.5.30] [--out docs/personality-diffs]
+Usage: retools/tools/re-run python3 retools/tools/sysco/personality_diff.py [--release 6.5.30] [--out docs/personality-diffs]
 
 For the Base 1MB, MIPS 2MB, Legacy 2MB and 2MB packages of a container, pair every routine of the
 first flash bank with the routines of the Fuel/PE/O300 package using the matcher of version_diff.py

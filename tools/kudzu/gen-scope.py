@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write the binaries and scope sections of scripts/inventory-config.json from scripts/scope.json.
 
-Usage: scripts/gen-scope.py [--check]
+Usage: retools/tools/kudzu/gen-scope.py [--check]
 
 scope.json is the one place that says which binary groups are in scope and why. This script expands
 its path globs against root/ and writes, into the config, the groups for the inventory and one scope
@@ -155,7 +155,7 @@ def main():
     text = json.dumps(cfg, indent=2) + '\n'
     if '--check' in sys.argv[1:]:
         if open(cfgp).read() != text:
-            sys.exit('scripts/inventory-config.json is out of date: run scripts/gen-scope.py')
+            sys.exit('scripts/inventory-config.json is out of date: run retools/tools/kudzu/gen-scope.py')
         print('config matches scope.json')
         return
     open(cfgp, 'w').write(text)

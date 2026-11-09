@@ -13,7 +13,7 @@
 #   diag.listing, diag.functions               the 6.5.7 diagnostic program
 # and ghidra/processors/ge11/tests/check.py then compares them.
 set -eu
-MOD=ghidra/processors/ge11
+MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/ge11}
 DIAG=root/irix-6.5.7-src/stand/arcs/ide/isddevices/graphics/MGRAS
 mkdir -p "$OUT"
@@ -36,7 +36,7 @@ export HOME="$cfg" XDG_CONFIG_HOME="$cfg/.config" XDG_CACHE_HOME="$cfg/.cache"
 export JAVA_TOOL_OPTIONS="-Duser.home=$cfg"
 ext="$cfg/.config/ghidra/ghidra_${ver}_$rel/Extensions"
 mkdir -p "$ext"
-ln -s "$(pwd)/$MOD" "$ext/ge11"
+ln -s "$MOD" "$ext/ge11"
 
 sleigh "$MOD/data/languages/ge11.slaspec" >/dev/null
 

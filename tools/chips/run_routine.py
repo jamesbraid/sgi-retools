@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run shipped routines from a MIPS object over chosen inputs, with a register-file stub.
 
-Usage: scripts/run_routine.py OBJECT.o [--window-hex ...] CALL [CALL ...]
+Usage: retools/tools/chips/run_routine.py OBJECT.o [--window-hex ...] CALL [CALL ...]
        CALL is  name:arg,arg,...   (arguments are integers; the first, the driver's chip record, is built here)
 
 The routine's own bytes are copied out of the object's text section (no relocations are applied,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Mechanical facts for one routine, readable as text, with no container.
 
-Usage: tools/hostfacts.py BINARY[:MEMBER] ROUTINE [--size N] [--flat --load ADDR [--isa mips3|mips4]]
+Usage: retools/tools/hostfacts.py BINARY[:MEMBER] ROUTINE [--size N] [--flat --load ADDR [--isa mips3|mips4]]
                             [--arch mips|m68k|coldfire|arm|thumb|x86-16|x86-32]
                             [--offset N] [--abi NAME] [--elf] [--json]
 

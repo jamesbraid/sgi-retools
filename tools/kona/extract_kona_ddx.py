@@ -3,7 +3,7 @@
 # Adapted from scripts/extract_impact_ddx.py in https://github.com/techomancer/gr4 for the KONA
 # workspace; board-specific tables were removed.
 """
-scripts/extract_kona_ddx.py
+retools/tools/kona/extract_kona_ddx.py
 
 Extracts functions, symbols and disassembly from an X server DDX module
 (ddx/kona.so and its siblings) into per-group assembly for m2c.

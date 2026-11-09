@@ -7,7 +7,7 @@
 # Run from the repository root with analyzeHeadless on PATH and root/
 # populated. Writes OUTDIR/<image>.dump and OUTDIR/<image>.log per image.
 set -eu
-MOD=ghidra/import/kona-arm
+MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/kona-arm}
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)

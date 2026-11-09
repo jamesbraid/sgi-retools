@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/extract_libglcore.py
+retools/tools/gr4/extract_libglcore.py
 
 Extracts all DWARF metadata, functions, line tables, and disassembly from
 root/usr/gfx/arch/IP12GR232/libGLcore.so (MIPS-III N32 OpenGL driver for SGI GR2).
@@ -1324,7 +1324,7 @@ void __glSetError(GLenum code);
         f.write("""/*
  * ctx_libglcore_source.h
  * Master context source for m2c decompiler on libGLcore.so.
- * Generated automatically by scripts/extract_libglcore.py.
+ * Generated automatically by retools/tools/gr4/extract_libglcore.py.
  */
 #define _LANGUAGE_C
 #include "include/glcore_types.h"

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Decode a legacy ATI video option ROM image (the Onyx4 sg2.bin, sg3.bin, sg3a.bin).
 
-Usage: scripts/option_rom.py dump IMAGE
-       scripts/option_rom.py walk IMAGE
-       scripts/option_rom.py diff IMAGE_A IMAGE_B SHIFT
+Usage: retools/tools/voyager/option_rom.py dump IMAGE
+       retools/tools/voyager/option_rom.py walk IMAGE
+       retools/tools/voyager/option_rom.py diff IMAGE_A IMAGE_B SHIFT
 
   dump   the PCI expansion ROM header, the PCI data structure, the legacy ATI header
          and the table slots it holds, each slot with the first bytes of its target.
@@ -16,7 +16,7 @@ Usage: scripts/option_rom.py dump IMAGE
 
 The slot names and table layouts are those of the public driver. They are a
 cross-check, not proof of what the shipped IRIX driver reads. Reads the image only;
-needs no other file. Run it on the host: python3 -I scripts/option_rom.py ...
+needs no other file. Run it on the host: python3 -I retools/tools/voyager/option_rom.py ...
 """
 import struct
 import sys

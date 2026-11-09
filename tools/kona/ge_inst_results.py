@@ -19,7 +19,7 @@ same index, and writes one row per result:
   index, engine address, ge_inst.s line, form, M, r110, r148 of the output
   word, the expected word, and the word read as an IEEE single.
 
-Fields and forms are those of ucode/ge_isa.md (scripts/ge_disasm.py).
+Fields and forms are those of ucode/ge_isa.md (retools/tools/kona/ge_disasm.py).
 """
 import os
 import struct
@@ -81,7 +81,7 @@ def main():
 
     with open(out, 'w') as fh:
         fh.write('# The IR diagnostic engine test (ge_inst.s in diags/IR/ucode/ge.u) and the words\n')
-        fh.write('# irsaudit expects from it (expected_token, IRIX 6.5.30m); scripts/ge_inst_results.py.\n')
+        fh.write('# irsaudit expects from it (expected_token, IRIX 6.5.30m); retools/tools/kona/ge_inst_results.py.\n')
         fh.write('# One row per output instruction, in address order; see ucode/ge_ops.md.\n')
         fh.write('index\taddress\tline\tform\tM\tr110\tr148\texpected\tas_float\n')
         for i, (a, ln, f, m, r110, r148) in enumerate(outputs):

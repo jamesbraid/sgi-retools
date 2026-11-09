@@ -3,7 +3,7 @@
 # Adapted from scripts/extract_libglcore_mgras.py in https://github.com/techomancer/gr4 for the CRIME
 # workspace; board-specific tables were removed.
 """
-scripts/extract_libglcore.py
+retools/tools/crime/extract_libglcore.py
 
 Extracts DWARF metadata, functions, line tables and disassembly from a
 libGLcore.so (MIPS N32 / 64 OpenGL driver) into per-compilation-unit assembly.

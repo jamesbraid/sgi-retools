@@ -1,9 +1,9 @@
 #!/bin/sh
 # Copy the model files a census config names out of the emulator model repository, read only.
-#   tools/export-model.sh CONFIG.json MODEL_CHECKOUT REF
+#   retools/tools/chips/export-model.sh CONFIG.json MODEL_CHECKOUT REF
 # Writes work/model/<file> and work/model/MODEL_REV. Nothing in the checkout changes.
 set -eu
-cd "$(dirname "$0")/.."
+HERE=$(dirname "$(readlink -f "$0")")
 CONFIG=${1:?config}; REPO=${2:?model checkout}; REF=${3:-HEAD}
 mkdir -p work/model
 git -C "$REPO" rev-parse "$REF" > work/model/MODEL_REV

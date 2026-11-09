@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/extract_impact_ddx.py
+retools/tools/gr4/extract_impact_ddx.py
 
 Extracts functions, symbols, and disassembly from ddx/impactpc.so
 (SGI IRIX X11 dynamic DDX driver for Impact / MGRAS graphics).

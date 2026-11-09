@@ -118,7 +118,7 @@ def ranges(ns):
 
 
 with open(out, 'w') as o:
-    o.write('# Distributor program ged1b.u (IRIX 6.5.30m), disassembled by scripts/ged_disasm.py.\n')
+    o.write('# Distributor program ged1b.u (IRIX 6.5.30m), disassembled by retools/tools/kona/ged_disasm.py.\n')
     o.write('# Field layout from irsaudit Compact_GED_Ucode; see ucode/ged.md. Mnemonics are labels.\n')
     o.write('# table A (16 words, x8 = base in table B): ' + ' '.join(f'{v:#x}' for v in table_a) + '\n')
     o.write('# word  value     source:line        instruction    <= table B indexes that start here\n')

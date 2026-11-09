@@ -2,11 +2,11 @@
 """Measure the blend test's frames against the raster rules, and fit the
 colour-interpolation residue of the first panel.
 
-Usage: scripts/odydiags_blend_fit.py [panels|amplify|dither|fit|frame|all]
+Usage: retools/tools/odsy/odydiags_blend_fit.py [panels|amplify|dither|fit|frame|all]
                                      [--image IMAGE]
 
 Needs numpy for fit and frame (for example `uv run --with numpy python
-scripts/odydiags_blend_fit.py fit`), and the odydiags files under root/ that
+retools/tools/odsy/odydiags_blend_fit.py fit`), and the odydiags files under root/ that
 odydiags_frame_check.py reads. frame rebuilds the whole frame six times and
 takes about two minutes.
 
