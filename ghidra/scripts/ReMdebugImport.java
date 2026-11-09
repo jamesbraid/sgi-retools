@@ -7,9 +7,9 @@
  * signature of every procedure and its parameters and locals.
  *
  * The format is the public symbolic-header layout (binutils include/coff/sym.h,
- * symconst.h and ecoff.h). scripts/mdebug.py decodes it the same way and has the
+ * symconst.h and ecoff.h). tools/mdebug.py decodes it the same way and has the
  * format tests; the counts this script prints can be compared with
- * `python3 scripts/mdebug.py OBJECT`.
+ * `python3 tools/mdebug.py OBJECT`.
  *
  * Runs as a headless script with a phase argument:
  *

@@ -10,7 +10,7 @@ FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db
 
 # binutils-mips64-linux-gnuabi64 (2.44) gives mips64-linux-gnuabi64-objdump,
 # -readelf and -nm, which read big-endian o32, n32 and n64 objects alike;
-# scripts/toolchain.py looks for that prefix. dwarfdump (0.11) reads DWARF line
+# tools/toolchain.py looks for that prefix. dwarfdump (0.11) reads DWARF line
 # tables and types. git is there for scripts that ask the repository for a
 # revision.
 RUN apt-get update \
@@ -25,7 +25,7 @@ RUN apt-get update \
 # pyelftools reads ELF and DWARF; pycparser is what m2c parses C with;
 # spimdisasm disassembles MIPS objects (the repositories also carry it as a
 # submodule); capstone disassembles raw words; unicorn runs one MIPS routine
-# under emulation (scripts/mips_shim.py); numpy is for the sweeps that
+# under emulation (tools/mips_shim.py); numpy is for the sweeps that
 # post-process emulator results.
 RUN python3 -m pip install --no-cache-dir --break-system-packages \
       pyelftools==0.32 \
