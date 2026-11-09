@@ -16,9 +16,13 @@ import os
 import struct
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 from elftools.elf.elffile import ELFFile
 
-repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+repo = find_workspace()
 SRC = {'ip30': 'odsy_kernel/odsy_init.o', 'ip35': 'odsy_kernel_ip35/odsy_init.o'}
 OUTDIR = 'root/usr/gfx/ucode/ODSY-kernel'
 LOADED = 12288          # halfwords the odsyInitCfifo loop sends (2048 groups of 6)

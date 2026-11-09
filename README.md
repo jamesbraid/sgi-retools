@@ -6,7 +6,8 @@ fact-sheet tools, and the extractors that are specific to one device family. A w
 holds the findings, tables and configuration; the tools live here.
 
 A workspace pulls this repository in as the `retools/` submodule, pinned to a commit, and
-links the paths it uses into it. Update the pin with
+runs the tools by their submodule path (`retools/tools/re-run`, `retools/tools/inventory.py`).
+Update the pin with
 `git -C retools checkout COMMIT && git add retools`.
 
 ## Layout
@@ -19,9 +20,12 @@ links the paths it uses into it. Update the pin with
 | `ghidra/processors/<name>/` | Ghidra processor extensions with their generators and tests (`kona-ge`, `kona-ged`, `odsy-buzz`, `ge11`) |
 | `ghidra/import/<name>/`, `ghidra/types/<name>/` | firmware importers and data-type scripts (`kona-arm`, `kona-types`, `mmsc-aout`) |
 
-There are no symlinks in this repository. Tools that name paths of their workspace
-(`docs/`, `root/`, `scripts/inventory-config.json`) find the workspace through the link they
-were started by, not through this repository, so they must be run by the workspace's path.
+There are no symlinks in this repository, and none are needed in a workspace. Tools that name
+paths of their workspace (`docs/`, `root/`, `scripts/inventory-config.json`) take the workspace
+from `--repo DIR` where the tool has it, else `$ORIGAMI_RE_WORKSPACE`, else the git work tree
+around the current directory, else the current directory (`tools/_workspace.py`, and the same
+rule in `tools/re-run`). Run them from the workspace. A tool finds its own siblings and data
+from its file path, so it does not matter where retools is checked out.
 
 ## For agents without containers
 

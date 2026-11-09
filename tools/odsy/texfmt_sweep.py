@@ -23,6 +23,10 @@ import os
 import struct
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 from elftools.elf.elffile import ELFFile
 from unicorn import Uc, UcError, UC_ARCH_MIPS, UC_MODE_BIG_ENDIAN, UC_MODE_MIPS32, UC_MODE_MIPS64
 from unicorn.mips_const import (UC_MIPS_REG_0, UC_MIPS_REG_A0, UC_MIPS_REG_A1, UC_MIPS_REG_A2,
@@ -30,7 +34,7 @@ from unicorn.mips_const import (UC_MIPS_REG_0, UC_MIPS_REG_A0, UC_MIPS_REG_A1, U
                                 UC_MIPS_REG_SP, UC_MIPS_REG_T0, UC_MIPS_REG_T1, UC_MIPS_REG_T2,
                                 UC_MIPS_REG_T3, UC_MIPS_REG_T9, UC_MIPS_REG_V0)
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'root')
+ROOT = os.path.join(find_workspace(), 'root')
 A30 = 'usr/gfx/arch/IP30ODSY%s/libGLcore.so'
 A35 = 'usr/gfx/arch/IP35ODSY%s/libGLcore.so'
 P = 'builds/vpro-patch-4103/usr/gfx/arch/IP30ODSY%s/libGLcore.so'

@@ -52,6 +52,7 @@ import tempfile
 os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+from _workspace import find_workspace  # noqa: E402
 
 import inventory  # noqa: E402  the same file in every workspace
 
@@ -196,7 +197,7 @@ class Image:
         """Names the workspace inventory gives this file (DWARF and .mdebug names of static routines
         the symbol tables lack), from docs/inventory/functions.tsv."""
         key = self.table_key()
-        tsv = os.path.join(os.path.dirname(HERE), 'docs', 'inventory', 'functions.tsv')
+        tsv = os.path.join(find_workspace(), 'docs', 'inventory', 'functions.tsv')
         if key is None or not os.path.exists(tsv):
             return
         rows = _TSV.get(tsv)

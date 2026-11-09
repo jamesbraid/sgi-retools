@@ -41,7 +41,11 @@ import subprocess
 import sys
 import tempfile
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, TOOLS)
+from _workspace import find_workspace  # noqa: E402
+REPO = find_workspace()
 DOC = os.path.join(REPO, 'docs', 'registers.md')
 CONFIG = os.path.join(REPO, 'scripts', 'inventory-config.json')
 FUNCS = os.path.join(REPO, 'docs', 'inventory', 'functions.tsv')
@@ -122,7 +126,7 @@ def run_inventory(label, key, scratch):
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(cfg, f)
     out = os.path.join(scratch, label)
-    r = subprocess.run([sys.executable, os.path.join(REPO, 'scripts', 'inventory.py'), '--config', path,
+    r = subprocess.run([sys.executable, os.path.join(TOOLS, 'inventory.py'), '--config', path,
                         '--out', out, '--no-coverage'], cwd=REPO, capture_output=True, text=True)
     if r.returncode:
         sys.exit('inventory run for %s failed:\n%s' % (label, r.stdout[-2000:] + r.stderr[-2000:]))

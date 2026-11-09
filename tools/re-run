@@ -1,17 +1,23 @@
 #!/bin/sh
-# Run a command in the toolchain container with this repository mounted at /work.
+# Run a command in the toolchain container with the workspace mounted at /work.
 #
-#   tools/re-run [--ghidra] [--workspace DIR] [--] [COMMAND...]
-#   tools/re-run [--workspace DIR] --ghidra-export OBJECT [OPTIONS...]
-#   tools/re-run --syscalls KERNEL... [OPTIONS...]
-#   tools/re-run --syssgi KERNEL... [OPTIONS...]
+#   retools/tools/re-run [--ghidra] [--workspace DIR] [--] [COMMAND...]
+#   retools/tools/re-run [--workspace DIR] --ghidra-export OBJECT [OPTIONS...]
+#   retools/tools/re-run --syscalls KERNEL... [OPTIONS...]
+#   retools/tools/re-run --syssgi KERNEL... [OPTIONS...]
 #
-#   tools/re-run python3 tools/inventory.py
-#   tools/re-run mips64-linux-gnuabi64-objdump -h root/unix
-#   tools/re-run                       # a shell in the container
-#   tools/re-run --ghidra analyzeHeadless /tmp/ghidra-projects p -import root/unix
-#   tools/re-run --ghidra-export root/usr/gfx/arch/IP27KONA32/libGLcore.so \
+#   retools/tools/re-run python3 retools/tools/inventory.py
+#   retools/tools/re-run mips64-linux-gnuabi64-objdump -h root/unix
+#   retools/tools/re-run                       # a shell in the container
+#   retools/tools/re-run --ghidra analyzeHeadless /tmp/ghidra-projects p -import root/unix
+#   retools/tools/re-run --ghidra-export root/usr/gfx/arch/IP27KONA32/libGLcore.so \
 #       --decompile-symbol NAME --types ghidra/types/ctx.types.json
+#
+# The workspace is the repository holding root/ and docs/, not the retools checkout this file is
+# in. It is --workspace DIR, else $ORIGAMI_RE_WORKSPACE, else the git work tree around the current
+# directory, else the current directory. Run it from the workspace and nothing needs setting. The
+# retools checkout is also mounted read-only at /opt/retools, so its tools can be run from
+# there (/opt/retools/tools/inventory.py) wherever it sits.
 #
 # Needs Podman (rootless is fine) and nothing else. The image is built from
 # retools/tools/Containerfile the first time and again whenever that file changes; it
@@ -22,21 +28,21 @@
 # Ghidra scripts under /opt/re-scripts, built from retools/ghidra/scripts/.
 #
 # --ghidra-export OBJECT runs Ghidra over OBJECT, an ELF file in the
-# repository (a linked library, a kernel, a relocatable driver object), and
+# workspace, relative to its top (a linked library, a kernel, a relocatable driver object), and
 # writes decompiled C per function as JSON under .cache/ghidra-export/, naming
 # the file on stdout. OPTIONS: --decompile-symbol NAME|GLOB|@0xADDR (repeat),
 # --decompile-list FILE, --decompile-all, --decompile-timeout S, --types
 # SPEC.json, --mdebug (import the object's .mdebug table), --bsim-db NAME --bsim-label LABEL (similarity database under
-# .cache/ghidra-bsim), --timeout S, --cpus N. It builds both images and needs
-# the repository itself as the workspace. Decompiler and BSim output is
-# navigation, not evidence. tools/ghidra-export.py has the full list.
+# .cache/ghidra-bsim), --timeout S, --cpus N. It builds both images. Decompiler
+# and BSim output is
+# navigation, not evidence. retools/tools/ghidra-export.py has the full list.
 #
-# --syscalls KERNEL... runs tools/syscall_table.py: the system call table of each linked
-# kernel as TSV on stdout. --syssgi KERNEL... runs tools/syssgi_selectors.py: the syssgi()
+# --syscalls KERNEL... runs retools' syscall_table.py: the system call table of each linked
+# kernel as TSV on stdout. --syssgi KERNEL... runs syssgi_selectors.py: the syssgi()
 # selector dispatch. Both take --out FILE, --cross-check DIR (a directory of public lists) and
-# --report FILE; see the top of each script. Kernel paths are inside the repository (root/ works).
+# --report FILE; see the top of each script. Kernel paths are inside the workspace (root/ works).
 #
-# The repository is mounted read-write at /work, as your own user id, so
+# The workspace is mounted read-write at /work, as your own user id, so
 # generated files are yours. root/ (the IRIX files you copied in, see
 # IRIX_FILES.md) is inside it. If root/ is a symlink to a directory elsewhere,
 # that directory is mounted read-only at the path the link resolves to inside
@@ -48,14 +54,13 @@
 #   RE_ENGINE=CMD   container command to use instead of podman
 #   RE_NOTTY=1      never allocate a terminal
 set -eu
-# This file is shared: a workspace's tools/re-run is a link into the retools submodule. The
-# workspace is the directory holding the link; the container definitions and the Ghidra
-# scripts are in the submodule, found through the link's target.
-here=$(cd "$(dirname "$0")" && pwd -P)
-repo=$(dirname "$here")
-shared=$(dirname "$(dirname "$(readlink -f "$0")")")
+# This file lives in the retools submodule and is run by that path. The container definitions,
+# the Ghidra scripts and the sibling tools are found from this file (shared is retools' top); the
+# workspace is not, it comes from --workspace, $ORIGAMI_RE_WORKSPACE or the current directory.
+self=$(readlink -f "$0")
+shared=$(dirname "$(dirname "$self")")
 engine=${RE_ENGINE:-podman}
-workspace=$repo
+workspace=${ORIGAMI_RE_WORKSPACE:-}
 ghidra=
 export=
 tool=
@@ -64,13 +69,16 @@ while [ $# -gt 0 ]; do
         --workspace) workspace=$2; shift 2 ;;
         --ghidra) ghidra=1; shift ;;
         --ghidra-export) export=${2:?--ghidra-export needs an object}; shift 2; break ;;
-        --syscalls) tool=tools/syscall_table.py; shift; break ;;
-        --syssgi) tool=tools/syssgi_selectors.py; shift; break ;;
+        --syscalls) tool=syscall_table.py; shift; break ;;
+        --syssgi) tool=syssgi_selectors.py; shift; break ;;
         --) shift; break ;;
         -h|--help) sed -n '2,/^set -eu/{/^set -eu/!p;}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) break ;;
     esac
 done
+if [ -z "$workspace" ]; then
+    workspace=$(git -C . rev-parse --show-toplevel 2>/dev/null || pwd)
+fi
 if [ ! -d "$workspace" ]; then
     printf 're-run: workspace %s is not a directory\n' "$workspace" >&2
     exit 2
@@ -78,15 +86,15 @@ fi
 workspace=$(cd "$workspace" && pwd -P)
 
 if [ -n "$export" ]; then
-    [ "$workspace" = "$repo" ] || { printf 're-run: --ghidra-export runs on this repository itself\n' >&2; exit 2; }
-    case $export in "$repo"/*) export=${export#"$repo"/} ;; /*)
-        printf 're-run: --ghidra-export: %s is outside the repository\n' "$export" >&2; exit 2 ;; esac
+    case $export in "$workspace"/*) export=${export#"$workspace"/} ;; /*)
+        printf 're-run: --ghidra-export: %s is outside the workspace\n' "$export" >&2; exit 2 ;; esac
     job=.cache/ghidra-export/$(date +%Y%m%d-%H%M%S)-$$
-    mkdir -p "$repo/$job"
+    mkdir -p "$workspace/$job"
     export RE_NOTTY=1
-    "$0" -- python3 tools/ghidra-export.py prepare --job "$job" "$@" "$export" || exit $?
-    "$0" --ghidra -- sh "$job/ghidra.sh" || exit $?
-    exec "$0" -- python3 tools/ghidra-export.py finish --job "$job"
+    # ghidra-export.py is retools' own, next to this file, reached through the /opt/retools mount.
+    "$self" --workspace "$workspace" -- python3 /opt/retools/tools/ghidra-export.py prepare --job "$job" "$@" "$export" || exit $?
+    "$self" --workspace "$workspace" --ghidra -- sh "$job/ghidra.sh" || exit $?
+    exec "$self" --workspace "$workspace" -- python3 /opt/retools/tools/ghidra-export.py finish --job "$job"
 fi
 
 if [ -n "$ghidra" ]; then
@@ -101,7 +109,7 @@ else
     tag=$name:$(sha256sum "$file" | cut -c1-12)
 fi
 if ! $engine image exists "$tag" >/dev/null 2>&1; then
-    printf 're-run: building %s from %s\n' "$tag" "${file#"$repo"/}" >&2
+    printf 're-run: building %s from %s\n' "$tag" "$file" >&2
     $engine build -q -t "$tag" -f "$file" "$shared" >/dev/null
 fi
 
@@ -123,7 +131,7 @@ if [ -L "$workspace/root" ]; then
     esac
 fi
 
-[ -z "$tool" ] || set -- python3 "$tool" "$@"
+[ -z "$tool" ] || set -- python3 "/opt/retools/tools/$tool" "$@"
 [ $# -gt 0 ] || set -- bash
 tty=
 if [ -z "${RE_NOTTY:-}" ] && [ -t 0 ] && [ -t 1 ]; then tty=-it; fi
@@ -131,4 +139,5 @@ if [ -z "${RE_NOTTY:-}" ] && [ -t 0 ] && [ -t 1 ]; then tty=-it; fi
 # mounts work on SELinux hosts.
 # shellcheck disable=SC2086
 exec $engine run --rm $tty --userns=keep-id --security-opt label=disable \
-    -v "$workspace:/work" $mounts -w /work -e HOME=/tmp -e XDG_CONFIG_HOME=/tmp/.config "$tag" "$@"
+    -v "$workspace:/work" -v "$shared:/opt/retools:ro" $mounts -w /work -e ORIGAMI_RE_WORKSPACE=/work \
+    -e HOME=/tmp -e XDG_CONFIG_HOME=/tmp/.config "$tag" "$@"

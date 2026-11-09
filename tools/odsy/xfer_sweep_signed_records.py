@@ -32,8 +32,12 @@ import os
 import struct
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(HERE)
+REPO = find_workspace()
 sys.path.insert(0, HERE)
 from attrib_roundtrip import RoundTrip, CTX, ALLOC, STUB, TAB  # noqa: E402
 from mips_shim import install  # noqa: E402

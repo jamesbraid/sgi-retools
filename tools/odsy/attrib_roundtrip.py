@@ -25,6 +25,10 @@ import os
 import struct
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from glcore_probe import Probe, CTX, STACK, DONE, ARGREGS  # noqa: E402
 from mips_shim import install  # noqa: E402
@@ -137,8 +141,7 @@ def main():
     ap.add_argument('masks', nargs='+', type=lambda s: int(s, 0))
     ap.add_argument('--push', type=lambda s: int(s, 0), default=0xd957f00)
     ap.add_argument('--pop', type=lambda s: int(s, 0), default=0xd958f60)
-    ap.add_argument('--inventory', default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                         '..', 'docs', 'inventory', 'functions.tsv'))
+    ap.add_argument('--inventory', default=os.path.join(find_workspace(), 'docs', 'inventory', 'functions.tsv'))
     a = ap.parse_args()
     for mask in a.masks:
         p = RoundTrip(a.binary, a.inventory)

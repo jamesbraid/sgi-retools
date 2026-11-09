@@ -15,13 +15,15 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.dirname(HERE))
+from _workspace import find_workspace  # noqa: E402
 from display_files import load  # noqa: E402
 
 POST = (2, 4, 8, 16)
 
 
 def main():
-    root = os.path.join(os.path.dirname(HERE), 'root')
+    root = os.path.join(find_workspace(), 'root')
     if len(sys.argv) == 3 and sys.argv[1] == '--root':
         root = sys.argv[2]
     files = sorted(glob.glob(os.path.join(root, 'usr/gfx/ucode/ODSY/vof/*.vfo')))

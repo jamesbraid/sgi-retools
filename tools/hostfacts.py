@@ -61,15 +61,6 @@ sys.path.insert(0, HERE)
 
 import facts  # noqa: E402  the same file in every workspace
 
-# facts.py finds docs/inventory/functions.tsv one level above its own scripts directory, and a
-# workspace starts it through its scripts/ links. Started as retools/tools/hostfacts.py, the
-# workspace is the directory holding retools/; started from another checkout of this repository
-# (a copy under a scratch directory), it is the current directory when that holds docs/inventory.
-if os.path.basename(os.path.dirname(HERE)) == 'retools':
-    facts.HERE = os.path.join(os.path.dirname(os.path.dirname(HERE)), 'scripts')
-elif os.path.isdir(os.path.join(os.getcwd(), 'docs', 'inventory')):
-    facts.HERE = os.path.join(os.getcwd(), 'scripts')
-
 M64 = facts.M64
 GPR = {n: i for i, n in enumerate(facts.NAMES_O32)}
 GPR.update({'fp': 30, 'a4': 8, 'a5': 9, 'a6': 10, 'a7': 11})

@@ -9,7 +9,9 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from _workspace import find_workspace  # noqa: E402
+REPO_ROOT = Path(find_workspace())
 GL_XML = REPO_ROOT / "OpenGL-Registry" / "xml" / "gl.xml"
 OUTPUT_DIR = REPO_ROOT / "libglcore" / "include"
 

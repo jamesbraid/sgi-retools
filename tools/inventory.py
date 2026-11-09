@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure what the workspace has covered, from the binaries.
 
-Usage: tools/inventory.py [--config scripts/inventory-config.json]
+Usage: tools/inventory.py [--repo DIR] [--config scripts/inventory-config.json]
                             [--out docs/inventory] [--no-coverage] [--jobs N]
 
 Run it from the repository root with root/ populated (IRIX_FILES.md), inside
@@ -52,11 +52,14 @@ import tempfile
 # Child tools and every sort must not depend on the caller's locale: text is read and written as UTF-8
 # explicitly, and the tools run under the C locale.
 os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, 'scripts'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import mips_xlate  # noqa: E402
+from _workspace import find_workspace, repo_arg  # noqa: E402
+
+# The workspace is the repository whose root/ and docs/ this reads, found from the current directory
+# (or --repo, $ORIGAMI_RE_WORKSPACE), not from this file: it lives in the retools submodule.
+REPO = find_workspace(repo_arg(sys.argv[1:]))
 
 STATUSES = ('undocumented', 'named-only', 'located', 'understood', 'no-software-dependency')
 RANK = {'understood': 4, 'no-software-dependency': 3, 'located': 2, 'named-only': 1, 'undocumented': 0}
@@ -3231,6 +3234,9 @@ def context_words(cfg, key):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    ap.add_argument('--repo', metavar='DIR',
+                    help='the workspace to read and write (default: $ORIGAMI_RE_WORKSPACE, else the git '
+                         'work tree around the current directory, else the current directory)')
     ap.add_argument('--config', default=os.path.join(REPO, 'scripts', 'inventory-config.json'))
     ap.add_argument('--out', default=os.path.join(REPO, 'docs', 'inventory'))
     ap.add_argument('--no-coverage', action='store_true')

@@ -118,7 +118,7 @@ class InventoryAddressZero(unittest.TestCase):
                 f.write(self.ROWS)
             img = image([])
             img.path, img.member, img.kind = 'root/usr/cpu/sysgen/IP35boot/pcibr.o', None, 'object'
-            with patch.object(facts, 'HERE', os.path.join(td, 'scripts')):
+            with patch.object(facts, 'find_workspace', lambda: td):
                 img.inventory_names(set())
         self.assertEqual(img.syms, [(0, 1188, 'first_routine', '.text', True, 'inventory')])
 

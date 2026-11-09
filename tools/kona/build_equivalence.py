@@ -37,11 +37,15 @@ import re
 import subprocess
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import toolchain  # noqa: E402
 from resolve_got import build_got_map  # noqa: E402
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+ROOT = find_workspace()
 BUILDS = {
     'o32': 'usr/gfx/arch/IP27KONA/libGLcore.so',
     'n32': 'usr/gfx/arch/IP27KONA32/libGLcore.so',

@@ -16,6 +16,10 @@ import os
 import struct
 import sys
 
+# The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _workspace import find_workspace  # noqa: E402
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from read_header_sweep import Run, CTX, SIZES  # noqa: E402
 
@@ -34,7 +38,7 @@ TYPES = dict(B=0x1400, UB=0x1401, S=0x1402, US=0x1403, I=0x1404, UI=0x1405, UB33
 
 def main():
     path = sys.argv[1]
-    inv = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'inventory', 'functions.tsv')
+    inv = os.path.join(find_workspace(), 'docs', 'inventory', 'functions.tsv')
     r = Run(path, inv)
     seen = {}
     print('%-16s %-10s %-5s %-6s %-6s %-6s %-4s %-4s' % ('format', 'type', 'dst', 'code', 'burst', 'size', 'expd', 'bpp?'))
