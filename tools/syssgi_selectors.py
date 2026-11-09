@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract the syssgi() selector dispatch from an IRIX kernel image.
 
-    python3 tools/syssgi_selectors.py KERNEL [KERNEL...] [--out FILE.tsv]
+    python3 retools/tools/syssgi_selectors.py KERNEL [KERNEL...] [--out FILE.tsv]
             [--cross-check DIR] [--report FILE.tsv] [--function NAME]
 
 KERNEL is a linked kernel (unix.IPnn), a 64-bit big-endian ELF file. The script finds the `syssgi`

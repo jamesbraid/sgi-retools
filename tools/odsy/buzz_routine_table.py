@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write the routine table of ucode/buzz_routines.md from buzz_xform.bin.
 
-Usage: scripts/buzz_routine_table.py > TABLE
+Usage: retools/tools/odsy/buzz_routine_table.py > TABLE
 
 A routine runs from a start record to the next record whose bits 1:0 are 1 or
 2 (an end mark); a start is record 0, a libGLcore list entry, or the record

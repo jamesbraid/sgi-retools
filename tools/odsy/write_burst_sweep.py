@@ -2,7 +2,7 @@
 """Tabulate the pixel-burst tag the N32 libGLcore picks for each image-write source, by running its own routine.
 
 Usage: write_burst_sweep.py BINARY
-Run it as `tools/re-run python3 scripts/write_burst_sweep.py BINARY`: the image has numpy, unicorn and pyelftools.
+Run it as `retools/tools/re-run python3 retools/tools/odsy/write_burst_sweep.py BINARY`: the image has numpy, unicorn and pyelftools.
 
 Runs __glOdysseyImageCalcXferWriteParams (0x0d9bd800) under Unicorn (the machinery of read_header_sweep.py)
 for every format and type the write builder can send and every destination pixel class, on a zeroed

@@ -19,7 +19,7 @@ each callee name from its call table (GOT slot formula), so a callee is named on
 fact sheet names it; any other indirect call is shown by the load that forms its address.
 
 Run from the repository root through tools/re-run:
-  python3 tools/capability_tree.py root/builds/.../libGLcore.so __glim_Enable [more routines] \
+  python3 retools/tools/capability_tree.py root/builds/.../libGLcore.so __glim_Enable [more routines] \
       [--range 0 0x10000] [--out docs/capability-trees.md]
 Each routine argument is NAME or NAME@BINARY; the first binary is the default.
 """

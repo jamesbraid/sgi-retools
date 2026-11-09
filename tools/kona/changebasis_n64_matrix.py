@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""scripts/changebasis_n64_matrix.py - print the matrix the 64-bit libGLcore routine
+"""retools/tools/kona/changebasis_n64_matrix.py - print the matrix the 64-bit libGLcore routine
 `changebasis` applies for each order, by interpreting its instructions.
 
-The O32 routine is run under Unicorn (scripts/changebasis_o32_matrix.py). The
+The O32 routine is run under Unicorn (retools/tools/kona/changebasis_o32_matrix.py). The
 64-bit routine uses the MIPS IV fused multiply-add instructions (madd.d, msub.d,
 nmsub.d) that Unicorn does not execute, so this script disassembles the routine
 with objdump (address and size from docs/inventory/functions.tsv, usr/gfx/arch/
@@ -14,7 +14,7 @@ its control values, so the unit vectors of an order n give the n by n matrix
 (row r is output r, column c is input c). Needs pyelftools (the toolchain
 container has it):
 
-  python3 scripts/changebasis_n64_matrix.py [first_order last_order]
+  python3 retools/tools/kona/changebasis_n64_matrix.py [first_order last_order]
 """
 import csv
 import os

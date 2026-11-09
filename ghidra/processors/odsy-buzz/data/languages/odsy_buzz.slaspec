@@ -3,7 +3,7 @@
 # Sources: ucode/buzz_isa.md (word format, fields, the latch-and-fire timing,
 # the lane read rule, scalar codes and their pairs, the output stage, the
 # colour unit, end marks) and ucode/buzz_routines.md (routines, the program
-# table). Field names are the listing's (scripts/buzz_ucode_disasm.py), not
+# table). Field names are the listing's (retools/tools/odsy/buzz_ucode_disasm.py), not
 # SGI's. Labels in the comments are those of buzz_isa.md: ESTABLISHED,
 # INFERRED or UNKNOWN. Every timing rule is INFERRED except the eleven-record
 # distance from a latch to the output stage, which buzz_isa.md pass 18
@@ -25,7 +25,7 @@
 # (an output-stage result, seven records on, for port V) and FQ (a code 1 or
 # 0xc result, usable as the 0xe/6 factor four records on). Each slot has a
 # valid flag (the *V registers); a unit whose input slot is empty takes
-# NOSRC, the '-' of scripts/buzz_ucode_dataflow.py. Inside a routine the
+# NOSRC, the '-' of retools/tools/odsy/buzz_ucode_dataflow.py. Inside a routine the
 # flags are constants and the decompiler folds them; at a routine entry they
 # are what the routine before left, so they show as inputs.
 
@@ -66,7 +66,7 @@ define register offset=0x100 size=4 [ AX AY AZ AW BX BY BZ BW NBX NBY NBZ NBW
     K NK F INVW CSR CSG CSB CSA OSINK NOSRC ];
 # NOSRC is never written: a unit whose input slot is empty under the rules (the
 # routine before left it, or nothing feeds it) takes it, and the decompiler
-# shows it as in_NOSRC, the '-' of scripts/buzz_ucode_dataflow.py. OSINK
+# shows it as in_NOSRC, the '-' of retools/tools/odsy/buzz_ucode_dataflow.py. OSINK
 # takes the output of records that send no word.
 # Delay lines; slot 0 is what arrives in the current record.
 define register offset=0x200 size=4 [ VQ0 VQ1 VQ2 VQ3 VQ4 VQ5 VQ6 VQ7
@@ -405,7 +405,7 @@ PP: is xln2=1 & cb=3 & PPD { local b:1 = 3; PPD = portp_source(b); }
 # The stage takes the product fired ten records before, else the scalar
 # result of four records before; with d2 bit 7 and a bit 1 set, the parameter
 # word read two records before (INFERRED, passes 12, 13; the order is that of
-# scripts/buzz_ucode_dataflow.py). The word field of the same record outputs
+# retools/tools/odsy/buzz_ucode_dataflow.py). The word field of the same record outputs
 # the result; port V can take it seven records later.
 SSRC: is d2k=1 & xa1=1 { export PQ0; }
 SSRC: is d2k=0 {
@@ -545,7 +545,7 @@ BODY: is FIRE & LOAD & LREAD & ISS & KF & SCAL & PMR & STO & PV & PP & STG & HDR
     if (FQV0 == 0) goto <nf>;
     F = FQ0;
 <nf>
-    # Then the units, in the order scripts/buzz_ucode_dataflow.py runs them.
+    # Then the units, in the order retools/tools/odsy/buzz_ucode_dataflow.py runs them.
     build FIRE; build LOAD; build LREAD; build ISS; build KF; build SCAL;
     build PMR; build STO; build PV; build PP; build STG; build HDR; build COL;
 }

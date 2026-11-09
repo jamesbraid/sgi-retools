@@ -87,7 +87,7 @@ def bound(name, handler_name):
 with open(out_banks, 'w') as f:
     f.write('# The distributor 512-entry table (ged1b.u second segment) as eight banks of 64.\n')
     f.write('# bank = bits 6-8 of the command number n, k = n & 63; source = file and line of the\n')
-    f.write('# entry word from the assembler line table. Produced by scripts/ged_route.py.\n')
+    f.write('# entry word from the assembler line table. Produced by retools/tools/kona/ged_route.py.\n')
     f.write('n\tbank\tk\tentry\tsource\tline\n')
     for n in range(512):
         e = tab[n]
@@ -103,7 +103,7 @@ with open(out_route, 'w') as f:
     f.write('# is open in ged.md. bound = yes when the handler table fixes the handler (ucode/arm1.md),\n')
     f.write('# never for the geometry form. span = words from the entry to the next entry point of any\n')
     f.write('# command number; handlers = relocated slot words inside the span. Produced by\n')
-    f.write('# scripts/ged_route.py.\n')
+    f.write('# retools/tools/kona/ged_route.py.\n')
     f.write('token\tname\tn\tbank\tk\tentry\tsource\tline\tspan\tbound\thandlers\tform\tidle_entry\tidle_source\n')
     for ln_ in open(hw):
         if ln_.startswith('#') or ln_.startswith('token'):

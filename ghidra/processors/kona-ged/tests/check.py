@@ -1,8 +1,8 @@
-"""Compare the KONA-GED import of ged1b.u with scripts/ged_disasm.py.
+"""Compare the KONA-GED import of ged1b.u with retools/tools/kona/ged_disasm.py.
 
 Usage: python3 ghidra/processors/kona-ged/tests/check.py [DUMPDIR]   (default .cache/kona-ged)
 
-Runs scripts/ged_disasm.py into DUMPDIR/ged_listing.txt, then checks every
+Runs retools/tools/kona/ged_disasm.py into DUMPDIR/ged_listing.txt, then checks every
 program word of DUMPDIR/ged1b.listing (tests/run-ghidra.sh) against it:
 the same mnemonic and the same operands. Ghidra prints numbers in hex and a
 transfer target as a byte address; the comparison reads every number as a
@@ -17,9 +17,12 @@ import subprocess
 import sys
 
 D = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '.cache/kona-ged')
-os.chdir(os.path.dirname(os.path.abspath(__file__)) + '/../../../..')
+RETOOLS_TOOLS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', 'tools')
+sys.path.insert(0, RETOOLS_TOOLS)
+import _workspace  # noqa: E402
+os.chdir(_workspace.find_workspace())
 ref = os.path.join(D, 'ged_listing.txt')
-subprocess.run([sys.executable, 'scripts/ged_disasm.py', 'ucode/KONA/ged1b.u', ref], check=True)
+subprocess.run([sys.executable, os.path.join(RETOOLS_TOOLS, 'kona', 'ged_disasm.py'), 'ucode/KONA/ged1b.u', ref], check=True)
 
 
 def norm_tok(t):
@@ -69,7 +72,7 @@ for i, (w, toks) in sorted(want.items()):
         bad += 1
         if bad <= 20:
             print(f'FAIL word {i:03x} {w}: ged_disasm.py {toks}, Ghidra {g}')
-print(f'{len(want) - bad} of {len(want)} words match scripts/ged_disasm.py')
+print(f'{len(want) - bad} of {len(want)} words match retools/tools/kona/ged_disasm.py')
 missing = sorted(starts - funcs)
 for i in missing:
     bad += 1

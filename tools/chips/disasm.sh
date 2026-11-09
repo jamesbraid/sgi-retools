@@ -1,14 +1,14 @@
 #!/bin/sh
 # Stage 1: disassemble every image a census config names, inside the build container.
-#   tools/disasm.sh CONFIG.json            run from the census directory (the workspace)
+#   retools/tools/chips/disasm.sh CONFIG.json            run from the census directory (the workspace)
 # root/ in the workspace holds one symlink per IRIX tree (see HAIKU-BRIEF.md, setup).
 # The container is tools/re-run; RR=/path/to/wrapper or RE_RUN=/path/to/re-run override it.
 set -eu
-cd "$(dirname "$0")/.."
+HERE=$(dirname "$(readlink -f "$0")")
 CONFIG=${1:?usage: disasm.sh CONFIG.json}
 # RR is a wrapper that takes the command alone; RE_RUN takes --workspace DIR -- COMMAND.
 RR=${RR:-}
-RE_RUN=${RE_RUN:-tools/re-run}
+RE_RUN=${RE_RUN:-$HERE/../re-run}
 mkdir -p work/dis work/prom
 python3 - "$CONFIG" > work/dis/.commands.sh <<'PY'
 import json, sys
@@ -23,7 +23,7 @@ for i in c['images']:
             secs = ' '.join('-j %s' % x for x in i.get('lit_sections', ['.lit8', '.srdata']))
             print("mips64-linux-gnuabi64-objdump -s %s %s > %s" % (secs, i['path'], i['literals']))
     elif i['kind'] == 'promgen64':
-        print("python3 tools/promgen64.py %s work/prom %s" % (i['path'], i['label']))
+        print("python3 retools/tools/chips/promgen64.py %s work/prom %s" % (i['path'], i['label']))
         print("mips64-linux-gnuabi64-objdump -D -b binary -m %s -EB --adjust-vma=%s -w -M no-aliases,gpr-names=numeric --no-show-raw-insn work/prom/%s.%s.bin > %s"
               % (i.get('arch', 'mips:isa64'), i['vma'], i['label'], i['segment'], out))
     elif i['kind'] == 'raw':

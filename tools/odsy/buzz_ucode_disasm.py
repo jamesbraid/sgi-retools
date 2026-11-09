@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """List a BUZZ microcode image record by record, split into provisional fields.
 
-Usage: scripts/buzz_ucode_disasm.py IMAGE [--kernel] > LISTING
+Usage: retools/tools/odsy/buzz_ucode_disasm.py IMAGE [--kernel] > LISTING
 
 IMAGE is ucode/ODSY/buzz_xform.bin or ucode/buzz_ucode_ip30.bin. Both are
 big-endian arrays of 16-bit values, six per record. A record is one 96-bit

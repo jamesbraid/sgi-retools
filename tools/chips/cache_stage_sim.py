@@ -5,7 +5,7 @@ Usage: cache_stage_sim.py PROM.bin [--sc-size BYTES] [--sc-block 64|128]
                           [--dword hi-lo|lo-hi] [--miss flash|zero] [--victim invalid-first|way0]
                           [--copy-len N] [--trace] [--regions] [--matrix]
 
-PROM.bin is the flat `ip35prom` segment unpacked by tools/promgen64.py (load address
+PROM.bin is the flat `ip35prom` segment unpacked by retools/tools/chips/promgen64.py (load address
 0xc00000001fc00000, physical 0x1fc00000). The routine under test is 0x1fc04980..0x1fc04e8c,
 entered through its two callers, the copy wrapper (0x1fc05910) and the verify wrapper
 (0x1fc059d0). The interpreter runs only the integer, CP1-move, CP0-move and CACHE

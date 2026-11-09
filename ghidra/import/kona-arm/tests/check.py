@@ -193,7 +193,9 @@ def check_other():
         ports(g, name, need)
 
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)) + '/../../../..')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', 'tools'))
+import _workspace  # noqa: E402
+os.chdir(_workspace.find_workspace())
 check_arm1()
 check_tport()
 check_other()

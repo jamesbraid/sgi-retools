@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate the access tables of docs/registers.md.
 
-Usage: scripts/register_table.py [--public-root DIR] [--reuse DIR] [--check]
+Usage: retools/tools/voyager/register_table.py [--public-root DIR] [--reuse DIR] [--check]
 
 Run it from the repository root inside the toolchain environment, after
 tools/inventory.py has written docs/inventory/. The inventory merges the

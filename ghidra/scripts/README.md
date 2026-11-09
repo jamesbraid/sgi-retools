@@ -1,6 +1,6 @@
 # Ghidra scripts for IRIX code, and when to use them
 
-Two tools read the shipped IRIX binaries: the assembly-to-C pipeline in `scripts/` (`spimdisasm` objects and `m2c`, here "the pipeline") and Ghidra's headless analyzer with the decompiler. Nothing here is specific to one graphics family: the method, the failure modes and the scripts in this directory apply to any IRIX MIPS binary (o32, N32, 64-bit, relocatable kernel objects). The `.java` files and this file are the same in every graphics workspace. Anything that depends on one family belongs in that workspace's own notes.
+Two tools read the shipped IRIX binaries: the assembly-to-C pipeline in `retools/tools/` (`spimdisasm` objects and `m2c`, here "the pipeline") and Ghidra's headless analyzer with the decompiler. Nothing here is specific to one graphics family: the method, the failure modes and the scripts in this directory apply to any IRIX MIPS binary (o32, N32, 64-bit, relocatable kernel objects). The `.java` files and this file are the same in every graphics workspace. Anything that depends on one family belongs in that workspace's own notes.
 
 ## Recommendation
 

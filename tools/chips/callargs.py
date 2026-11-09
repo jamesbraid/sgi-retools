@@ -174,7 +174,7 @@ def census(cfg, base, out):
     for img in cfg['images']:
         path = os.path.join(base, img['dis'])
         if not os.path.exists(path):
-            sys.exit('missing %s: run tools/disasm.sh first' % path)
+            sys.exit('missing %s: run retools/tools/chips/disasm.sh first' % path)
         funcs = scan.read_functions(path, img.get('split'))
         for name, _start, insns in funcs:
             labels = set()
@@ -257,7 +257,7 @@ HDR = ['variant', 'offset', 'idx', 'name', 'access_seen', 'widths', 'halves', 's
 
 
 def emit_standard(cfg, out, sites):
-    """census.tsv and census-sites.tsv in the shape tools/gen_headers.py and the inventory read.
+    """census.tsv and census-sites.tsv in the shape retools/tools/chips/gen_headers.py and the inventory read.
 
     A register reached by a constant is one row at that number; a register reached as a constant added to a
     per-port base the code builds from a port number is one row at the constant, flagged as an indexed family

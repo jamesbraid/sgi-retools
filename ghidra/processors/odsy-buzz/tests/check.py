@@ -4,7 +4,7 @@
 Usage: check.py [OUTDIR]   (default .cache/odsy-buzz; run-ghidra.sh writes it)
 
   (a) every record of buzz_xform.bin, of the kernel copy and of diagxform.bin:
-      Ghidra's fields and end mark equal those scripts/buzz_ucode_disasm.py
+      Ghidra's fields and end mark equal those retools/tools/odsy/buzz_ucode_disasm.py
       prints, field for field, and the idle record is idle in both;
   (b) every routine entry of ucode/buzz_routines.md's routine table (and its
       kernel record, in the kernel copy) is a function entry or a decoded
@@ -21,6 +21,8 @@ import re
 import subprocess
 import sys
 
+DISASM = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..',
+                      'tools', 'odsy', 'buzz_ucode_disasm.py')
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.cache/odsy-buzz'
 IMAGES = [('xform', 'ucode/ODSY/buzz_xform.bin', []),
           ('kernel', 'ucode/buzz_ucode_ip30.bin', ['--kernel']),
@@ -34,8 +36,8 @@ KV = re.compile(r'\b([a-z][a-z0-9]*)=0x([0-9a-f]+)')
 
 
 def script_listing(image, opts):
-    """{record: (fields or 'idle', mark)} from scripts/buzz_ucode_disasm.py."""
-    text = subprocess.run([sys.executable, 'scripts/buzz_ucode_disasm.py', image] + opts,
+    """{record: (fields or 'idle', mark)} from retools/tools/odsy/buzz_ucode_disasm.py."""
+    text = subprocess.run([sys.executable, DISASM, image] + opts,
                           check=True, capture_output=True, text=True).stdout
     res = {}
     for line in text.splitlines():

@@ -3,7 +3,7 @@
 
 Usage: predecode_table.py PROM.bin
 
-PROM.bin is the flat `ip35prom` segment from tools/promgen64.py (physical 0x1fc00000). The routine at
+PROM.bin is the flat `ip35prom` segment from retools/tools/chips/promgen64.py (physical 0x1fc00000). The routine at
 0x1fc028cc loads, for eight 64-byte primary instruction-cache lines, a tag (TagHi/TagLo from the table, then
 `cache 8`) and sixteen words, each a TagHi, TagLo and ECC triple fed to Index Store Data (I) at 0x1fc02934. The
 table runs from 0x1fc89a20 (the two address constants at 0x1fc028d8..0x1fc028e0 in the image) to 0x1fc8a0a0;

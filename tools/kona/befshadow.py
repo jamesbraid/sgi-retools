@@ -39,7 +39,7 @@ def main():
             names.setdefault(int(p[3], 0), p[2])
     with open(out, 'w') as f:
         f.write('# BEF register shadow: word i mirrors the register at address\n')
-        f.write('# (low 15 bits) and holds init at start-up. Derived by scripts/befshadow.py.\n')
+        f.write('# (low 15 bits) and holds init at start-up. Derived by retools/tools/kona/befshadow.py.\n')
         f.write('word\tshadow_reg\taddr\ttag_bits\tname\tinit\n')
         for i in range(N):
             a = addrs[i]

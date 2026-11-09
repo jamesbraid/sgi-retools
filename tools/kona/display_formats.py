@@ -395,7 +395,7 @@ def vof_table(paths):
 # ------------------------------------------------------------------ document
 INTRO = """# Display-format files: decoded parameters
 
-Every row below is read from the file it names by `scripts/display_formats.py`; rerun the script to regenerate this page. The container layout, the field dictionary and the routines that read them are in [display-file-format.md](display-file-format.md). All values are **established** from the file contents (IRIX 6.5.30m install, first configuration: the DG4 display generator); the page makes no claim about what a field does beyond what its section of that chapter derives.
+Every row below is read from the file it names by `retools/tools/kona/display_formats.py`; rerun the script to regenerate this page. The container layout, the field dictionary and the routines that read them are in [display-file-format.md](display-file-format.md). All values are **established** from the file contents (IRIX 6.5.30m install, first configuration: the DG4 display generator); the page makes no claim about what a field does beyond what its section of that chapter derives.
 
 The script also tests the relations the format keeps on every file and reports the failures in the closing section: the repetitions of the valid states add up to the lines of the frame, every valid line length is the pixels per line times the clock ratio, the pixel clock is pixels times lines times frame rate within 0.2 percent, and the four horizontal parts add up to the line.
 """

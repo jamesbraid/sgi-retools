@@ -49,7 +49,7 @@ public class BuzzImport extends GhidraScript {
 
 	// Entries libGLcore's AddProgram stores into the routine list (N32
 	// libGLcore.so, ody_program.s), plus 410, the colour-unit data loader
-	// (scripts/buzz_ucode_disasm.py, ucode/buzz_isa.md "Programs, entries and
+	// (retools/tools/odsy/buzz_ucode_disasm.py, ucode/buzz_isa.md "Programs, entries and
 	// dispatch").
 	static final int[] LIST = { 12, 26, 40, 51, 77, 82, 87, 92, 97, 102, 107, 108, 119, 123, 127,
 		145, 159, 410, 515, 606, 611, 626, 641, 656, 694, 719, 734, 758, 768, 779, 891, 902, 911,
@@ -69,7 +69,7 @@ public class BuzzImport extends GhidraScript {
 		{ 2691, 2728, 2764 }, { 2365, 2404, 2442 }, { 2476, 2516, 2555 } };
 	static final int IDLE_LO = 1 << 19;
 
-	// Names for inputs (BUZZ.h section 1 slots), as scripts/buzz_ucode_dataflow.py.
+	// Names for inputs (BUZZ.h section 1 slots), as retools/tools/odsy/buzz_ucode_dataflow.py.
 	static final String[] SLOT = { "P", "N", "slot2", "T", "slot4", "C", "Mamb", "Mdif", "Mspe",
 		"Memi", "Bamb", "Bdif", "Bspe", "Bemi", "load", "grp15" };
 	// Parameter words 0x1e0 to 0x1ef (__glOdysseyInitDefaultValues, ody_context.s).

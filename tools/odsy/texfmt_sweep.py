@@ -17,7 +17,7 @@ fifth and later arguments on the stack). The output is a text table, identical f
 that has the same answers; "all" prints the builds that differ from the first. This is software
 evidence of the shipped code, not of what the board does with the numbers.
 
-Run inside the toolchain environment (needs pyelftools and unicorn): tools/re-run python3 scripts/texfmt_sweep.py all
+Run inside the toolchain environment (needs pyelftools and unicorn): retools/tools/re-run python3 retools/tools/odsy/texfmt_sweep.py all
 """
 import os
 import struct

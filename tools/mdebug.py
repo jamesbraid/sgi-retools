@@ -8,10 +8,10 @@ common tools ignore it. This module decodes it, written from the public layout i
 binutils' include/coff/sym.h, symconst.h and ecoff.h, and the documented behaviour of
 gdb's mdebug reader.
 
-    python3 tools/mdebug.py OBJECT            summary: counts of each decoded piece
-    python3 tools/mdebug.py OBJECT --procs    one line per procedure: address, name, file:lines
-    python3 tools/mdebug.py OBJECT --types    every struct, union, enum and typedef as C
-    python3 tools/mdebug.py OBJECT --signatures
+    python3 retools/tools/mdebug.py OBJECT            summary: counts of each decoded piece
+    python3 retools/tools/mdebug.py OBJECT --procs    one line per procedure: address, name, file:lines
+    python3 retools/tools/mdebug.py OBJECT --types    every struct, union, enum and typedef as C
+    python3 retools/tools/mdebug.py OBJECT --signatures
                                                 each procedure's return type and parameters
 
 The same decoding is done independently in tools/ghidra-scripts/ReMdebugImport.java, which

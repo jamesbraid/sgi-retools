@@ -15,7 +15,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', 'data', 'languages', 'kona_ge.slaspec')
 
-# Context fields: the decoded record groups of ge.u (scripts/ge_disasm.py
+# Context fields: the decoded record groups of ge.u (retools/tools/kona/ge_disasm.py
 # GROUPS), split where a group is wider than 32 bits or where the semantics
 # test a part of it. (name, start, end, attributes). Every field sits inside
 # one 32-bit context word, and fields are set by name by the loader, so the
@@ -51,7 +51,7 @@ CTX = [
     ('f25', 256, 281, ''),
 ]
 
-# Display groups in scripts/ge_disasm.py order: (label, [fields], nop value,
+# Display groups in retools/tools/kona/ge_disasm.py order: (label, [fields], nop value,
 # value expression). A group whose fields hold the value of the canonical
 # no-op record prints nothing, as ge_disasm.py leaves it out.
 NOP = dict(imm=0, w71=0, r222=0, r221=0, r220=0, r219=0, r217=0, r215=0, r213=0, r211=0,
@@ -134,7 +134,7 @@ def emit(out):
     w('# puts W[63:0] in code memory (one 8-byte address unit per word, so code')
     w('# addresses are word addresses) and the record groups in the context')
     w('# register at each word. Every field below is a record group of')
-    w('# scripts/ge_disasm.py, and the display reproduces that script field for')
+    w('# retools/tools/kona/ge_disasm.py, and the display reproduces that script field for')
     w('# field after a mnemonic.')
     w('#')
     w('# Semantics modelled (each with its label below): the unit-1 and unit-2')

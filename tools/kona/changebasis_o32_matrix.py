@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/changebasis_o32_matrix.py - run the O32 libGLcore routine `changebasis`
+"""retools/tools/kona/changebasis_o32_matrix.py - run the O32 libGLcore routine `changebasis`
 on unit vectors under Unicorn and print the matrix it applies for each order.
 
 The routine is linear in its control values, so feeding the unit vectors of an
@@ -8,7 +8,7 @@ input c). The routine address is the one in docs/inventory/functions.tsv for
 usr/gfx/arch/IP27KONA/libGLcore.so. Needs pyelftools and unicorn (the toolchain
 container has both):
 
-  python3 scripts/changebasis_o32_matrix.py [first_order last_order]
+  python3 retools/tools/kona/changebasis_o32_matrix.py [first_order last_order]
 """
 import os
 import struct

@@ -5,7 +5,7 @@ Usage: entries.py CONFIG.json --dir work/CHIP --fields chips/*/census/CHIP/field
                   [--window-base 0x1000000] --out FILE
 
 One row per register slot: offset, widths, access, site and function counts, the accessor or caller names
-(the function names the shipped binary carries), the bit-field evidence from tools/fields.py, and the
+(the function names the shipped binary carries), the bit-field evidence from retools/tools/chips/fields.py, and the
 label of each claim. Everything here is machine-made evidence: the label column is `inferred` for
 role and field meaning (taken from names and masks) and the rows say what was observed; nothing is
 `established` until a person has read the function in full and written an entry in the chip page.

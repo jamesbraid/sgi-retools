@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Compare the controller firmware across the four shipped sets.
 
-Usage: tools/re-run python3 scripts/version_diff.py [--out docs/version-diffs]
-       tools/re-run python3 scripts/version_diff.py --series early
+Usage: retools/tools/re-run python3 retools/tools/sysco/version_diff.py [--out docs/version-diffs]
+       retools/tools/re-run python3 retools/tools/sysco/version_diff.py --series early
 
 --series early runs the routine diff over the early series, 1.0.2 to 1.18.3 (EARLY_SETS), and
 writes l1-early-routines.tsv. The default run covers the four sets below.

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Run one verification driver against ddx/crm.so in the MIPS interpreter (mips.py).
-#   tools/re-run scripts/crm_exec/run.sh t6.py
+#   retools/tools/re-run retools/tools/crime/crm_exec/run.sh t6.py
 # Needs pyelftools, which the tools/re-run image has. The drivers chain with exec(), so run from this directory.
 #
 # driver  checks

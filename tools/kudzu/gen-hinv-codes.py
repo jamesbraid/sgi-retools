@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate docs/hinv-codes.tsv: inventory class and type numbers.
 
-Usage: scripts/gen-hinv-codes.py   (from the repository root, with root/ populated,
-inside the toolchain container: tools/re-run python3 scripts/gen-hinv-codes.py)
+Usage: retools/tools/kudzu/gen-hinv-codes.py   (from the repository root, with root/ populated,
+inside the toolchain container: retools/tools/re-run python3 retools/tools/kudzu/gen-hinv-codes.py)
 
 Three sources, each read from a file in root/:
 

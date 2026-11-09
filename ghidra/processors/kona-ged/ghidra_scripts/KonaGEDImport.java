@@ -14,7 +14,7 @@
 // block at byte 0x1000: table A (16 words) and table B (512 words), the
 // "pcl table" the ARM loads through distributor registers 0x210-0x213
 // (ucode/ged.md, "How an entry is chosen"). The script maps both at their
-// byte addresses, so program word i is address 4 x i, as scripts/ged_disasm.py
+// byte addresses, so program word i is address 4 x i, as retools/tools/kona/ged_disasm.py
 // numbers them.
 //
 // Also: the line table as file:line end-of-line comments, the relocated
@@ -94,7 +94,7 @@ public class KonaGEDImport extends GhidraScript {
 		SymbolTable st = currentProgram.getSymbolTable();
 
 		// Line table: {word, line, file index} records; file names as NUL-
-		// terminated strings (scripts/ged_disasm.py).
+		// terminated strings (retools/tools/kona/ged_disasm.py).
 		List<String> files = new ArrayList<>();
 		int fo = h[9], fe = h[9] + h[10];
 		while (fo < fe) {

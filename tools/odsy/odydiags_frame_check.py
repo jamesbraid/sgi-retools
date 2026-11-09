@@ -3,11 +3,11 @@
 raster rules, and compare the frame it predicts with the test's stored frame
 and checksum.
 
-Usage: scripts/odydiags_frame_check.py [--test points|lines|triangle|alpha|blend|checkr3d]
+Usage: retools/tools/odsy/odydiags_frame_check.py [--test points|lines|triangle|alpha|blend|checkr3d]
                                        [--r-low] [--texel-edge] [--blend-fit]
                                        [--round f32|tN] [--small]
                                        [--image IMAGE] [--program A,B,C] [--dump]
-       scripts/odydiags_frame_check.py --survey | --logic | --residue
+       retools/tools/odsy/odydiags_frame_check.py --survey | --logic | --residue
 
 The VPro field diagnostics (odydiags, Internal Support Tools 2.7, 6.5.15
 build) carry each drawing test as a function __clog_<test> that replays a
@@ -22,7 +22,7 @@ tests (__clog_pts, __clog_lines, __clog_tri, __clog_alpha, __clog_blend,
 __clog_chk3d and their _small forms; blend and checkr3d do not yet match,
 docs/raster.md): it extracts the writes,
 tracks the sequencer registers, the matrix table and the primitives, runs
-each primitive's vertices through scripts/buzz_ucode_dataflow.py (first
+each primitive's vertices through retools/tools/odsy/buzz_ucode_dataflow.py (first
 part, loop once per further vertex, closing part, the slot-0 values changing
 per pass), takes output words 5 and 6 as the window position, and draws the
 primitives with the raster rules of docs/raster.md into a black frame, rows

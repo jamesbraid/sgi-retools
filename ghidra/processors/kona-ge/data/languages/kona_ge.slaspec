@@ -12,7 +12,7 @@
 # puts W[63:0] in code memory (one 8-byte address unit per word, so code
 # addresses are word addresses) and the record groups in the context
 # register at each word. Every field below is a record group of
-# scripts/ge_disasm.py, and the display reproduces that script field for
+# retools/tools/kona/ge_disasm.py, and the display reproduces that script field for
 # field after a mnemonic.
 #
 # Semantics modelled (each with its label below): the three lanes and the

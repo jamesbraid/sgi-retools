@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fit the antialiased point and line frames of the VPro field diagnostics.
 
-Usage: scripts/odydiags_aa_fit.py [--table]
+Usage: retools/tools/odsy/odydiags_aa_fit.py [--table]
 
 Replays the aapts and aalines streams (__clog_aapts, __clog_aalines of the
 odydiags binary) through the transform reading of odydiags_frame_check.py,

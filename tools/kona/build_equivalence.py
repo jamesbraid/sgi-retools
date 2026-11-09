@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/build_equivalence.py - compare a routine of the O32 or 64-bit
+"""retools/tools/kona/build_equivalence.py - compare a routine of the O32 or 64-bit
 libGLcore with the N32 routine of the same name.
 
 The "same as N32" rows of docs/libglcore-driver-builds.md come from this
@@ -25,7 +25,7 @@ instruction streams, not a reading of the routine.
 
 Usage (inside the toolchain container, from the workspace root):
 
-  python3 scripts/build_equivalence.py --build o32 [--out FILE] [--check-doc]
+  python3 retools/tools/kona/build_equivalence.py --build o32 [--out FILE] [--check-doc]
 
 --check-doc compares the matches with the routines named in the tables of
 docs/libglcore-driver-builds.md and reports names on only one side.

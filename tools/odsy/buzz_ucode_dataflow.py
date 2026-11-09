@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Run a list of BUZZ microcode routines record by record and print the dataflow.
 
-Usage: scripts/buzz_ucode_dataflow.py [--numeric SCENARIO.json] [--code C=FN ...]
+Usage: retools/tools/odsy/buzz_ucode_dataflow.py [--numeric SCENARIO.json] [--code C=FN ...]
                                       [--round MODE] IMAGE ENTRY [ENTRY ...]
-       scripts/buzz_ucode_dataflow.py --unresolved IMAGE
+       retools/tools/odsy/buzz_ucode_dataflow.py --unresolved IMAGE
 
 IMAGE is ucode/ODSY/buzz_xform.bin or ucode/buzz_ucode_ip30.bin. Each ENTRY
 runs from its record to the next end mark (bits 1:0 equal to 1 or 2) plus the
@@ -37,7 +37,7 @@ the start of the run, for a replay that starts after the record loading it)
 and "passes" (a list of slot maps, the k-th applying while the k-th ENTRY
 runs, so that a program's loop sees a new vertex each pass; slots a pass
 leaves out come from "slots"). Every output word is also logged with the
-ENTRY that sent it (scripts/odydiags_frame_check.py reads that log).
+ENTRY that sent it (retools/tools/odsy/odydiags_frame_check.py reads that log).
 Every other value starts as NaN, so a NaN in the output marks an input the
 scenario did not give.
 --code C=FN picks a function for a scalar code the ISA leaves open, from

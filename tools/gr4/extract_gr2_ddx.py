@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/extract_gr2_ddx.py
+retools/tools/gr4/extract_gr2_ddx.py
 
 Extracts functions, symbols, and disassembly from root/usr/lib/X11/dyDDX/gr2.so
 (SGI IRIX X11 dynamic DDX driver for GR2/Express graphics).

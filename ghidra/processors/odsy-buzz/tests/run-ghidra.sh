@@ -9,9 +9,9 @@
 #   kernel.listing, kernel.functions             ucode/buzz_ucode_ip30.bin
 #   diag.listing, diag.functions                 the field diagnostics' diagxform.bin
 # and ghidra/processors/odsy-buzz/tests/check.py then compares them with
-# scripts/buzz_ucode_disasm.py and the documents.
+# retools/tools/odsy/buzz_ucode_disasm.py and the documents.
 set -eu
-MOD=ghidra/processors/odsy-buzz
+MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/odsy-buzz}
 DIAG=root/builds/odydiags-6.5.15/usr/diags/ody/ucode/diagxform.bin
 mkdir -p "$OUT"
@@ -31,7 +31,7 @@ export HOME="$cfg" XDG_CONFIG_HOME="$cfg/.config" XDG_CACHE_HOME="$cfg/.cache"
 export JAVA_TOOL_OPTIONS="-Duser.home=$cfg"
 ext="$cfg/.config/ghidra/ghidra_${ver}_$rel/Extensions"
 mkdir -p "$ext"
-ln -s "$(pwd)/$MOD" "$ext/odsy-buzz"
+ln -s "$MOD" "$ext/odsy-buzz"
 
 sleigh "$MOD/data/languages/odsy_buzz.slaspec" >/dev/null
 

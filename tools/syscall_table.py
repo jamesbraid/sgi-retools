@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract the system call dispatch table from an IRIX kernel image.
 
-    python3 tools/syscall_table.py KERNEL [KERNEL...] [--out FILE.tsv]
+    python3 retools/tools/syscall_table.py KERNEL [KERNEL...] [--out FILE.tsv]
             [--cross-check DIR] [--report FILE.tsv]
 
 KERNEL is a linked kernel (unix.IPnn), a 64-bit big-endian ELF file. Every output row comes from

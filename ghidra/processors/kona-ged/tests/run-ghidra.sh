@@ -6,7 +6,7 @@
 # Run from the repository root with Ghidra's support directory (sleigh,
 # analyzeHeadless) on PATH and root/ populated. Writes OUTDIR/ged1b.listing.
 set -eu
-MOD=ghidra/processors/kona-ged
+MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/kona-ged}
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
@@ -25,7 +25,7 @@ export HOME="$cfg" XDG_CONFIG_HOME="$cfg/.config" XDG_CACHE_HOME="$cfg/.cache"
 export JAVA_TOOL_OPTIONS="-Duser.home=$cfg"
 ext="$cfg/.config/ghidra/ghidra_${ver}_$rel/Extensions"
 mkdir -p "$ext"
-ln -s "$(pwd)/$MOD" "$ext/kona-ged"
+ln -s "$MOD" "$ext/kona-ged"
 
 sleigh "$MOD/data/languages/kona_ged.slaspec" >/dev/null
 

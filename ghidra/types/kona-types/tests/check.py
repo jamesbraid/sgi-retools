@@ -22,7 +22,9 @@ import re
 import sys
 
 D = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '.cache/kona-types')
-os.chdir(os.path.dirname(os.path.abspath(__file__)) + '/../../../..')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', 'tools'))
+import _workspace  # noqa: E402
+os.chdir(_workspace.find_workspace())
 bad = 0
 
 

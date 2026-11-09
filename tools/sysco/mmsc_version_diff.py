@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare the MMSC firmware images routine by routine, by symbol name.
 
-Usage: tools/re-run python3 scripts/mmsc_version_diff.py [--out docs/version-diffs]
+Usage: retools/tools/re-run python3 retools/tools/sysco/mmsc_version_diff.py [--out docs/version-diffs]
 
 The MMSC image is an unstripped a.out, so its routines are named. Each set is compared with
 the one before it in release order (the series below), keyed by symbol name and kind:

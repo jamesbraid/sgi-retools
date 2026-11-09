@@ -2,7 +2,7 @@
 # usr/gfx/ucode/KONA/ged1b.u. The word format is ucode/ged.md "Word format":
 # the IR diagnostic irsaudit packs a 13-field structure into one 32-bit word
 # (Compact_GED_Ucode), and bits 31-30 pick one of four types. The decode
-# matches scripts/ged_disasm.py field for field; mnemonics are that script's
+# matches retools/tools/kona/ged_disasm.py field for field; mnemonics are that script's
 # labels for the word types, not hardware names.
 #
 # Semantics. Only what ucode/ged.md reads from the program is modelled, and

@@ -202,7 +202,7 @@ def main():
         rows.append((tok, f[1], hname, h, grp, (e - h) // 4, r0 + (1 if final else 0) + r40, final,
                      ','.join(uniq), ','.join('%x' % p for p in sorted(ports)), ','.join(cu[:8])))
     with open(os.path.join(out, 'arm1_handlers.tsv'), 'w') as fh:
-        fh.write('# Handlers of the ARM-run host tokens in arm1.u (IRIX 6.5.30m). Produced by scripts/arm1_handlers.py\n')
+        fh.write('# Handlers of the ARM-run host tokens in arm1.u (IRIX 6.5.30m). Produced by retools/tools/kona/arm1_handlers.py\n')
         fh.write('# from a linear scan of each function (no branch following). group: by function name, see the script.\n')
         fh.write('# pops: payload reads seen in the function body (r9+0, r9+0x3c, r9+0x40); final: reads r9+0x3c.\n')
         fh.write('# ge_handlers: engine handlers whose slot the body loads, in code order. ports: r9 offsets stored to.\n')
@@ -300,7 +300,7 @@ def main():
     bound = table('init_ged', 0x46000020, 0x46200020)
     with open(os.path.join(out, 'ged_bound_table.tsv'), 'w') as fh:
         fh.write('# Handler table that init_ged writes through the engine port with descriptors 0x46000020 (set index)\n')
-        fh.write('# and 0x46200020 (write entry, index then advances). IRIX 6.5.30m. Produced by scripts/arm1_handlers.py.\n')
+        fh.write('# and 0x46200020 (write entry, index then advances). IRIX 6.5.30m. Produced by retools/tools/kona/arm1_handlers.py.\n')
         fh.write('# Entries 3-12 are the matrix operations for the matrix mode init_ged starts in; arm_matrixmode,\n')
         fh.write('# xform_init and xform_restore rewrite them. Indexes not listed are not written by init_ged.\n')
         fh.write('index\thandler\n')

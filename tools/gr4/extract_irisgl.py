@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/extract_irisgl.py
+retools/tools/gr4/extract_irisgl.py
 
 Extracts all DWARF metadata, functions, line tables, and disassembly from
 irisgl/libgl.so (MIPS-III N32 IrisGL / Igloo translation layer for SGI Impact / GR4).

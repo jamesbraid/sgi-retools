@@ -184,7 +184,7 @@ put('compare_idiom_with_constant_loaded_to_C1e', sum(consts.values()), 'a form-1
 for v, n in sorted(consts.items()):
     put('compare_constant_0x%x' % v, n, '')
 with open(os.path.join(out, 'ge_idioms.tsv'), 'w') as fh:
-    fh.write('# Counts behind ucode/ge_ops.md (ge.hex, ge.u and ge_symbols of IRIX 6.5.30m). Produced by scripts/ge_ops.py.\n')
+    fh.write('# Counts behind ucode/ge_ops.md (ge.hex, ge.u and ge_symbols of IRIX 6.5.30m). Produced by retools/tools/kona/ge_ops.py.\n')
     fh.write('name\tvalue\tnote\n')
     for r in rows:
         fh.write('%s\t%s\t%s\n' % r)
@@ -222,7 +222,7 @@ def greedy(rows, tgt, cands, maxk=24):
 with open(os.path.join(out, 'ge_opdeps.tsv'), 'w') as fh:
     fh.write('# W bits that, taken together, determine a decoded record group over every word of a form\n')
     fh.write('# (forward selection: a sufficient set, not proved minimal; conflicts = words that still disagree).\n')
-    fh.write('# Candidates are W bits 0-66, including those wired straight into a field. Produced by scripts/ge_ops.py.\n')
+    fh.write('# Candidates are W bits 0-66, including those wired straight into a field. Produced by retools/tools/kona/ge_ops.py.\n')
     fh.write('form\twords\tgroup\trecord_bits\tw_bits\tconflicts\n')
     for f in (5, 12, 13, 14, 15):
         rows_ = [(W[a], R[a]) for a in words if form(W[a]) == f]
