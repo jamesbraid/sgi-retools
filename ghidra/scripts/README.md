@@ -80,6 +80,68 @@ Limits of the scripts, found in use:
 - Float literals stay as data labels (`DAT_addr`): marking the literal blocks read-only did not make the decompiler fold them.
 - Entries that are neither absolute addresses nor offsets from gp are not handled.
 
+## Avoiding the Ghidra 12.1.3 IRIX GOT import crash
+
+`IrixGotPltFilter.java` and `IrixGotPltRepair.java` are a two-pass workaround for
+`MIPS_ElfExtension.fixupGot` dereferencing a null `Data`. They work on ordinary
+IRIX/MIPS ELF files; no Ghidra core patch or raw-image import is involved.
+Disable only the two dynamic tags that drive the broken pass, then restore the
+markup from the original metadata after import.
+
+Inside the Ghidra image, with this directory mounted at `/opt/re-scripts`:
+
+```sh
+mkdir -p /tmp/irix-got-classes /tmp/ghidra-projects
+CP=$(find /opt/ghidra/Ghidra -name '*.jar' -printf '%p:')
+javac -proc:none -cp "$CP" -d /tmp/irix-got-classes   /opt/re-scripts/IrixGotPltFilter.java /opt/re-scripts/IrixGotPltRepair.java
+java -cp "/tmp/irix-got-classes:$CP" IrixGotPltFilter ORIGINAL.elf WORKING.elf
+analyzeHeadless /tmp/ghidra-projects irix -import WORKING.elf   -loader-applyRelocations false -loader-applyUndefinedData false   -scriptPath /opt/re-scripts -postScript IrixGotPltRepair.java ORIGINAL.elf
+```
+
+The filter writes a new file and rejects in-place use. It handles ELF32/ELF64 and
+both byte orders, follows `PT_DYNAMIC` program headers, changes only the tag words
+of `DT_MIPS_GOTSYM` and `DT_MIPS_LOCAL_GOTNO` to `DT_NULL`, and retains their values
+and every other byte. Each `PT_DYNAMIC` segment ends at its first `DT_NULL`;
+lookalike tags in trailing padding are not entries and stay untouched. The repair
+metadata lookup uses the same terminator bound. The filter does not overwrite an
+existing output. Extended ELF
+program-header counts are rejected explicitly.
+
+The repair pass reads `ORIGINAL.elf`, never the other way around. It validates GOT
+counts, file-backed symbol/string ranges and each pointer's initialized memory
+range. A null result from `createData` is logged as `SKIP` and is never passed to
+`getValue()`. External function thunks are made only at the pointer's recorded
+address in initialized executable memory; invalid or missing targets are logged,
+not guessed. An existing ordinary function is a collision and is never converted
+into a thunk. Only a new thunk or an existing thunk already linked to the same
+external is accepted. New thunk/external state is rolled back when linkage fails;
+the focused tests force `setThunkedFunction` to fail and verify both removals.
+
+With relocations disabled, unresolved external GOT slots can retain zero,
+unrelocated or otherwise invalid values. The Flame regression's 1,557 rejected
+targets are in that invalid/unresolved class because their values do not identify
+initialized executable memory; they are not validated PLT entries that the repair
+lost. Another 882 entries are ordinary-function collisions left unchanged, and
+three GOT pointers lie outside initialized blocks. The final totals are 12,955
+pointer data objects, 49 new external linkages, 2,442 logged skips and 12,958 GOT
+entries, with no rollback failures. The summary reports pointers, linkages, skips
+and total GOT entries. Keep the original and working files outside the repository when they contain
+target-specific material.
+
+Run the synthetic filter/null/import regressions with an existing image:
+
+```sh
+GHIDRA_IMAGE=localhost/re-ghidra:a851eccc301f python3 ghidra/scripts/tests/run.py
+```
+
+Add `--real-elf /path/to/original` for the full filtered-import/repair regression
+and `--keep /tmp/opencode/irix-got-plt-results` to retain the exact logs. The test
+checks ELF64-MSB and ELF32-LSB byte-for-byte (including post-`DT_NULL` canaries),
+both original hashes, rejection of in-place filtering, safe null-`Data` behavior,
+ordinary-function collisions, forced-failure rollback, exact real filtered byte
+offsets and repair totals, and the absence of a `NullPointerException` during
+filtered imports.
+
 ## The export helpers
 
 `ReBSimAdd`, `ReDecompileExport`, `ReMdebugImport`, `ReMipsGp` and `ReObjectSymbols` are the
