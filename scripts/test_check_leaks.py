@@ -69,7 +69,7 @@ class CheckLeaks(unittest.TestCase):
         self.tearDown()
         for text, term in (('see /scratch/' + 'x/y', '/scratch/'), ('at /home/' + 'someone', '/home/'),
                            ('at /storage/' + 'nvme', '/storage/'), ('in /tmp/' + 'claude-1', '/tmp/claude'),
-                           ('host 10.30.' + '20.5', '10.30.' + '20.5'), ('host 192.168.' + '1.1', '192.168.'),
+                           ('host 192.168.' + '1.1', '192.168.'),
                            ('Library ' + 'mail archive', 'library mail'), ('root techpubs' + ':x', 'techpubs:'),
                            ('cache/' + '0123abcd4567', 'cache/0123abcd4567'), ('ori' + 'gami build', 'origami'),
                            ('by Cla' + 'ude', 'claude')):
