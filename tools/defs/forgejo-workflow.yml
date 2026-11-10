@@ -21,6 +21,10 @@ jobs:
         with:
           submodules: false
       - name: Fetch retools only
-        run: git submodule update --init --depth 1 retools
+        # The job token reads only this repository; the secret is a read-only
+        # token for the private retools. The header is scoped to this one command.
+        env:
+          RETOOLS_READ_TOKEN: ${{ secrets.RETOOLS_READ_TOKEN }}
+        run: git -c "http.${{ github.server_url }}/.extraheader=Authorization: token $RETOOLS_READ_TOKEN" submodule update --init --depth 1 retools
       - name: Check decode headers
         run: retools/tools/defs/ci-check
