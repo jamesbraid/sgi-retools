@@ -25,6 +25,7 @@ jobs:
         # token for the private retools. The header is scoped to this one command.
         env:
           RETOOLS_READ_TOKEN: ${{ secrets.RETOOLS_READ_TOKEN }}
-        run: git -c "http.${{ github.server_url }}/.extraheader=Authorization: token $RETOOLS_READ_TOKEN" submodule update --init --depth 1 retools
+        run: |
+          git -c "http.${{ github.server_url }}/.extraheader=Authorization: token $RETOOLS_READ_TOKEN" submodule update --init --depth 1 retools
       - name: Check decode headers
         run: retools/tools/defs/ci-check
