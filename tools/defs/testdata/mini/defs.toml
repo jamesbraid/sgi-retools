@@ -1,0 +1,32 @@
+[project]
+name = "mini"
+
+[rust]
+out_dir = "generated"
+
+[[banned.extra]]
+label = "driver routine prefix"
+regex = '\bmini_\w*'
+
+[[headers]]
+file = "UART_DECODE.h"
+block = "UART"
+module = "uart"
+rust_prefix = "UART_"
+register_doc = "Register"
+description = ["Made-up UART registers and frame word used to test the", "decode-header tools."]
+notes_corpus = ["docs/uart.md"]
+
+[[claims]]
+group = "UART_DECODE.h"
+label = "control register fields"
+doc = "docs/uart.md"
+regex = 'The control register sits at (0x[0-9a-f]+).*?bits (\d+):(\d+) of the control word, parity in bits (\d+):(\d+)'
+binds = [["O", "UART.ctl", 1], ["F", "UART.ctl.divisor", 2, 3], ["F", "UART.ctl.parity", 4, 5]]
+
+[[claims]]
+group = "UART_DECODE.h"
+label = "frame payload"
+doc = "docs/uart.md"
+regex = 'payload in bits (\d+):(\d+)'
+binds = [["F", "FRAME.payload", 1, 2]]
