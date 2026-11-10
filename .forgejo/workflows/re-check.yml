@@ -9,7 +9,7 @@ jobs:
   self-check:
     runs-on: ubuntu-latest
     container:
-      image: docker.io/library/debian:stable-slim
+      image: docker.io/library/node:22-bookworm-slim
     steps:
       - name: Install tools
         run: |
