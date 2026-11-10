@@ -12,6 +12,11 @@ Labels: [E] established (read from the disassembly or a specification page), [I]
 What the census can establish is only that code reaches an offset with a width and direction; names come from
 the shipped routines' accessor names and are [I]; a field mask says the code isolates those bits, its meaning is [I].
 Reset values are [U] everywhere: no census row reads them.
+
+The labels map to the shared decode-header grades (retools/tools/defs) as [E] established, [I] inferred, [U] unknown.
+Comments must pass that checker's publish-safety rules: no vendor header file names, no binary offsets and no board
+tokens. Say "the public Linux SN0 Hub register headers", "window base 0x200000", "Origin 2000", not the file, the
+"at 0x..." offset or the IPnn token. CRIME and GBE are generated in the crime repository, not here.
 """
 import collections
 import csv
@@ -19,25 +24,25 @@ import json
 import os
 import re
 
+# CRIME and GBE are not generated here: the crime repository is
+# canonical for both. chips/crime and chips/gbe keep their notes and census as evidence only.
 # chip -> (census directory, variant in that census, window base to add, title, block rules)
 CHIPS = {
- 'pic':    ('pic', 'pic', 0, 'PIC (dual-head PCI-X bridge), IP35', None),
- 'bridge': ('bridge', 'bridge', 0, 'Bridge (XIO-to-PCI bridge), IP27 and IP30', None),
- 'xbridge':('bridge', 'xbridge', 0, 'XBridge (XIO-to-PCI bridge, later), IP27 and IP30', None),
- 'bedrock':('bedrock', 'bedrock', 0, 'Bedrock (node controller), IP35', 'bedrock'),
+ 'pic':    ('pic', 'pic', 0, 'PIC (dual-head PCI-X bridge), Origin 3000 family', None),
+ 'bridge': ('bridge', 'bridge', 0, 'Bridge (XIO-to-PCI bridge), Origin 2000 and Octane', None),
+ 'xbridge':('bridge', 'xbridge', 0, 'XBridge (XIO-to-PCI bridge, later), Origin 2000 and Octane', None),
+ 'bedrock':('bedrock', 'bedrock', 0, 'Bedrock (node controller), Origin 3000 family', 'bedrock'),
  'xbow': ('xbow', None, 0, 'Xbow (crossbar)', None),
- 'heart':('heart', None, 0, 'HEART (IP30 system controller)', 'heart'),
- 'hub':  ('hub', None, 0, 'Hub (IP27 node controller)', 'hub'),
+ 'heart':('heart', None, 0, 'HEART (Octane system controller)', 'heart'),
+ 'hub':  ('hub', None, 0, 'Hub (Origin 2000 node controller)', 'hub'),
  'ioc3': ('ioc3', None, 0, 'IOC3 (PCI I/O controller)', None),
  'ioc4': ('ioc4', None, 0, 'IOC4 (PCI I/O controller, later)', None),
- 'crime':('crime', None, 0, 'CRIME (O2 memory controller)', None),
  'mace': ('mace', None, 0, 'MACE (O2 I/O ASIC)', 'mace'),
- 'gbe':  ('gbe', None, 0, 'GBE (O2 display back end)', None),
  'vice': ('vice', None, 0, 'VICE (O2 video engine, presence only)', None),
- 'tiocp': ('pic', 'tiocp', 0, 'TIOCP (PCI-X bridge, later family), as the IP35 Bridge-family driver reaches it', None),
- 'l1': ('l1', 'bedrock', 0, 'L1 system controller UART path (node-local window), IP35', None),
- 'router_ip27': ('router', 'ip27', 0, 'network router as the IP27 kernel reaches it (register numbers of a vector access)', None),
- 'router_ip35': ('router', 'ip35', 0, 'network router as the IP35 kernel reaches it (register numbers of a vector access)', None),
+ 'tiocp': ('pic', 'tiocp', 0, 'TIOCP (PCI-X bridge, later family), as the Origin 3000 family Bridge driver reaches it', None),
+ 'l1': ('l1', 'bedrock', 0, 'L1 system controller UART path (node-local window), Origin 3000 family', None),
+ 'router_origin2000': ('router', 'ip27', 0, 'network router as the Origin 2000 kernel reaches it (register numbers of a vector access)', None),
+ 'router_origin3000': ('router', 'ip35', 0, 'network router as the Origin 3000 kernel reaches it (register numbers of a vector access)', None),
 }
 MACE_BLOCKS = [  # the specification's block map (table 91 and 92); offsets are from physical 0x1f000000
  (0x080000, 'PCI host bridge'),
@@ -48,7 +53,7 @@ MACE_BLOCKS = [  # the specification's block map (table 91 and 92); offsets are 
  (0x320000, 'PS/2 keyboard and mouse'),
  (0x330000, 'I2C'),
  (0x340000, 'timers'),
- (0x380000, 'external ISA (calendar clock at 0x3a0000)'),
+ (0x380000, 'external ISA (calendar clock block, base 0x3a0000)'),
 ]
 BEDROCK_BLOCKS = [  # inferred from routine-name prefixes (see chips/bedrock/README.md)
  (0x1000000, 0x1200000, 'PROCESSOR_INTERFACE_LIKE', 'low window: interrupt send, clocks, error masks, time counter'),
