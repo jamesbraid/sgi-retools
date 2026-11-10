@@ -1,0 +1,23 @@
+# Self-check for this repository: the decode-header test suite and the
+# ci-check entry point. Nothing here fetches submodules.
+name: re-check
+on:
+  push:
+  pull_request:
+
+jobs:
+  self-check:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/library/debian:stable-slim
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates python3 gcc libc6-dev rustc
+      - name: Check out the repository
+        uses: https://code.forgejo.org/actions/checkout@v4
+      - name: Run the decode-header tests
+        run: python3 tools/defs/test_defs.py
+      - name: Run the decode-header check
+        run: tools/defs/ci-check
