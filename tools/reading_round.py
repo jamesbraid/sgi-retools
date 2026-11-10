@@ -8,7 +8,8 @@ docs/instruction-readings-REPO-gN.md, committing every 25 entries. Never pushes.
 Run from the workspace root (it needs `root/`, the binary root, and the retools submodule):
 
     uv run --with capstone --with pyelftools --with numpy --with unicorn \\
-        python -I retools/tools/reading_round.py --repo-name kona --round g43 --out-dir DIR
+        python -I retools/tools/reading_round.py --repo-name kona --round g43 --out-dir DIR \\
+            --call-check PATH/TO/check_call_addrs.py
 
 Target selection, in order:
   1. Rows of docs/inventory/functions.tsv on HEAD with status named-only or undocumented
@@ -41,7 +42,6 @@ if HERE not in sys.path:
 
 BATCH = 25
 STATUSES = ("named-only", "undocumented")
-CALL_CHECK = "/path/to/check_call_addrs.py"
 HEX = r"0x[0-9a-fA-F]+"
 NEW_HEADER = re.compile(r"^\s*- `([^`]+)` in `([^`]+)`(?: at (" + HEX + r"))?")
 OLD_HEADER = re.compile(r"^\s*- `([^`]+)` \(`([^`]+)`, (" + HEX + r"), \d+ bytes\)")
@@ -247,7 +247,7 @@ def main(argv=None):
     ap.add_argument("--round", required=True, help="round label such as g43")
     ap.add_argument("--count", type=int, default=500, help="targets to render (default 500)")
     ap.add_argument("--out-dir", required=True, help="where the targets, conflicts and logs go")
-    ap.add_argument("--call-check", default=CALL_CHECK, help="check_call_addrs.py path")
+    ap.add_argument("--call-check", required=True, help="check_call_addrs.py path")
     args = ap.parse_args(argv)
 
     repo = os.getcwd()

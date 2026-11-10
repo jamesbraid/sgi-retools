@@ -370,8 +370,12 @@ class UnanalyzedConditionSource(unittest.TestCase):
                          ('(condition not analyzed)', '(condition not analyzed)'))
 
 
+KONA_ROOT = os.environ.get('RE_KONA_ROOT', '')
+ODSY_ROOT = os.environ.get('RE_ODSY_ROOT', '')
+
+
 class OptionalKonaGfxRepro(unittest.TestCase):
-    ROOT = '/path/to/re-roots/kona/root'
+    ROOT = KONA_ROOT
     OBJECTS = (
         ('usr/cpu/sysgen/IP27boot/gfx.o', None),
         ('usr/cpu/sysgen/IP35boot/gfx.o', None),
@@ -379,7 +383,7 @@ class OptionalKonaGfxRepro(unittest.TestCase):
         ('usr/cpu/sysgen/IP35boot/gfxs.a', 'gfx.o'),
     )
 
-    @unittest.skipUnless(os.path.isdir(ROOT), 'optional Kona root is not present')
+    @unittest.skipUnless(ROOT and os.path.isdir(ROOT), 'RE_KONA_ROOT is not set to a Kona root')
     def test_gfx_shcheck_renders(self):
         for relative, member in self.OBJECTS:
             path = os.path.join(self.ROOT, relative)
@@ -391,11 +395,10 @@ class OptionalKonaGfxRepro(unittest.TestCase):
 
 
 class OptionalLibGLRepro(unittest.TestCase):
-    BINARY = ('/path/to/re-roots/odsy/root/builds/'
-              '6.5.30-media/usr/gfx/arch/IP30ODSY/libGL.so')
+    BINARY = os.path.join(ODSY_ROOT, 'builds/6.5.30-media/usr/gfx/arch/IP30ODSY/libGL.so')
     ROUTINES = ('__glXGetDrawableAttributes', '__glXSendMakeCurrentRead', 'GetFBConfigsSGIX')
 
-    @unittest.skipUnless(os.path.isfile(BINARY), 'optional libGL root is not present')
+    @unittest.skipUnless(ODSY_ROOT and os.path.isfile(BINARY), 'RE_ODSY_ROOT is not set to an ODSY root')
     def test_real_routines_render(self):
         for name in self.ROUTINES:
             with self.subTest(routine=name):
@@ -405,12 +408,11 @@ class OptionalLibGLRepro(unittest.TestCase):
 
 
 class OptionalOdsyLibGLCoreRepro(unittest.TestCase):
-    BINARY = ('/path/to/re-roots/odsy/root/builds/'
-              '6.5.30-media/usr/gfx/arch/IP30ODSY/libGLcore.so')
+    BINARY = os.path.join(ODSY_ROOT, 'builds/6.5.30-media/usr/gfx/arch/IP30ODSY/libGLcore.so')
     ROUTINES = ('ImageChainAddOpConvolve', 'ImageChainAddOpConvolveResidue', 'Clampf')
     CLAMPF_ADDRESSES = ('0xd9eb61c', '0xda91338')
 
-    @unittest.skipUnless(os.path.isfile(BINARY), 'optional ODSY libGLcore root is not present')
+    @unittest.skipUnless(ODSY_ROOT and os.path.isfile(BINARY), 'RE_ODSY_ROOT is not set to an ODSY root')
     def test_reported_routines_render_missing_conditions(self):
         for name in self.ROUTINES[:2]:
             with self.subTest(routine=name):
