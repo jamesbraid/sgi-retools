@@ -10,6 +10,8 @@ directory holds the two tools every workspace shares for them:
 | `check-publish-safe.py --config defs.toml` | refuses leaks, checks the header against itself, checks it against the workspace's prose notes |
 | `gen_decode_rust.py --config defs.toml` | writes one plain Rust module per header; `--check` fails when the checked-in output is stale |
 | `test_defs.py` | tests for both, over `testdata/mini/` |
+| `ci-check` | the one command a workspace's CI runs: check, staleness, C and Rust compile |
+| `forgejo-workflow.yml` | template for the workspace's `.forgejo/workflows/re-check.yml` |
 
 Needs Python 3.11 or newer (for `tomllib`) and nothing else. Run them from the
 workspace:
@@ -226,3 +228,25 @@ that commit, and also fails on a missing or extra `.rs` file.
    generator, commit the `.rs` output, and run the check again.
 4. Wire the check into the workspace's pre-push or CI step beside its existing
    leak check (`retools/tools/defs/test_defs.py` covers the framework).
+
+## Running it in CI
+
+`ci-check` runs from the workspace root with this repository checked out as
+`retools/`. With no `defs.toml` it prints `no decode headers` and exits 0.
+Otherwise it runs, in order:
+
+1. `check-publish-safe.py --config defs.toml --rust`
+2. `gen_decode_rust.py --config defs.toml --check` (never writes files)
+3. `cc -fsyntax-only -Wall -Werror` over each header listed in `defs.toml`
+4. `rustc --edition 2021 --crate-type lib --emit=metadata` over each generated
+   module; if `rustc` is missing it says so on stderr and skips this step
+
+Each failure prints one `FAIL <reason>` line and the exit status is 1. It needs
+Python 3.11 or newer and a C compiler.
+
+To adopt it, copy `forgejo-workflow.yml` to `.forgejo/workflows/re-check.yml`.
+The job runs on `ubuntu-latest` in a public Debian image, installs `python3`,
+`gcc` and `rustc` from Debian, and initialises only the retools submodule
+(`git submodule update --init --depth 1 retools`). Never use `--recursive`:
+some workspaces carry vendor-source submodules that must not be fetched.
+The workflow uses no secrets.
