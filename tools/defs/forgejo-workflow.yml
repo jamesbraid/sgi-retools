@@ -1,0 +1,26 @@
+# Copy to .forgejo/workflows/re-check.yml in a workspace that has a defs.toml.
+# Fetches only the retools submodule: some workspaces carry vendor-source
+# submodules that must never be cloned, so never use --recursive.
+name: re-check
+on:
+  push:
+  pull_request:
+
+jobs:
+  decode-headers:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/library/debian:stable-slim
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates python3 gcc libc6-dev rustc
+      - name: Check out the repository
+        uses: https://code.forgejo.org/actions/checkout@v4
+        with:
+          submodules: false
+      - name: Fetch retools only
+        run: git submodule update --init --depth 1 retools
+      - name: Check decode headers
+        run: retools/tools/defs/ci-check

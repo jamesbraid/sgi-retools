@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""CI entry point for a workspace's decode headers.
+
+Run from the workspace root, with this repository checked out as retools/.
+Needs Python 3.11 or newer, a C compiler and, optionally, rustc.
+"""
+import glob
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import tomllib
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+failures = []
+
+
+def run(label, argv):
+    """Run argv; record one line on failure and show the tool's output."""
+    p = subprocess.run(argv, capture_output=True, text=True)
+    out = (p.stdout + p.stderr).strip()
+    if p.returncode != 0:
+        if out:
+            print(out, file=sys.stderr)
+        failures.append(f"{label}: exit {p.returncode}")
+    return p.returncode == 0
+
+
+def main():
+    if not os.path.isfile("defs.toml"):
+        print("no decode headers")
+        return 0
+    with open("defs.toml", "rb") as f:
+        cfg = tomllib.load(f)
+    py = sys.executable
+    run("publish-safe check",
+        [py, os.path.join(HERE, "check-publish-safe.py"), "--config", "defs.toml", "--rust"])
+    run("generated Rust is stale or invalid",
+        [py, os.path.join(HERE, "gen_decode_rust.py"), "--config", "defs.toml", "--check"])
+
+    cc = shutil.which("cc") or shutil.which("gcc")
+    for h in cfg.get("headers", []):
+        path = h["file"]
+        if not os.path.isfile(path):
+            failures.append(f"{path}: listed in defs.toml but missing")
+        elif not cc:
+            failures.append(f"{path}: no C compiler (cc) found")
+        else:
+            run(f"{path}: C compile", [cc, "-fsyntax-only", "-Wall", "-Werror",
+                                      "-x", "c", "-I", ".", path])
+
+    out_dir = cfg.get("rust", {}).get("out_dir", "generated")
+    mods = [os.path.join(out_dir, h["module"] + ".rs")
+            for h in cfg.get("headers", []) if h.get("module")]
+    rustc = shutil.which("rustc")
+    if not mods:
+        pass
+    elif not rustc:
+        print("ci-check: rustc not found, skipping the Rust type-check", file=sys.stderr)
+    else:
+        with tempfile.TemporaryDirectory() as td:
+            for m in mods:
+                if not os.path.isfile(m):
+                    failures.append(f"{m}: generated module missing")
+                    continue
+                run(f"{m}: rustc type-check",
+                    [rustc, "--edition", "2021", "--crate-type", "lib",
+                     "--emit=metadata", "--out-dir", td, "-A", "dead_code", m])
+
+    for f in failures:
+        print(f"FAIL {f}", file=sys.stderr)
+    if failures:
+        return 1
+    print("decode headers ok")
+    return 0
+
+
+sys.exit(main())
