@@ -3825,11 +3825,23 @@ def code_groups(funcs, ucode_rows):
     return groups
 
 
+def import_device_module(name):
+    """The module a config names. Device tools live in tools/<device>/ (tools/odsy/buzz_ucode_disasm.py),
+    which is not on the path, so a name that tools/ does not provide is searched for in those directories."""
+    import importlib.util
+    if importlib.util.find_spec(name) is None:
+        base = os.path.dirname(os.path.abspath(__file__))
+        for d in sorted(os.listdir(base)):
+            if os.path.isfile(os.path.join(base, d, name + '.py')):
+                sys.path.insert(0, os.path.join(base, d))
+                break
+    return importlib.import_module(name)
+
+
 def record_routines(src):
     """Routines of a fixed-record microcode image: one starts at record 0, a fixed distance after
     each end-mark record and at every host entry point."""
-    import importlib
-    mod = importlib.import_module(src['module']) if src.get('module') else None
+    mod = import_device_module(src['module']) if src.get('module') else None
 
     def attr(k, default=None):
         v = src.get(k)
