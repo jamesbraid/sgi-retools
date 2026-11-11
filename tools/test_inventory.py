@@ -973,5 +973,25 @@ class FirmwareMmio(unittest.TestCase):
         self.assertIsNone(inv.window_at(m, 0x60000000))
 
 
+class RoleSignature(unittest.TestCase):
+    """The role clause the cross-workspace check compares."""
+
+    def test_a_size_only_opening_sentence_is_not_a_role(self):
+        # Every routine reading opens "`f` is a N-byte routine." That sentence names no role, so two
+        # workspaces' readings of different routines share it and must not be called the same text.
+        odsy = ('`glXSwapIntervalSGI` is a 440-byte n32 routine. It walks from abs 0x1014 to the current '
+                'drawable record, then calls `ioctl` with request 0x3ee on the device descriptor.')
+        kona = ('`glXSwapIntervalSGI` is a 440-byte routine. It uses the same descriptor lookup and calls '
+                '`ioctl` with request 0x3ee and a stack buffer at sp-64.')
+        self.assertEqual(inv.role_signature(odsy), '')
+        self.assertEqual(inv.role_signature(kona), '')
+
+    def test_a_stated_role_is_kept(self):
+        t = ('- `__glScaleMatrix` in builds/x/libGLcore.so: scales the first three rows of a matrix record in '
+             'place by three factors, and it occupies 160 bytes at address 0x0da9e570; the rest.')
+        self.assertEqual(inv.role_signature(t), 'scales the first three rows of a matrix record in place by '
+                                                'three factors')
+
+
 if __name__ == '__main__':
     unittest.main()
