@@ -99,6 +99,14 @@ Its addresses are segment offsets, with no inferred segment base. ColdFire
 uses Capstone's 68040 decoder for the common instruction subset. This does
 not establish that every decoded opcode is legal on a ColdFire part.
 
+`--arch ppc32` decodes big-endian 32-bit PowerPC with Capstone and uses the
+System V register convention (arguments in r3 to r10, result in r3). It models
+address and constant building (`li`, `lis`, `addi`, `addis`, `ori`, `oris`,
+`mr`), D-form loads and stores, `cmpwi`/`cmpw`, the link and count registers
+and the branch family. Everything else invalidates what it writes and warns.
+Compares through a CR field other than cr0, unsigned compares and indexed
+loads and stores are not tracked.
+
 Run the synthetic regression tests on the host:
 
 ```sh
