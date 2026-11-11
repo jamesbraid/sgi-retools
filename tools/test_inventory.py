@@ -586,5 +586,17 @@ class RequestLabels(unittest.TestCase):
         self.assertNotIn('ODSY_SET_GC', text)
 
 
+class DeviceModules(unittest.TestCase):
+    """A module a config names is found under tools/ or one device directory below it."""
+
+    def test_a_module_moved_under_a_device_directory_is_found(self):
+        mod = inv.import_device_module('buzz_ucode_disasm')
+        self.assertEqual(os.path.dirname(os.path.abspath(mod.__file__)), os.path.join(HERE, 'odsy'))
+
+    def test_a_module_already_on_the_path_is_not_searched_for(self):
+        mod = inv.import_device_module('mips_xlate')
+        self.assertEqual(os.path.dirname(os.path.abspath(mod.__file__)), HERE)
+
+
 if __name__ == '__main__':
     unittest.main()
