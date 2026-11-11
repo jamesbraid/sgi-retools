@@ -180,6 +180,82 @@ class DefsTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn('overlaps', r.stdout)
 
+    # -- 64-bit words and address spaces -------------------------------------
+    WIDE = (
+        '/* WORD: WIDE 64 */\n'
+        '/* FIELD: WIDE.hi 63:32 established */\n'
+        '#define UART_WIDE_HI_SHIFT 32\n'
+        '#define UART_WIDE_HI_MASK  0xffffffffull\n'
+        '/* FIELD: WIDE.lo 31:0 established */\n'
+        '#define UART_WIDE_LO_SHIFT 0\n'
+        '#define UART_WIDE_LO_MASK  0xffffffffull\n'
+        '/* REG: UART.wide 0x30 rw64 reset=0x0 inferred */\n'
+        '/* FIELD: UART.wide.top 63:60 inferred */\n'
+        '#define UART_WIDE_TOP_SHIFT 60\n'
+        '#define UART_WIDE_TOP_MASK  0xfull\n'
+        '/*\n * TESTVEC: 0x123456781abcdef0 as WIDE => hi=0x12345678, lo=0x1abcdef0\n */\n'
+        '/*\n * TESTVEC: 0xa000000000000001 as UART.wide => top=10\n */\n')
+
+    def add_wide(self):
+        with open(self.header, 'a') as f:
+            f.write(self.WIDE)
+        with open(os.path.join(self.root, 'docs', 'uart.md'), 'a') as f:
+            f.write('\nWide words 0x123456781abcdef0 and 0xa000000000000001.\n')
+
+    def test_64_bit_fields_and_vectors(self):
+        self.add_wide()
+        git(self.root, 'commit', '-q', '-a', '-m', 'wide')
+        self.committed_rust()
+        r = self.check()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.out, 'uart.rs'), encoding='utf-8') as f:
+            rs = f.read()
+        self.assertIn('pub struct Wide(u64);', rs)
+        self.assertIn('pub const fn hi(self) -> u64 {\n        self.0 >> 32', rs)
+        self.assertIn('pub const fn top(self) -> u64', rs)
+        self.assertIn('Wide::new(0x123456781abcdef0)', rs)
+
+    def test_64_bit_testvec_must_decode(self):
+        self.add_wide()
+        self.edit(self.header, 'lo=0x1abcdef0', 'lo=0x1abcdef1')
+        r = self.check('--header', 'UART_DECODE.h')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('lo is', r.stdout)
+        self.assertEqual(self.generate('--commit', 'abcdef012345').returncode, 1)
+
+    def test_testvec_wider_than_word_fails(self):
+        self.add_wide()
+        self.edit(self.header, '0xa000000000000001 as UART.wide', '0x1a000000000000001 as UART.wide')
+        r = self.check('--header', 'UART_DECODE.h')
+        self.assertIn('is wider than UART.wide (64 bits)', r.stdout)
+        self.assertEqual(self.generate('--commit', 'abcdef012345').returncode, 1)
+
+    def test_bit_63_needs_a_64_bit_word(self):
+        self.edit(self.header, 'FRAME.payload 8:1', 'FRAME.payload 63:1')
+        r = self.check('--header', 'UART_DECODE.h')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('bad range 63:1 for FRAME.payload in a 32-bit word', r.stdout)
+
+    def test_register_offsets_are_scoped_per_space(self):
+        reg = '/* REG: UART.alias 0x10 rw32 %sreset=0x0 inferred */\n'
+        self.edit(self.cfg, 'block = "UART"', 'block = "UART"\nspace = "cpu"')
+        for tag, want in (('space=re ', 0), ('space=cpu ', 1)):
+            with open(self.header, encoding='utf-8') as f:
+                orig = f.read()
+            with open(self.header, 'a') as f:
+                f.write(reg % tag)
+            r = self.check('--header', 'UART_DECODE.h')
+            self.assertEqual(r.returncode, want, r.stdout)
+            if want:
+                self.assertIn('overlaps', r.stdout)
+            with open(self.header, 'w') as f:
+                f.write(orig)
+        # Without any space, the same offset still collides.
+        self.edit(self.cfg, 'space = "cpu"\n', '')
+        with open(self.header, 'a') as f:
+            f.write(reg % '')
+        self.assertEqual(self.check('--header', 'UART_DECODE.h').returncode, 1)
+
     def test_prose_drift_fails_both_ways(self):
         doc = os.path.join(self.root, 'docs', 'uart.md')
         self.edit(doc, 'bits 31:16 of the control word', 'bits 30:16 of the control word')
