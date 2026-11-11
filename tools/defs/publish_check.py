@@ -73,13 +73,14 @@ NAME_RULES = {'vendor source path', 'source/object file name', HEADER_NAME_LABEL
 # Legacy form: FIELD: WORD.name hi:lo grade (32-bit words, explicit macro pairs).
 FIELD_RE = re.compile(r'/\*\s*FIELD:\s*(\w+)\.(\w+)\s+(\d+):(\d+)\s+(\w+)\s*\*/')
 TV_RE = re.compile(r'TESTVEC:\s*(0x[0-9a-fA-F]+)\s+as\s+(\w+)\s*=>\s*(.+?)\s*$')
-DEF_RE = re.compile(r'^#define\s+(\w+)\s+\(?\s*(0x[0-9a-fA-F]+|\d+)[uU]?\s*\)?')
+DEF_RE = re.compile(r'^#define\s+(\w+)\s+\(?\s*(0x[0-9a-fA-F]+|\d+)[uU]?[lL]{0,2}\s*\)?')
 SHL_RE = re.compile(r'^#define\s+(\w+)\s+\(\s*1u?\s*<<\s*(\d+)\s*\)')
 
 # Regs form.
 REG_RE = re.compile(
     r'^\s*/\*\s*REG:\s*([A-Z]+)\.([a-z]\w*)\s+(0x[0-9a-f]{1,4})\s+(rw|r|w)(\d+)'
-    r'(?:\s+count=(\d+))?\s+reset=(unknown|0x[0-9a-f]+|\d+)\s+(\w+)\s*\*/\s*$')
+    r'(?:\s+count=(\d+))?(?:\s+space=(\w+))?\s+reset=(unknown|0x[0-9a-f]+|\d+)\s+(\w+)\s*\*/\s*$')
+WORD_RE = re.compile(r'/\*\s*WORD:\s*([A-Z][A-Z_0-9]*)\s+(32|64)\s*\*/')
 FIELD3_RE = re.compile(r'/\*\s*FIELD:\s*([A-Z]+)\.([a-z]\w*)\.([a-z]\w*)\s+(\d+):(\d+)\s+(\w+)\s*\*/')
 FIELD2_RE = re.compile(r'/\*\s*FIELD:\s*([A-Z_0-9]+)\.([a-z]\w*)\s+(\d+):(\d+)\s+(\w+)\s*\*/')
 ENUM_RE = re.compile(r'/\*\s*ENUM:\s*([\w.]+)\s+(0x[0-9a-f]+|\d+)\s+(\w+)\s+(\w+)\s*\*/')
@@ -135,6 +136,7 @@ class Hdr:
         self.regs, self.fields, self.defs, self.enums = {}, {}, {}, {}
         self.vecs = []            # regs form: (kind, value, target, vals, line); legacy: dict
         self.addr_fields = []
+        self.widths = {}          # field key -> bit width of its word
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +317,7 @@ def check_testvecs(rep, header, text, fields):
     return vecs
 
 
-def parse_regs(rep, ctx, header, text, block):
+def parse_regs(rep, ctx, header, text, block, space=None):
     regs = {}
     for n, line in enumerate(text.splitlines(), 1):
         if not re.search(r'\bREG:', line) or '<' in line:
@@ -326,7 +328,7 @@ def parse_regs(rep, ctx, header, text, block):
             rep.fail(where, 'malformed REG line (offset must be 1-4 lowercase hex digits, '
                      'one REG per line, nothing else on it): %s' % line.strip())
             continue
-        blk, name, off, acc, width, count, reset, grade = m.groups()
+        blk, name, off, acc, width, count, reg_space, reset, grade = m.groups()
         key = '%s.%s' % (blk, name)
         off = int(off, 16)
         count = int(count) if count else 1
@@ -345,23 +347,35 @@ def parse_regs(rep, ctx, header, text, block):
         if count < 1:
             rep.fail(where, '%s has count 0' % key)
         regs[key] = dict(off=off, acc=acc, width=width, count=count, reset=reset,
-                         grade=grade, line=n)
+                         grade=grade, line=n, space=reg_space or space)
     if not regs:
         rep.fail(header, 'no REG entries')
     return regs
 
 
 def check_reg_overlap(rep, allregs):
-    items = sorted((r['off'], r['off'] + r['count'] - 1, k) for k, r in allregs.items())
-    for i, (lo, hi, k) in enumerate(items):
-        for lo2, hi2, k2 in items[i + 1:]:
-            if lo2 <= hi:
-                rep.fail('registers', '%s (0x%x-0x%x) overlaps %s (0x%x-0x%x)'
-                         % (k, lo, hi, k2, lo2, hi2))
+    # Offsets collide only within one address space; a register with no space
+    # is in the default one.
+    by_space = {}
+    for k, r in allregs.items():
+        by_space.setdefault(r.get('space'), []).append((r['off'], r['off'] + r['count'] - 1, k))
+    for items in by_space.values():
+        items.sort()
+        for i, (lo, hi, k) in enumerate(items):
+            for lo2, hi2, k2 in items[i + 1:]:
+                if lo2 <= hi:
+                    rep.fail('registers', '%s (0x%x-0x%x) overlaps %s (0x%x-0x%x)'
+                             % (k, lo, hi, k2, lo2, hi2))
 
 
-def parse_fields_new(rep, header, text, regs):
+def parse_fields_new(rep, header, text, regs, widths=None):
+    """widths, when given, is filled with the bit width of each field's word."""
     fields = {}
+    words = {}                               # non-register word -> declared width
+    for line in text.splitlines():
+        m = WORD_RE.search(line)
+        if m and '<' not in line:
+            words[m.group(1)] = int(m.group(2))
     for n, line in enumerate(text.splitlines(), 1):
         if 'FIELD:' not in line or '<' in line:
             continue
@@ -380,7 +394,7 @@ def parse_fields_new(rep, header, text, regs):
                 rep.fail(where, 'malformed FIELD line: %s' % line.strip())
                 continue
             word, fname, hi, lo, grade = m2.groups()
-            owner, key, width = word, '%s.%s' % (word, fname), 32
+            owner, key, width = word, '%s.%s' % (word, fname), words.get(word, 32)
         hi, lo = int(hi), int(lo)
         if key in fields:
             rep.fail(where, 'duplicate field %s' % key)
@@ -389,6 +403,8 @@ def parse_fields_new(rep, header, text, regs):
         if grade not in GRADES:
             rep.fail(where, 'bad grade %r for %s' % (grade, key))
         fields[key] = (hi, lo, grade, n, owner)
+        if widths is not None:
+            widths[key] = width
     _check_overlap(rep, header, {k: (v[0], v[1], v[4]) for k, v in fields.items()})
     return fields
 
@@ -472,7 +488,7 @@ def decode_field(value, fields, key):
     return (value >> lo) & ((1 << (hi - lo + 1)) - 1)
 
 
-def check_vectors_new(rep, header, text, fields, allregs):
+def check_vectors_new(rep, header, text, fields, allregs, widths=None):
     vecs = []
     for n, line in enumerate(text.splitlines(), 1):
         if ('TESTVEC:' not in line and 'EXAMPLE (unverified):' not in line) or '<' in line:
@@ -497,6 +513,9 @@ def check_vectors_new(rep, header, text, fields, allregs):
                 exp = allregs[want[1:]]['off']
             else:
                 exp = int(want, 0)
+            if widths and value >> widths[key]:
+                rep.fail(where, '%s value 0x%x is wider than %s (%d bits)' % (kind, value, target, widths[key]))
+                continue
             got = decode_field(value, fields, key)
             vals[name] = got
             if got != exp:
@@ -818,8 +837,8 @@ def parse_header(ctx, hc, text, selected):
                      hc.get('macro_pairs', []), hc.get('inplace', []))
         h.vecs = check_testvecs(rep, h.file, text, h.fields)
     elif h.form == 'regs':
-        h.regs = parse_regs(rep, ctx, h.file, text, h.block) if h.block else {}
-        h.fields = parse_fields_new(rep, h.file, text, h.regs)
+        h.regs = parse_regs(rep, ctx, h.file, text, h.block, hc.get('space')) if h.block else {}
+        h.fields = parse_fields_new(rep, h.file, text, h.regs, h.widths)
         h.defs = parse_defines(text)
         check_macros_new(rep, h.file, h.fields, h.defs, h.prefix)
         h.enums = parse_enums(rep, h.file, text, h.fields, h.defs, h.prefix)
@@ -864,7 +883,7 @@ def run(cfg, root, config_path, selected_files=None, rust_only=False, verbose=Fa
             regs_pool = ctx.allregs if h.block else {}
             if h.block:
                 hex_literals_outside_regs(ctx, h.file, h.text)
-            h.vecs = check_vectors_new(rep, h.file, h.text, h.fields, regs_pool)
+            h.vecs = check_vectors_new(rep, h.file, h.text, h.fields, regs_pool, h.widths)
             if h.cfg.get('notes_corpus'):
                 check_vectors_in_notes(ctx, h)
             if h.cfg.get('no_addresses'):

@@ -33,7 +33,8 @@ is an inclusive bit range, `n:n` is one bit. A grade is `established`,
 was measured.
 
 ```
-REG:   <BLOCK>.<name> <offset> <acc><width> [count=<n>] reset=<v> <grade>
+REG:   <BLOCK>.<name> <offset> <acc><width> [count=<n>] [space=<s>] reset=<v> <grade>
+WORD:  <WORD> <32|64>                               width of a non-register word (default 32)
 FIELD: <BLOCK>.<name>.<field> <hi>:<lo> <grade>     a field of a register
 FIELD: <WORD>.<field> <hi>:<lo> <grade>             a field of a non-register word
 ENUM:  <target> <value> <label> <grade>             target is a FIELD key
@@ -46,6 +47,10 @@ EXAMPLE (unverified): <value> as <...> => ...       layout only, never asserted
   0x100 or more (including every address of a `count=` block up to 64) may appear
   only inside its REG line; elsewhere write the register name. A TESTVEC names an
   address as `@BLOCK.name`. `count=n` marks n consecutive registers.
+  `space=<s>` names the address space the offset belongs to (see below).
+- Word width: a word is 32 bits wide, or 64 for a word declared with `WORD:`
+  or a `rw64` register with a field above bit 31. Field ranges go up to bit 63 in a 64-bit word and the
+  generated Rust uses `u64` for it. A `#define` value may carry a `u`, `ul` or `ull` suffix.
 - `FIELD`: block names are upper case, register and field names lower case; a
   non-register word name is upper case (`FRAME`, `HDR_W7`). Fields of one word
   must not overlap; a field must fit the register width (32 for plain words).
@@ -62,6 +67,11 @@ EXAMPLE (unverified): <value> as <...> => ...       layout only, never asserted
   with the same value. Plain numeric `#define`s with a trailing grade comment
   become Rust constants.
 
+Address spaces. Register offsets collide only inside one space. A REG takes
+its space from its own `space=` attribute, else from the header's `space` key,
+else it is in the unnamed default space, so headers that declare none are
+checked together as before. Use it where two register windows reuse offsets.
+
 A second, older form (`form = "legacy"`) has `FIELD: WORD.name hi:lo grade` on
 32-bit words and a hand-listed macro table; use it only for a header that
 already has one. odsy's `BUZZ_DECODE.h` is the example.
@@ -75,7 +85,7 @@ already has one. odsy's `BUZZ_DECODE.h` is the example.
    `at 0x...`), a record offset and a source-line cite. A repo adds its own
    rules under `[[banned.extra]]`.
 2. Consistency. Field overlap and ranges, macros against FIELD lines, enum
-   values against macros, TESTVEC decodes, register overlap across all REG
+   values against macros, TESTVEC decodes, register overlap (within one address space) across all REG
    headers, and the REG-offsets-only-in-REG-lines rule (with `[checks]`
    `address_bits`, default 14, bounding a 4-digit hex value as an address).
 3. Prose. Each `[[claims]]` entry binds a regular expression over a notes file
@@ -136,6 +146,7 @@ regex = '\b(?:gfP_|ody_)\w*'
 [[headers]]
 file = "DISPLAY_DECODE.h"
 block = "DISPLAY"                   # REG block; omit for a header with plain words only
+# space = "cpu"                     # address space of this header's REGs; default none
 # prefix = "DISPLAY"                # macro prefix for plain words; default the block
 # group = "display"                 # headers sharing a group share one claims namespace
 # form = "regs"                     # or "legacy"

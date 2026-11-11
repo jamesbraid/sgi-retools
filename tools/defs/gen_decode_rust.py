@@ -49,11 +49,12 @@ GRADES = "established|inferred|unknown"
 FIELD_RE = re.compile(r"/\*\s*FIELD:\s*(\w+(?:\.\w+)?)\.(\w+)\s+(\d+):(\d+)\s+(%s)\s*\*/" % GRADES)
 REG_RE = re.compile(
     r"/\*\s*REG:\s*(\w+)\.(\w+)\s+(0x[0-9a-fA-F]+)\s+(rw|r|w)(\d+)(?:\s+count=(\d+))?"
-    r"\s+reset=(\S+)\s+(%s)\s*\*/" % GRADES
+    r"(?:\s+space=\w+)?\s+reset=(\S+)\s+(%s)\s*\*/" % GRADES
 )
+WORD_RE = re.compile(r"/\*\s*WORD:\s*([A-Z][A-Z_0-9]*)\s+(32|64)\s*\*/")
 ENUM_RE = re.compile(r"/\*\s*ENUM:\s*([\w.]+)\s+(0x[0-9a-fA-F]+|\d+)\s+(\w+)\s+(%s)\s*\*/" % GRADES)
 TV_RE = re.compile(r"TESTVEC:\s*(0x[0-9a-fA-F]+)\s+as\s+([\w.]+)\s*=>\s*(.+?)\s*$")
-DEF_RE = re.compile(r"^#define\s+(\w+)\s+(0x[0-9a-fA-F]+|\d+)[uU]?(?:\s*/\*(.*))?$")
+DEF_RE = re.compile(r"^#define\s+(\w+)\s+(0x[0-9a-fA-F]+|\d+)[uU]?[lL]{0,2}(?:\s*/\*(.*))?$")
 FUNC_RE = re.compile(r"^#define\s+(\w+)\(i\)\s+\(\s*(0x[0-9a-fA-F]+)[uU]?\s*\+\s*\(i\)\s*\)")
 
 KEYWORDS = {
@@ -107,6 +108,7 @@ class Header:
         self.defs = []  # (name, value, comment)
         self.funcs = []  # (name, base)
         self.vecs = []  # (value, target, [(field, text)])
+        self.wwords = {}  # non-register word -> declared width
         self.parse(text)
 
     def parse(self, text):
@@ -122,10 +124,14 @@ class Header:
                 b, n, off, acc, w, cnt, rst, g = m.groups()
                 self.regs.append((b, n, int(off, 16), acc, int(w), int(cnt) if cnt else None, rst, g))
                 continue
+            m = WORD_RE.search(line)
+            if m:
+                self.wwords[m.group(1)] = int(m.group(2))
+                continue
             m = FIELD_RE.search(line)
             if m:
                 key, name, hi, lo, g = m.group(1), m.group(2), int(m.group(3)), int(m.group(4)), m.group(5)
-                assert 0 <= lo <= hi <= 31, line
+                assert 0 <= lo <= hi <= 63, line
                 self.fields.setdefault(key, []).append((name, hi, lo, g))
                 continue
             m = ENUM_RE.search(line)
@@ -156,12 +162,25 @@ class Header:
                 self.defs.append((m.group(1), int(m.group(2), 0), (m.group(3) or "").strip()))
         for key, fs in self.fields.items():
             used = 0
+            top = max(hi for _, hi, _, _ in fs)
+            assert top < self.bits(key), f"{key} field reaches bit {top}"
             for name, hi, lo, _ in fs:
                 bits = mask_of(hi, lo) << lo
                 assert not used & bits, f"{key}.{name} overlaps another field"
                 used |= bits
         self.blocks = {r[0] for r in self.regs}
         self.reg_offset = {f"{r[0]}.{r[1]}": r[2] for r in self.regs}
+
+    def bits(self, key):
+        """Width of a word: 64 for a WORD declared so, or a 64-bit register with a
+        field above bit 31 (a 64-bit register with only low fields stays u32, as
+        before 64-bit support), else 32."""
+        if key in self.wwords:
+            return self.wwords[key]
+        for r in self.regs:
+            if f"{r[0]}.{r[1]}" == key and r[4] == 64 and any(f[1] > 31 for f in self.fields.get(key, [])):
+                return 64
+        return 32
 
     def word_type(self, key):
         if key in self.words:
@@ -274,7 +293,7 @@ def resolve(v, headers):
 def check_vectors(h, headers):
     # The header's own vectors must hold for the ranges we are about to emit.
     for value, target, kv in h.vecs:
-        assert value <= 0xFFFFFFFF, f"TESTVEC {value:#x} is wider than a word"
+        assert value >> h.bits(target) == 0, f"TESTVEC {value:#x} is wider than a word"
         for k, v in kv:
             got = extract(h, target, k, value)
             want = resolve(v, headers)
@@ -302,12 +321,14 @@ def emit_enum(e):
 
 def emit_word(h, key, field_enum):
     ty = h.word_type(key)
+    wb = h.bits(key)
+    ut = f"u{wb}"
     o = []
     for l in h.word_desc(key).split("\n"):
         o.append(f"/// {l}")
-    o += ["#[derive(Clone, Copy, Debug, PartialEq, Eq)]", f"pub struct {ty}(u32);", "", f"impl {ty} {{",
-          "    pub const fn new(word: u32) -> Self {", "        Self(word)", "    }", "",
-          "    pub const fn raw(self) -> u32 {", "        self.0", "    }", ""]
+    o += ["#[derive(Clone, Copy, Debug, PartialEq, Eq)]", f"pub struct {ty}({ut});", "", f"impl {ty} {{",
+          f"    pub const fn new(word: {ut}) -> Self {{", "        Self(word)", "    }", "",
+          f"    pub const fn raw(self) -> {ut} {{", "        self.0", "    }", ""]
     seen = {"new", "raw"}
     for name, hi, lo, grade in h.fields[key]:
         fn = ident(name)
@@ -323,15 +344,18 @@ def emit_word(h, key, field_enum):
             arg = expr if width == 32 else f"{expr} & {mask_of(hi, lo):#x}"
             if hi == 31 and lo:
                 arg = f"self.0 >> {lo}"
+            if wb == 64:
+                assert width <= 32, f"enum field {fk} is wider than 32 bits"
+                arg = f"({expr} & {mask_of(hi, lo):#x}) as u32"
             o += [f"    pub const fn {fn}(self) -> {ety} {{", f"        {ety}::from_bits({arg})", "    }"]
         elif width == 1:
             o += [f"    pub const fn {fn}(self) -> bool {{", f"        {expr} & 1 != 0", "    }"]
-        elif width == 32:
-            o += [f"    pub const fn {fn}(self) -> u32 {{", "        self.0", "    }"]
-        elif hi == 31:
-            o += [f"    pub const fn {fn}(self) -> u32 {{", f"        self.0 >> {lo}", "    }"]
+        elif width == wb:
+            o += [f"    pub const fn {fn}(self) -> {ut} {{", "        self.0", "    }"]
+        elif hi == wb - 1:
+            o += [f"    pub const fn {fn}(self) -> {ut} {{", f"        self.0 >> {lo}", "    }"]
         else:
-            o += [f"    pub const fn {fn}(self) -> u32 {{", f"        {expr} & {mask_of(hi, lo):#x}", "    }"]
+            o += [f"    pub const fn {fn}(self) -> {ut} {{", f"        {expr} & {mask_of(hi, lo):#x}", "    }"]
         o.append("")
     o[-1:] = ["}", ""]
     return o
@@ -365,7 +389,8 @@ def emit_consts(h):
         d = doc(cmt)
         if d:
             o.append(f"/// {d}")
-        o.append(f"pub const {n}: u32 = {val:#x};" if val >= 0x100 else f"pub const {n}: u32 = {val};")
+        ct = "u64" if val > 0xFFFFFFFF else "u32"
+        o.append(f"pub const {n}: {ct} = {val:#x};" if val >= 0x100 else f"pub const {n}: {ct} = {val};")
     for name, base in h.funcs:
         n = (name[len(h.prefix):] if name.startswith(h.prefix) else name).lower()
         o += ["", f"/// `{n}(i)` is the opcode of descriptor `i`: `{base:#06x}` plus `i`.",
@@ -394,7 +419,7 @@ def emit_tests(h, field_enum, headers):
             elif width == 1:
                 acc += " as u32"
             want = resolve(v, headers)
-            lit = f"{want:#x}" if v.startswith("@") else str(want)
+            lit = f"{want:#x}" if v.startswith("@") or want >= 1000000 else str(want)
             label = f"{k}={v}" if v.startswith("@") else k
             line = f'        assert_eq!({acc}, {lit}, "{label}");'
             if len(line) > 100:
