@@ -283,6 +283,10 @@ def main(argv=None):
     parser.add_argument("--path", required=True, help="binary install path for the entry header")
     parser.add_argument("--grade", choices=[grade.title() for grade in GRADES], default="Inferred")
     parser.add_argument("--json-in", metavar="FILE", help="read saved hostfacts --json output")
+    parser.add_argument("--root", metavar="DIR", help="the binary root a firmware segment is read from "
+                        "(BINARY is then `path(member)` under it, as the inventory keys it)")
+    parser.add_argument("--config", metavar="FILE", help="inventory config whose layout groups cut the "
+                        "segments (default scripts/inventory-config.json of the current directory)")
     args = parser.parse_args(argv)
 
     if args.json_in:
@@ -292,8 +296,20 @@ def main(argv=None):
     else:
         if not args.binary or not args.routine:
             parser.error("BINARY and ROUTINE are required unless --json-in is used")
-        binary, member = hostfacts.split_binary(args.binary)
-        routine = hostfacts.routine_for(binary, args.routine, member=member, size=args.size)
+        routine = None
+        if args.root:
+            import firmware_layout
+            if args.config:
+                with open(args.config, encoding="utf-8") as handle:
+                    config = json.load(handle)
+            else:
+                config = firmware_layout.read_config(os.getcwd())
+            routine = firmware_layout.segment_routine(config, args.root, args.binary, args.routine, args.size)
+            if routine is None:
+                parser.error("%s is in no layout group of the config" % args.binary)
+        else:
+            binary, member = hostfacts.split_binary(args.binary)
+            routine = hostfacts.routine_for(binary, args.routine, member=member, size=args.size)
         facts = routine.facts(False)
         facts["routine"]["file"] = args.binary
     requested_name = (args.routine if args.routine and

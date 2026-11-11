@@ -87,5 +87,52 @@ class AccessRenderingTests(unittest.TestCase):
         self.assertTrue(output.startswith("- `requested_alias` in `usr/lib/a.so`"))
 
 
+def have_capstone():
+    try:
+        import capstone  # noqa: F401
+        import elftools  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+@unittest.skipUnless(have_capstone(), "needs capstone and pyelftools")
+class SegmentTests(unittest.TestCase):
+    """`--root` reads a routine from the segment a firmware row key names."""
+
+    def render(self, key, address, size, config=True):
+        import contextlib
+        import io
+        import json
+        import sys
+        import tempfile
+        sys.path.insert(0, HERE)
+        import test_firmware_layout as fl
+        with tempfile.TemporaryDirectory() as work:
+            fl.workspace(os.path.join(work, "root"))
+            path = os.path.join(work, "inventory-config.json")
+            with open(path, "w") as handle:
+                json.dump(fl.CONFIG if config else {}, handle)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                render_reading.main([key, address, "--size", str(size), "--path", key,
+                                     "--root", os.path.join(work, "root"), "--config", path])
+            return out.getvalue()
+
+    def test_a_coldfire_segment_is_read_at_its_load_address(self):
+        text = self.render("fw/l1.bin(l1#0)", "0xffe00008", 16)
+        self.assertIn("Architecture: coldfire, load 0xffe00000, offset 0x0.", text)
+        self.assertIn("loads 4 bytes from abs 0x10000014", text)
+
+    def test_a_powerpc_kernel_segment_is_read_at_its_link_address(self):
+        text = self.render("fw/l2.bin(kernel)", "0xc0000000", 20)
+        self.assertIn("Architecture: ppc32, load 0xc0000000, offset 0x0.", text)
+        self.assertIn("loads 4 bytes from abs 0x10000014", text)
+
+    def test_a_key_outside_every_layout_group_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self.render("usr/sbin/tool", "0x0", 4)
+
+
 if __name__ == "__main__":
     unittest.main()

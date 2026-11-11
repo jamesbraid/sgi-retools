@@ -176,6 +176,15 @@ def firmware_facts(root, entry):
     """(routine, facts) of an entry written for a non-MIPS image."""
     binary, _member = resolve_binary(root, entry)
     fw = entry["firmware"]
+    # a segment of a firmware container is cut out by the workspace's layout, as the inventory did
+    import firmware_layout
+    config = firmware_layout.read_config(os.path.dirname(os.path.abspath(root)))
+    routine = firmware_layout.segment_routine(config, root, entry["binary"], entry["address"], entry["size"])
+    if routine:
+        if (routine.arch, routine.img.load) != (fw["arch"], fw["load"]):
+            raise ValueError("the header says %s at load 0x%x, the config's layout gives %s at 0x%x" % (
+                fw["arch"], fw["load"], routine.arch, routine.img.load))
+        return routine, routine.facts(False)
     routine = hostfacts.routine_for(binary, entry["address"], size=entry["size"], arch=fw["arch"],
                                     load=fw["load"], offset=fw["offset"], elf=fw["elf"])
     return routine, routine.facts(False)

@@ -6,6 +6,7 @@ Run from the repository root: python3 tools/test_reading_round.py
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import subprocess
 import sys
@@ -13,6 +14,7 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 spec = importlib.util.spec_from_file_location("reading_round", os.path.join(HERE, "reading_round.py"))
 rr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rr)
@@ -35,13 +37,12 @@ def pick(rows, doc_lines=(), links=((), ()), **options):
 
 
 class SelectionTests(unittest.TestCase):
-    def test_container_segments_are_not_offered(self):
+    def test_container_segments_are_offered(self):
         got = pick([
             row("6.5.30/usr/cpu/firmware/sysco/l1.bin(l1#2)", "0xffe10000", "64", "sub_ffe10000", role="sysco-l1-firmware"),
             row("6.5.30/usr/cpu/firmware/sysco/l2.bin(kernel)", "0xc0001000", "64", "sub_c0001000", role="sysco-l2-firmware"),
-            row("usr/lib/lib.a(m.o)", "0x10", "8", "in_archive"),
-            row("usr/lib/a.so", "0x20", "8", "plain")])
-        self.assertEqual([n for _, n in got], ["in_archive", "plain"])
+            row("usr/lib/lib.a(m.o)", "0x10", "8", "in_archive")])
+        self.assertEqual([n for _, n in got], ["sub_ffe10000", "sub_c0001000", "in_archive"])
 
     def test_scope_and_status_filter(self):
         got = pick([
@@ -259,6 +260,89 @@ class FirmwareRoundTests(unittest.TestCase):
     def test_arch_without_load_is_refused(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             rr.main(["--repo-name", "x", "--round", "g1", "--out-dir", "o", "--arch", "arm"])
+
+
+@unittest.skipUnless(have_capstone(), "needs capstone and pyelftools")
+class SegmentRoundTests(unittest.TestCase):
+    """Rows keyed by a segment of a firmware container render and grade like any other routine."""
+
+    def run_round(self, rows, extra=()):
+        import test_firmware_layout as fl
+        with tempfile.TemporaryDirectory() as work:
+            fl.workspace(os.path.join(work, "root"))
+            os.makedirs(os.path.join(work, "docs", "inventory"))
+            os.makedirs(os.path.join(work, "scripts"))
+            with open(os.path.join(work, "scripts", "inventory-config.json"), "w") as handle:
+                json.dump(fl.CONFIG, handle)
+            with open(os.path.join(work, "docs", "inventory", "functions.tsv"), "w") as handle:
+                handle.write(HEADER + "".join("\t".join(r) + "\n" for r in rows))
+            for name in ("mmio", "ioctls", "tokens"):
+                with open(os.path.join(work, "docs", "inventory", name + ".tsv"), "w") as handle:
+                    handle.write("functions\texample\n" if name == "mmio" else "example\n")
+            git = lambda *a: subprocess.run(("git",) + a, cwd=work, check=True, capture_output=True)
+            git("init", "-q")
+            git("config", "user.email", "t@example.com")
+            git("config", "user.name", "t")
+            git("add", ".")
+            git("commit", "-q", "-m", "inventory")
+            old = os.getcwd()
+            os.chdir(work)
+            out = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(out):
+                    code = rr.main(["--repo-name", "fw", "--round", "g1", "--out-dir", "out",
+                                    "--from-grade", "located"] + list(extra))
+                with open("docs/instruction-readings-fw-g1.md") as handle:
+                    doc = handle.read()
+                with open("out/renderer-conflicts-fw-g1.tsv") as handle:
+                    conflicts = handle.read()
+            finally:
+                os.chdir(old)
+            return code, out.getvalue(), doc, conflicts
+
+    def test_each_architecture_renders_and_grades_end_to_end(self):
+        import test_firmware_layout as fl
+        rows = [row("fw/l1.bin(l1#0)", hex(fl.L1_LOAD + 8), str(len(fl.CF_CODE)), "sub_l1", "located", role="fw"),
+                row("fw/l2.bin(flash)", hex(fl.L2_LOAD), str(len(fl.PPC_CODE)), "sub_flash", "located", role="fw"),
+                row("fw/l2.bin(kernel)", hex(fl.KERNEL_LOAD), str(len(fl.PPC_CODE)), "sub_kernel", "located", role="fw"),
+                row("fw/flat.bin()", "0x2000", str(len(fl.CF_CODE)), "sub_flat", "located", role="fw")]
+        code, out, doc, conflicts = self.run_round(rows)
+        self.assertEqual(code, 0, out)
+        self.assertIn("4 entries written", out)
+        self.assertEqual(conflicts.count("\n"), 1, conflicts)
+        self.assertIn("- `sub_l1` in `fw/l1.bin(l1#0)` at 0x%x (m68k-sysv)." % (fl.L1_LOAD + 8), doc)
+        self.assertIn("Architecture: coldfire, load 0x%x, offset 0x0." % fl.L1_LOAD, doc)
+        self.assertIn("The `move.l` at 0x%x loads 4 bytes from abs 0x10000014." % (fl.L1_LOAD + 8 + 10), doc)
+        self.assertIn("- `sub_flash` in `fw/l2.bin(flash)` at 0x%x (ppc-sysv)." % fl.L2_LOAD, doc)
+        self.assertIn("Architecture: ppc32, load 0x%x, offset 0x0." % fl.L2_LOAD, doc)
+        self.assertIn("Architecture: ppc32, load 0x%x, offset 0x0." % fl.KERNEL_LOAD, doc)
+        self.assertIn("The `lwz` at 0x%x loads 4 bytes from abs 0x10000014." % (fl.KERNEL_LOAD + 8), doc)
+        self.assertIn("Architecture: coldfire, load 0x2000, offset 0x0.", doc)
+
+    def test_a_segment_the_container_lacks_is_a_renderer_conflict(self):
+        import test_firmware_layout as fl
+        code, out, doc, conflicts = self.run_round(
+            [row("fw/l2.bin(rom)", hex(fl.L2_LOAD), "20", "sub_rom", "located", role="fw")])
+        self.assertIn("0 entries written", out)
+        self.assertIn("has no segment 'rom'", conflicts)
+
+    def test_the_grader_rejects_an_entry_whose_header_names_another_load_address(self):
+        import test_firmware_layout as fl
+        rows = [row("fw/l2.bin(kernel)", hex(fl.KERNEL_LOAD), str(len(fl.PPC_CODE)), "sub_kernel", "located", role="fw")]
+        with tempfile.TemporaryDirectory() as work:
+            fl.workspace(os.path.join(work, "root"))
+            os.makedirs(os.path.join(work, "scripts"))
+            with open(os.path.join(work, "scripts", "inventory-config.json"), "w") as handle:
+                json.dump(fl.CONFIG, handle)
+            row_ = inventory(*rows)[0]
+            import firmware_layout
+            config = firmware_layout.read_config(work)
+            text = rr.render_one(row_, os.path.join(work, "root"), None, config)
+            bad = text.replace("load 0x%x" % fl.KERNEL_LOAD, "load 0x%x" % fl.L2_LOAD)
+            scratch = os.path.join(work, "entry.md")
+            self.assertEqual(rr.grade_one(text, os.path.join(work, "root"), scratch), (True, ""))
+            with self.assertRaisesRegex(ValueError, "layout gives ppc32 at 0xc0000000"):
+                rr.grade_one(bad, os.path.join(work, "root"), scratch)
 
 
 if __name__ == "__main__":
