@@ -2352,10 +2352,12 @@ class Unit:
 
     def firmware(self, img, path):
         """Register accesses of a flat firmware image. Each candidate routine entry (firmware_entries) is
-        followed to the routine's reachable instructions; a load or store whose address is a constant inside
-        a configured window is a site of that window. A routine that reaches a window not marked `memory` is
-        returned as a function row, so the functions table lists the routines that touch registers, not every
-        routine that touches RAM or flash. Stack traffic and addresses that depend on an unknown value are not sites."""
+        followed to the routine's reachable instructions. A load or store whose address is a constant inside
+        a configured window is a site of that window. So is one whose base is a constant inside a window
+        and whose index is not known (`d(An,Dn)`, PowerPC rA + rB): its offset is the base's, and the access
+        is marked `indexed`. A routine that reaches a window not marked `memory` is returned as a function
+        row, so the functions table lists the routines that touch registers, not every routine that touches
+        RAM or flash. Stack traffic and addresses that depend on a value loaded from memory are not sites."""
         import hostfacts
         fw = img['fw']
         arch, base, body = fw['arch'], fw['load'], img['data']
@@ -2375,14 +2377,23 @@ class Unit:
             self.fname = name = 'sub_%x' % a
             hardware = False
             for acc in sheet['accesses']:
-                if acc.get('implicit') or 'absolute' not in acc:
+                if acc.get('implicit'):
                     continue
-                at = window_at(self.m, int(acc['absolute'], 16))
+                if 'absolute' in acc:
+                    at, how, note = window_at(self.m, int(acc['absolute'], 16)), 'constant address', ''
+                elif acc.get('indexed'):
+                    # a known base register plus an index that is not known: the site is the base's offset
+                    # and the row says an index follows. In a memory window that is a table lookup, not a
+                    # register, so only a window that is not memory takes one.
+                    at, how, note = window_at(self.m, int(acc['index_base'], 16)), 'constant base, unknown index', 'indexed'
+                    if at is not None and self.m.windows[at[0]].get('memory'):
+                        at = None
+                else:
+                    continue
                 if at is None:
                     continue
                 self.sites[img['label']] += 1
-                self.record(at[0], at[1], 'r' if acc['kind'] == 'load' else 'w', acc['width'],
-                            'constant address', a, False)
+                self.record(at[0], at[1], 'r' if acc['kind'] == 'load' else 'w', acc['width'], how, a, False, note)
                 hardware = hardware or not self.m.windows[at[0]].get('memory')
             if hardware:
                 code = hashlib.sha256(body[a - base:end - base]).hexdigest()[:12]
