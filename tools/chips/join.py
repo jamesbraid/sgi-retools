@@ -17,6 +17,11 @@ Classes
                                  LOG_UNIMP for it
               unhandled:         the model has no entry (an undefined-address error)
 
+Address spaces: a site's scan window can name a space other than the register space (a config's
+"address_spaces", for example the local boot space reached through its own window). The space is part of the
+row key, so an access there never merges with a register row at the same offset; those rows carry the space
+name, are not compared with any datasheet or model, and fold to their own slot size.
+
 Variants come from the scan: the discriminator compare on the path to the access. A site
 whose path names several variants counts once for each; a site whose path names none is
 variant "?", classified against every variant and listed as such.
@@ -82,6 +87,7 @@ def main():
     ref = json.load(open(a.ref))
     model = cfg.get('variant_model', {})
     slot_of, part_of = slots.make(cfg)
+    space_of = slots.space_of(cfg)
     big = cfg.get('collapse_above', 0x10000)
     sites = list(csv.DictReader(open(a.sites), delimiter='\t'))
 
@@ -91,12 +97,14 @@ def main():
     site_rows = []
     for s in sites:
         off = int(s['offset'], 16)
-        slot = slot_of(off)
-        if off >= big:
+        space = space_of(s['window'])
+        s = dict(s, space=space)
+        slot = slot_of(off, space)
+        if off >= big and not space:
             # array regions (translation entries, write-request RAM, configuration windows): a loop's
             # unrolled iterations are one row per 0x800-byte bucket, flagged as indexed
             slot, s = off & ~0x7ff, dict(s, idx='1')
-        bk = next((b for b in buckets if b['lo'] <= off < b['lo'] + b['size']), None)
+        bk = None if space else next((b for b in buckets if b['lo'] <= off < b['lo'] + b['size']), None)
         if bk:
             # an access through a PCI device window or the flash window: not this ASIC's register,
             # so it is handed to the census of whatever sits behind it
@@ -109,13 +117,13 @@ def main():
             continue
         vs = s['variant'].split('|')
         for v in vs:
-            key = (v, slot, s['idx'])
+            key = (v, space, slot, s['idx'])
             r = rows.setdefault(key, {'rw': set(), 'widths': set(), 'halves': set(), 'sites': 0,
                                       'funcs': set(), 'images': set(), 'example': '', 'insns': set(),
                                       'flags': set(), 'bases': set(), 'window': s['window']})
             r['rw'].add(s['rw'])
             r['widths'].add(int(s['width']))
-            r['halves'].add(part_of(off))
+            r['halves'].add(part_of(off, space))
             r['sites'] += 1
             r['funcs'].add(s['function'])
             r['images'].add(s['image'])
@@ -125,20 +133,22 @@ def main():
                 r['example'] = '%s@%s' % (s['function'], s['addr'][-6:])
             m = model.get(v, model.get('default', {}))
             w = int(s['width'])
-            if slot < 0x10000 and m.get('access') == 'half32' and w:
+            if space:
+                pass
+            elif slot < 0x10000 and m.get('access') == 'half32' and w:
                 if w == 8:
                     r['flags'].add('64-bit access to a 32-bit register')
                 if w == 4 and part_of(off) == 0:
                     r['flags'].add('32-bit access to the high half')
-            if slot < 0x10000 and m.get('access') == 'dw64' and w == 4:
+            if not space and slot < 0x10000 and m.get('access') == 'dw64' and w == 4:
                 r['flags'].add('32-bit access to a 64-bit register')
             if int(s['partial']):
                 r['flags'].add('partial-word access')
 
     out_rows = []
-    for (v, slot, idx), r in rows.items():
+    for (v, space, slot, idx), r in rows.items():
         vs = [v] if v in ref else ([x for x in ref] if v == '?' else [])
-        if v == 'probe?':
+        if v == 'probe?' or space:
             vs = []
         ds, sp, qm = [], [], []
         for x in vs:
@@ -164,7 +174,9 @@ def main():
                     da, ea = norm_access(d.get('access')), norm_access(e.get('access'))
                     if da and ea and da != ea:
                         spc = 'conflict-access'
-        if cfg.get('mode') == 'no-spec' and vs and not ds and not qm:
+        if space:
+            dsc, qc, qd = 'n/a', 'out-of-scope', 'access through the %s window: not a register of this ASIC' % space
+        elif cfg.get('mode') == 'no-spec' and vs and not ds and not qm:
             dsc, qc, qd = 'n/a', 'n/a', 'no-spec mode: no datasheet or model compared'
         elif not vs:
             qc, qd = 'out-of-scope', 'variant has no emulator datasheet or model here (hand off to its own census)'
@@ -182,11 +194,15 @@ def main():
             else:
                 qc, qd = 'handled-specified', qm[0]['name']
         tasks = []
-        if dsc == 'n/a':
+        if space:
+            tasks.append('identify what the %s holds' % space)
+        elif dsc == 'n/a':
             tasks.append('no-spec: inventory from the binaries')
         elif not vs:
             tasks.append('variant out of scope')
-        if dsc == 'absent' and spc in ('present', 'conflict-access'):
+        if space:
+            pass
+        elif dsc == 'absent' and spc in ('present', 'conflict-access'):
             tasks.append('datasheet omits a register the spec lists')
         elif dsc == 'absent' and spc == 'absent':
             tasks.append('in neither datasheet nor spec: identify or mark kernel-only')
@@ -204,7 +220,7 @@ def main():
         # hand-written names a config carries for a chip with no specification (register_names)
         name = name or cfg.get('register_names', {}).get('0x%x' % slot, '')
         out_rows.append({
-            'variant': v, 'offset': '0x%x' % slot, 'idx': idx, 'name': name,
+            'variant': v, 'space': space, 'offset': '0x%x' % slot, 'idx': idx, 'name': name,
             'access_seen': ''.join(sorted(r['rw'])), 'widths': ','.join(str(w) for w in sorted(r['widths'])),
             'halves': ','.join(str(h) for h in sorted(r['halves'])), 'sites': r['sites'],
             'functions': len(r['funcs']), 'images': ','.join(sorted(r['images'])),
@@ -213,8 +229,8 @@ def main():
             'flags': '; '.join(sorted(r['flags'])), 'tasks': '; '.join(tasks),
             '_slot': slot,
         })
-    out_rows.sort(key=lambda x: (x['variant'], x['_slot'], x['idx']))
-    cols = ['variant', 'offset', 'idx', 'name', 'access_seen', 'widths', 'halves', 'sites', 'functions',
+    out_rows.sort(key=lambda x: (x['variant'], x['space'], x['_slot'], x['idx']))
+    cols = ['variant', 'space', 'offset', 'idx', 'name', 'access_seen', 'widths', 'halves', 'sites', 'functions',
             'images', 'example', 'datasheet', 'datasheet_ref', 'spec', 'spec_ref', 'model', 'model_detail',
             'flags', 'tasks']
     with open(a.out + '-census.tsv', 'w') as f:
@@ -230,7 +246,9 @@ def main():
     unreached = {}
     touched = collections.defaultdict(set)
     run_start = collections.defaultdict(set)
-    for (v, slot, idx) in rows:
+    for (v, space, slot, idx) in rows:
+        if space:
+            continue        # a boot-space access reaches no register the references list
         touched[v].add(slot)
         if idx == '1':
             run_start[v].add(slot)
@@ -270,11 +288,11 @@ def main():
     summary['window_rows'] = len(windows)
     summary['window_sites'] = sum(w['sites'] for w in windows.values())
     json.dump(summary, open(a.out + '-census.summary.json', 'w'), indent=1)
-    sc = ['image', 'function', 'addr', 'insn', 'rw', 'width', 'offset', 'idx', 'variant', 'basis']
+    sc = ['image', 'function', 'addr', 'insn', 'rw', 'width', 'offset', 'idx', 'variant', 'space', 'basis']
     with open(a.out + '-census-sites.tsv', 'w') as f:
         f.write('\t'.join(sc) + '\n')
         for s in sites:
-            f.write('\t'.join(s[c] for c in sc) + '\n')
+            f.write('\t'.join(s[c] if c != 'space' else space_of(s['window']) for c in sc) + '\n')
     print(json.dumps({k: summary[k] for k in ('rows', 'sites')}))
     for v, d in summary['by_variant'].items():
         print(v, d['rows'], d['model'], d['datasheet'], d['spec'])

@@ -44,7 +44,9 @@ def main():
     cfg = json.load(open(a.config))
     asic = cfg['asic']
     d = a.dir
-    census = tsv(os.path.join(d, asic + '-census.tsv'))
+    allrows = tsv(os.path.join(d, asic + '-census.tsv'))
+    census = [r for r in allrows if not r.get('space')]
+    spacerows = [r for r in allrows if r.get('space')]
     sites = tsv(os.path.join(d, 'sites.tsv'))
     windows = tsv(os.path.join(d, asic + '-census-windows.tsv'))
     unres = tsv(os.path.join(d, 'unresolved.tsv'))
@@ -73,8 +75,12 @@ def main():
     L.append('\nDatasheet checkout `%s` (datasheets, spec transcriptions); model at `%s` (model source, read only).\n' % (orev, qrev[:12]))
 
     L.append('## Summary\n')
-    L.append('- **%d access sites** resolved to a window offset, folded into **%d register rows** (one per variant and 8-byte slot). '
+    L.append('- **%d access sites** resolved to a window offset, folded into **%d register rows** (one per variant and register slot). '
              'Sites are summed over the images; the two kernels carry the same accessor code, so most sites appear once per kernel.' % (len(sites), len(census)))
+    for sp in sorted({r['space'] for r in spacerows}):
+        rs = [r for r in spacerows if r['space'] == sp]
+        L.append('- **%d %s rows** (%d sites) are accesses through a different address-space window; they are kept apart from the register rows and '
+                 'are not compared with the datasheet or model.' % (len(rs), sp, sum(int(r['sites']) for r in rs)))
     by = collections.OrderedDict()
     for r in census:
         by.setdefault(r['variant'], []).append(r)
