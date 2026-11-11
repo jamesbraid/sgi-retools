@@ -670,5 +670,117 @@ class DeviceModules(unittest.TestCase):
         self.assertEqual(os.path.dirname(os.path.abspath(mod.__file__)), HERE)
 
 
+try:
+    import capstone  # noqa: F401
+except ImportError:
+    capstone = None
+
+
+FIRMWARE_WINDOWS = {'windows': [
+    {'name': 'MBAR', 'size': '0x200', 'physical': '0x10000000'},
+    {'name': 'NVRAM', 'size': '0x800', 'physical': '0x20000000'},
+    {'name': 'FLASH', 'size': '0x100000', 'physical': '0xffe00000', 'memory': True},
+    {'name': 'IMMR', 'physical': '0xfa200000'}]}
+
+
+def firmware_scan(arch, load, words):
+    """Run the firmware scan over a synthetic image; returns (the unit, the function rows)."""
+    d = tempfile.mkdtemp()
+    body = b''.join(words)
+    path = os.path.join(d, 'image.bin')
+    with open(path, 'wb') as f:
+        f.write(body)
+    try:
+        u = inv.Unit(inv.Model(FIRMWARE_WINDOWS), FIRMWARE_WINDOWS, [])
+        img = {'label': 'fw.bin(image)', 'data': body, 'fw': {'arch': arch, 'load': load}}
+        return u, u.firmware(img, path)
+    finally:
+        shutil.rmtree(d)
+
+
+def hexbytes(*parts):
+    return [bytes.fromhex(p) for p in parts]
+
+
+class FirmwareLayout(unittest.TestCase):
+    def test_a_flat_layout_maps_the_file_from_its_offset(self):
+        seg = inv.firmware_segments({'layout': 'flat', 'load': '0x2000', 'offset': '4'}, 'x.bin', b'abcdefgh')
+        self.assertEqual(seg, [('', b'efgh', 0x2000)])
+
+
+@unittest.skipIf(capstone is None, 'capstone is not installed')
+class FirmwareMmio(unittest.TestCase):
+    """A load or store at a constant address inside a configured window of a firmware image is a site."""
+
+    def test_coldfire_absolute_addresses(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',                 # link.w a6,#0: the routine entry
+            '203910000014',             # move.l (0x10000014).l,d0: a read in MBAR
+            '13c020000010',             # move.b d0,(0x20000010).l: a write in NVRAM
+            '4e5e', '4e75'))            # unlk a6; rts
+        self.assertEqual(sorted(u.out_mmio), [('MBAR', 0x14), ('NVRAM', 0x10)])
+        self.assertEqual(u.out_mmio[('MBAR', 0x14)]['acc'], {'r4'})
+        self.assertEqual(u.out_mmio[('NVRAM', 0x10)]['acc'], {'w1'})
+        self.assertEqual(u.out_mmio[('MBAR', 0x14)]['funcs'], {'sub_1000'})
+        self.assertEqual(u.out_mmio[('MBAR', 0x14)]['bins'], {'fw.bin(image)'})
+        self.assertEqual(list(funcs), ['sub_1000'])
+        self.assertEqual(funcs['sub_1000'][1], 0x1000)
+
+    def test_coldfire_address_in_no_window_is_not_a_site(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',
+            '13c060000000',             # move.b d0,(0x60000000).l: outside every window
+            '4e5e', '4e75'))
+        self.assertEqual(u.out_mmio, {})
+        self.assertEqual(funcs, {})
+
+    def test_coldfire_stack_traffic_is_not_a_site(self):
+        u, funcs = firmware_scan('coldfire', 0x10000000, hexbytes('4e560000', '4e5e', '4e75'))
+        self.assertEqual(u.out_mmio, {})
+
+    def test_ppc_lis_relative_load_and_store(self):
+        u, funcs = firmware_scan('ppc32', 0xfe000000, hexbytes(
+            '9421fff0',                 # stwu r1,-16(r1): the routine entry
+            '3d20fa20',                 # lis r9,0xfa20
+            '80090280',                 # lwz r0,0x280(r9): a read of IMMR+0x280
+            '90090284',                 # stw r0,0x284(r9): a write of IMMR+0x284
+            '38210010', '4e800020'))    # addi r1,r1,16; blr
+        self.assertEqual(sorted(u.out_mmio), [('IMMR', 0x280), ('IMMR', 0x284)])
+        self.assertEqual(u.out_mmio[('IMMR', 0x280)]['acc'], {'r4'})
+        self.assertEqual(u.out_mmio[('IMMR', 0x284)]['acc'], {'w4'})
+        self.assertEqual(u.out_mmio[('IMMR', 0x280)]['funcs'], {'sub_fe000000'})
+
+    def test_ppc_lis_ori_pair_halfword_store(self):
+        u, funcs = firmware_scan('ppc32', 0xfe000000, hexbytes(
+            '9421fff0', '3d40fa20',     # lis r10,0xfa20
+            '614a0300',                 # ori r10,r10,0x300
+            'b00a000e',                 # sth r0,0xe(r10): IMMR+0x30e
+            '38210010', '4e800020'))
+        self.assertEqual(sorted(u.out_mmio), [('IMMR', 0x30e)])
+        self.assertEqual(u.out_mmio[('IMMR', 0x30e)]['acc'], {'w2'})
+
+    def test_ppc_address_in_no_window_is_not_a_site(self):
+        u, funcs = firmware_scan('ppc32', 0xfe000000, hexbytes(
+            '9421fff0', '3d406000',     # lis r10,0x6000
+            '900a0000',                 # stw r0,0(r10): outside every window
+            '38210010', '4e800020'))
+        self.assertEqual(u.out_mmio, {})
+        self.assertEqual(funcs, {})
+
+    def test_a_routine_that_reaches_only_memory_is_a_site_but_not_a_function_row(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',
+            '2039ffe00040',             # move.l (0xffe00040).l,d0: a read in FLASH, a memory window
+            '4e5e', '4e75'))
+        self.assertEqual(sorted(u.out_mmio), [('FLASH', 0x40)])
+        self.assertEqual(funcs, {})
+
+    def test_the_smaller_window_wins_where_windows_nest(self):
+        m = inv.Model(FIRMWARE_WINDOWS)
+        self.assertEqual(inv.window_at(m, 0xffe00040), ('FLASH', 0x40))
+        self.assertEqual(inv.window_at(m, 0xfa200284), ('IMMR', 0x284))
+        self.assertIsNone(inv.window_at(m, 0x60000000))
+
+
 if __name__ == '__main__':
     unittest.main()
