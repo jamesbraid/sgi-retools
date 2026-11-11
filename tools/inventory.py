@@ -1578,23 +1578,28 @@ def scope(cfg):
     by_sha = {}
     for rel, real, g in files:
         data = open(real, 'rb').read()
-        if data[:8] == b'!<arch>\n':
+        if g.get('layout'):
+            for member, body, load in firmware_segments(g, rel, data):
+                images.append(('%s(%s)' % (rel, member), rel, member, g, body, {'arch': g['arch'], 'load': load}))
+        elif data[:8] == b'!<arch>\n':
             want = g.get('members')
             for name, body in unpack_ar(data):
                 if want and not any(fnmatch.fnmatch(name, w) for w in want):
                     continue
-                images.append(('%s(%s)' % (rel, name), rel, name, g, body))
+                images.append(('%s(%s)' % (rel, name), rel, name, g, body, None))
         else:
-            images.append((rel, rel, '', g, data))
+            images.append((rel, rel, '', g, data, None))
     out = []
-    for label, path, member, g, data in images:
+    for label, path, member, g, data, fw in images:
+        # the same bytes at another load address are different code
         h = hashlib.sha256(data).hexdigest()
-        if h in by_sha:
-            by_sha[h]['copies'].append(label)
+        k = (h, fw['load'] if fw else None)
+        if k in by_sha:
+            by_sha[k]['copies'].append(label)
             continue
         e = {'label': label, 'path': path, 'member': member, 'group': g, 'data': data, 'sha': h, 'copies': [],
-             'size': len(data)}
-        by_sha[h] = e
+             'size': len(data), 'fw': fw}
+        by_sha[k] = e
         out.append(e)
     return out
 
@@ -2239,6 +2244,48 @@ class Unit:
                 break
             seeds_arg, seeds_ret = na, nr
         return self
+
+    def firmware(self, img, path):
+        """Register accesses of a flat firmware image. Each candidate routine entry (firmware_entries) is
+        followed to the routine's reachable instructions; a load or store whose address is a constant inside
+        a configured window is a site of that window. A routine that reaches a window not marked `memory` is
+        returned as a function row, so the functions table lists the routines that touch registers, not every
+        routine that touches RAM or flash. Stack traffic and addresses that depend on an unknown value are not sites."""
+        import hostfacts
+        fw = img['fw']
+        arch, base, body = fw['arch'], fw['load'], img['data']
+        himg = hostfacts.FirmwareImage(path, arch, base)
+        entries = firmware_entries(arch, body, base)
+        addrs = sorted(entries)
+        self.img = img
+        funcs, failed = {}, 0
+        self.recording = True
+        for i, a in enumerate(addrs):
+            end = addrs[i + 1] if i + 1 < len(addrs) else base + len(body)
+            try:
+                sheet = hostfacts.FirmwareRoutine(himg, '', a, end - a, 'given').facts(False)
+            except Exception:
+                failed += 1
+                continue
+            self.fname = name = 'sub_%x' % a
+            hardware = False
+            for acc in sheet['accesses']:
+                if acc.get('implicit') or 'absolute' not in acc:
+                    continue
+                at = window_at(self.m, int(acc['absolute'], 16))
+                if at is None:
+                    continue
+                self.sites[img['label']] += 1
+                self.record(at[0], at[1], 'r' if acc['kind'] == 'load' else 'w', acc['width'],
+                            'constant address', a, False)
+                hardware = hardware or not self.m.windows[at[0]].get('memory')
+            if hardware:
+                code = hashlib.sha256(body[a - base:end - base]).hexdigest()[:12]
+                funcs[name] = ['', a, end - a, {entries[a]}, code]
+        if failed:
+            print('%s: %d of %d candidate routines could not be read' % (img['label'], failed, len(addrs)),
+                  file=sys.stderr)
+        return funcs
 
     def reset(self):
         self.out_mmio, self.tokens, self.ioctl, self.touch = {}, {}, {}, set()
@@ -3002,6 +3049,84 @@ def pointer_table(img, elf, d):
     return out
 
 
+# ===================================================================== firmware images
+
+def firmware_segments(g, rel, data):
+    """[(member, body, load address)] for one file of a group that names a `layout`: the code a controller
+    runs, cut out of its container. `flat` is a file mapped at the group's `load` from its `offset`; the
+    sysco layouts split the controllers' ESTFBINR images the way sysco's firmware tables do."""
+    layout = g['layout']
+    if layout == 'flat':
+        off = num(g.get('offset', 0))
+        return [('', data[off:], num(g['load']))] if off < len(data) else []
+    if data[:8] != b'ESTFBINR':
+        return []
+    import zlib
+    from sysco import sysco_tables as st
+    if layout == 'sysco-l1':
+        if st.FW in rel and not st._old_layout(data):
+            pkgs = [p for p in st.l1_packages(data) if not p['linux']]
+        else:       # the base product's single image, and the sysco images that predate the container
+            pkgs = [st.pre_container_package(data)]
+        return [('l1#%d' % p['index'], p['body'], p['load']) for p in pkgs]
+    if layout == 'sysco-l2':
+        # the flash starts at the header's load address from file offset 0x2c; the kernel follows as a gzip
+        # stream and runs inflated at its own link address
+        gz = data.find(b'\x1f\x8b\x08')
+        out = [('flash', data[0x2c:gz if gz > 0x2c else len(data)], struct.unpack('>I', data[8:12])[0])]
+        if gz > 0 and g.get('kernel_load') is not None:
+            try:
+                out.append(('kernel', zlib.decompressobj(31).decompress(data[gz:]), num(g['kernel_load'])))
+            except zlib.error:
+                pass
+        return out
+    sys.exit('inventory: unknown firmware layout %r' % layout)
+
+
+def firmware_entries(arch, body, base):
+    """Candidate routine entries of a flat image: {address: how found}. A routine is found by its frame
+    setup or by a direct call to it, so a routine with neither is part of the one before it, and some
+    entries are data."""
+    cands = {}
+    if arch in ('m68k', 'coldfire'):
+        for off in range(0, len(body) - 1, 2):
+            if body[off:off + 2] == b'\x4e\x56':
+                cands.setdefault(base + off, 'prologue')
+        for m in re.finditer(b'\x4e\xb9', body):
+            o = m.start()
+            if o % 2 == 0 and o + 6 <= len(body):
+                t = struct.unpack('>I', body[o + 2:o + 6])[0]
+                if base <= t < base + len(body) and t % 2 == 0:
+                    cands.setdefault(t, 'call-target')
+    elif arch == 'ppc32':
+        for off in range(0, len(body) - 3, 4):
+            w = struct.unpack('>I', body[off:off + 4])[0]
+            if w >> 16 == 0x9421 and w & 0x8000:               # stwu r1,-N(r1)
+                cands.setdefault(base + off, 'prologue')
+            elif w & 0xfc000003 == 0x48000001:                  # bl
+                d = w & 0x03fffffc
+                t = (base + off + (d - (1 << 26) if d & (1 << 25) else d)) & 0xffffffff
+                if base <= t < base + len(body):
+                    cands.setdefault(t, 'call-target')
+    else:
+        sys.exit('inventory: no routine finder for firmware architecture %r' % arch)
+    return cands
+
+
+def window_at(model, addr):
+    """The configured window with a physical address that holds addr, the smallest when they nest, and
+    the offset in it. A window without a size runs to the top of the 32-bit space."""
+    best = None
+    for w in model.windows.values():
+        if w.get('physical') is None:
+            continue
+        lo = num(w['physical'])
+        size = min(w['size'], (1 << 32) - lo)
+        if lo <= addr < lo + size and (best is None or size < best[0]):
+            best = (size, w['name'], addr - lo)
+    return best[1:] if best else None
+
+
 # ===================================================================== worker
 
 def analyse_unit(args):
@@ -3023,11 +3148,15 @@ def analyse_unit(args):
             with open(path, 'wb') as f:
                 f.write(img['data'])
             img['tmp'] = path
-            res['abi'][img['label']] = abi_of(elf) if elf else '-'
-            res['kind'][img['label']] = kind_of(img['data'], elf)
+            res['abi'][img['label']] = img['fw']['arch'] if img.get('fw') else abi_of(elf) if elf else '-'
+            res['kind'][img['label']] = 'firmware' if img.get('fw') else kind_of(img['data'], elf)
             res['funcs'][img['label']], res['finfo'][img['label']] = functions_of(img, elf, path)
             img['functab'] = res['funcs'][img['label']]
         u = Unit(model, cfg, imgs).run()
+        for img in imgs:
+            if img.get('fw'):
+                res['funcs'][img['label']] = u.firmware(img, img['tmp'])
+                res['finfo'][img['label']]['address_source'] = 'firmware entries'
         # kernel dispatch tables
         for d in cfg.get('ioctls', {}).get('dispatchers', []):
             for img in imgs:
