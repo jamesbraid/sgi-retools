@@ -326,6 +326,58 @@ class CitesBinary(unittest.TestCase):
         self.assertFalse(self.check([self.img('usr/gfx/X.so')], 'usr/gfx/X.so', {'usr/gfx/Y.so'}))
 
 
+class HeaderSite(unittest.TestCase):
+    # save_hub_md_error is one routine name and one role in two builds of the same binary
+    IMGS = fake_images(('6.5.22/unix.IP27', []), ('6.5.30/unix.IP27', []))
+    ADDR = 0xc00000000002f8f0
+    SUBJ = frozenset({('id', 'save_hub_md_error')})
+
+    def status(self, text, imgs=None, subj=None, name='save_hub_md_error', addr=None):
+        imgs = imgs or self.IMGS
+        owners = inv.path_owners(imgs)
+        ent = inv.Entry(text, 'understood', subj or self.SUBJ)
+        out = {}
+        for img in imgs:
+            hits = [inv.Hit('doc.md', 1, 'doc.md', '', 'understood', False, False, '', 0, ent)]
+            hits = [h for h in hits if inv.header_site(h.ent, name, img, addr or self.ADDR, owners)]
+            out[img['label']] = inv.DocIndex.best(hits)[0]
+        return out
+
+    def test_an_entry_citing_one_build_and_its_address_credits_only_that_row(self):
+        got = self.status('- `save_hub_md_error` at 6.5.22/unix.IP27 0xc00000000002f8f0: **established.** '
+                          'Stores the error block and returns.')
+        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'undocumented'})
+
+    def test_another_address_in_the_cited_build_credits_nothing(self):
+        got = self.status('- `save_hub_md_error` at 6.5.22/unix.IP27 0xc00000000002f8f4: **established.** '
+                          'Stores the error block and returns.')
+        self.assertEqual(got, {'6.5.22/unix.IP27': 'undocumented', '6.5.30/unix.IP27': 'undocumented'})
+
+    def test_an_entry_giving_no_binary_or_address_keeps_name_only_matching(self):
+        got = self.status('- `save_hub_md_error` stores the error block and returns.')
+        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'understood'})
+
+    def test_an_entry_giving_a_binary_but_no_address_keeps_name_only_matching(self):
+        got = self.status('- `save_hub_md_error` in 6.5.22/unix.IP27 stores the error block and returns.')
+        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'understood'})
+
+    def test_an_address_in_the_description_is_not_the_header_address(self):
+        got = self.status('- `save_hub_md_error` in 6.5.22/unix.IP27: stores the error block at 0xc00000000002f8f0.')
+        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'understood'})
+
+    def test_an_entry_about_another_routine_that_mentions_this_one_keeps_name_only_matching(self):
+        got = self.status('- `save_hub_md_error` is called by `other_fn` at 6.5.22/unix.IP27 0xc00000000002f8f4: '
+                          'it returns the error block.', subj=frozenset({('id', 'other_fn')}))
+        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'understood'})
+
+    def test_a_bare_file_name_shared_by_two_builds_credits_both_at_that_address(self):
+        imgs = fake_images(('usr/a/gfx.o', []), ('usr/b/gfx.o', []), ('usr/c/gfx.o', []))
+        got = self.status('- `save_hub_md_error` (`gfx.o` at 0xc00000000002f8f0): **established.** Stores the block.',
+                          imgs=imgs)
+        self.assertEqual(got, {'usr/a/gfx.o': 'understood', 'usr/b/gfx.o': 'understood',
+                               'usr/c/gfx.o': 'understood'})
+
+
 class Unverified(unittest.TestCase):
     SUBJ = frozenset(inv.unit_keys('`odsy_EdidCksum`'))
     BODY = ('`odsy_EdidCksum` (`odsy_ddc.o`, offset 0x1c58): Computes the EDID block checksum: it adds the 128 '

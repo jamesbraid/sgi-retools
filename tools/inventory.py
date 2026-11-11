@@ -3619,7 +3619,8 @@ def build(cfg, a, tmp):
     # ---------------------------------------------------------------- functions and binaries
     # A name that several builds define with different code is understood in the build an entry
     # cites. Builds whose code is the same (equal code_sha) share the credit; any other build is
-    # at most located. A name with one code in every build needs no citation.
+    # at most located. A name with one code in every build needs no citation. An entry whose header
+    # names one build and address credits only that row (header_site), even where other builds share its code.
     name_rows = code_groups(funcs, out['ucode'])
     token_images = path_owners(imgs)     # path written in a document -> binaries it names
     cited = {}
@@ -3677,6 +3678,8 @@ def build(cfg, a, tmp):
                 hits = [h for n in alias for h in docs.name_hits(n)
                         if ('id', n) in (h.ent.subj if h.ent is not None else ())
                         and names_row_by_address(h.ent, alias, addr, lambda toks, img=img: cites_binary(toks, img, token_images))]
+            # an entry whose header names another build, or this build at another address, is not about this row
+            hits = [h for h in hits if header_site(h.ent, name, img, addr, token_images)]
             put_status(row, docs.best(hits, demote))
             if row['_multi'] and row['status'] == 'undocumented' and docs.name_hits(name):
                 row['status'] = 'named-only'
@@ -3808,6 +3811,26 @@ def names_row_by_address(ent, names, addr, cites_binary):
     if not any(not m.group(1) and int(m.group(2), 16) == addr for m in HEXLIT.finditer(head)):
         return False
     return cites_binary({m.group(0).strip('.,;:') for m in PATHTOK.finditer(head.replace('`', ' '))})
+
+
+def header_site(ent, name, img, addr, owners):
+    """False when the entry is about `name`, its header names a binary and an exact address, and the row
+    is not that build at that address. The header is the part before the entry's description (its
+    first colon or bold lead). A bare file name that several builds share names each of them, since the
+    entry cannot say which one it read. Anything else is matched by name alone, as before."""
+    if ent is None or not addr or ('id', name) not in ent.subj:
+        return True
+    head = ent.text.split('\n', 1)[0]
+    cut = re.search(r':\s|\*\*|\.\s', head)
+    head = head[:cut.start()] if cut else head
+    addrs = {int(m.group(2), 16) for m in HEXLIT.finditer(head) if not m.group(1)}
+    cands = set()
+    for m in PATHTOK.finditer(head.replace('`', ' ')):
+        t = re.sub(r'^(?:\./|/)+', '', m.group(0).strip('.,;:'))
+        cands |= owners.get(t[5:] if t.startswith('root/') else t, set())
+    if not addrs or not cands:
+        return True
+    return addr in addrs and img['label'] in cands
 
 
 def code_groups(funcs, ucode_rows):
