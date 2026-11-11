@@ -1126,6 +1126,7 @@ class DocIndex:
                 entries[cur].append(i)
                 entry_of[i] = cur
         entry_obj = {}
+        head_unit = {}       # the routine a folded heading's paragraph names, written on the heading line
         head = None
         prev_table = False
         hunit = ''
@@ -1167,12 +1168,16 @@ class DocIndex:
                                 else classify(etext, keys, head if is_table else None))
                     dvals = data_row(etext, head, keys) if is_table and not is_head else None
                     entry_obj[e] = (Entry(etext, lvl, keys, opn, dvals is not None and len(dvals) >= MIN_DATA), keys)
+                    head_unit[e] = unit if folded.get(e) == 'head' else ''
                     if not is_head and not index:
                         self.entries.append(entry_obj[e][0])
                 if e in entry_obj:
                     ent, subj = entry_obj[e]
                 level = ent.level if ent is not None else 'named-only'
                 spans, code_all = re.findall(r'`([^`]+)`', ln), False
+                if e is not None and head_unit.get(e) and i == entries[e][0]:
+                    # the header line is where a reading names its routine, however long its paragraph is
+                    spans = spans + [head_unit[e]]
             if index:
                 level = 'named-only'
             nsd = (i in nsd_line) and not index
