@@ -5,7 +5,9 @@ Run from the repository root: python3 tools/test_facts.py
 """
 import collections
 import os
+import struct
 import sys
+import types
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -30,6 +32,85 @@ def image(syms):
     img.func_addrs = sorted({x[0] for x in img.syms if x[4]})
     img.section_bounds = lambda sec: None
     return img
+
+
+def two_got_executable():
+    """An o32 big-endian ET_EXEC with two GOTs, each section at its own address.
+
+    Dynamic symbols: 1 alpha, 2 getenv (both undefined functions); gotsym is 1 and local_gotno 2,
+    so by position slot 2 of the first GOT is alpha and slot 3 is getenv. The relocations say
+    otherwise: slot 2 of the first GOT is getenv, and so is slot 1 of the second GOT. Slot 2 of the
+    second GOT has no relocation but holds the same pre-linked word as slot 1.
+    """
+    got1, got2 = 0x10000, 0x20000
+    dynstr = b'\0alpha\0getenv\0'
+    sym = lambda n, info, shn: struct.pack('>IIIBBH', n, 0, 0, info, 0, shn)  # noqa: E731
+    dynsym = sym(0, 0, 0) + sym(1, 0x12, 0) + sym(7, 0x12, 0)
+    dynamic = b''.join(struct.pack('>II', t, v) for t, v in [(3, got1), (0x7000000a, 2), (0x70000013, 1), (0, 0)])
+    words1 = [0, 0, 0x0fa00000, 0x0fb00000]
+    words2 = [0x1234, 0x0fb00000, 0x0fb00000]
+    pack = lambda ws: b''.join(struct.pack('>I', w) for w in ws)  # noqa: E731
+    rel = b''.join(struct.pack('>II', a, (2 << 8) | 3) for a in (got1 + 8, got2 + 4))
+    shstr = b'\0.dynstr\0.dynsym\0.dynamic\0.got\0.got_2\0.rel.dyn\0.shstrtab\0'
+    names = ['.dynstr', '.dynsym', '.dynamic', '.got', '.got_2', '.rel.dyn', '.shstrtab']
+    bodies = [dynstr, dynsym, dynamic, pack(words1), pack(words2), rel, shstr]
+    # type, flags, address, link, info, entsize
+    meta = [(3, 2, 0, 0, 0, 0), (11, 2, 0x4000, 1, 1, 16), (6, 2, 0x5000, 1, 0, 8), (1, 3, got1, 0, 0, 4),
+            (1, 3, got2, 0, 0, 4), (9, 2, 0x6000, 2, 0, 8), (3, 0, 0, 0, 0, 0)]
+    pos, offs = 52, []
+    for b in bodies:
+        offs.append(pos)
+        pos += len(b)
+    pos = (pos + 3) & ~3
+    out = b'\x7fELF\x01\x02\x01' + b'\0' * 9 + struct.pack('>HHIIIIIHHHHHH', 2, 8, 1, 0, 0, pos, 0, 52, 0, 0, 40,
+                                                                    len(bodies) + 1, len(bodies))
+    out += b''.join(bodies) + b'\0' * (pos - 52 - sum(len(b) for b in bodies))
+    out += struct.pack('>IIIIIIIIII', *([0] * 10))
+    for k, (t, fl, addr, link, info, ent) in enumerate(meta):
+        out += struct.pack('>IIIIIIIIII', shstr.index(b'\0' + names[k].encode() + b'\0') + 1, t, fl, addr, offs[k],
+                           len(bodies[k]), link, info, 4, ent)
+    return out
+
+
+class MultiGot(unittest.TestCase):
+    """A file with several GOTs names a slot from its relocation, not from its position."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'two-got')
+            with open(p, 'wb') as f:
+                f.write(two_got_executable())
+            cls.img = facts.Image(p)
+
+    def info(self, addr):
+        return facts.Routine.got_info(types.SimpleNamespace(img=self.img), facts.C(addr))
+
+    def test_the_file_has_two_gots(self):
+        self.assertTrue(self.img.gots.multi)
+
+    def test_first_got_slot_follows_its_relocation_not_its_position(self):
+        info, word = self.info(0x10008)
+        self.assertEqual((info['kind'], info['name'], word), ('global', 'getenv', 0x0fa00000))
+
+    def test_first_got_slot_without_a_relocation_keeps_the_position_rule(self):
+        info, _ = self.info(0x1000c)
+        self.assertEqual((info['kind'], info['name']), ('global', 'getenv'))
+
+    def test_second_got_slot_is_named_by_its_relocation(self):
+        info, _ = self.info(0x20004)
+        self.assertEqual((info['kind'], info['name'], info['slot']), ('global', 'getenv', 1))
+
+    def test_second_got_slot_with_the_same_word_is_named_without_one(self):
+        info, _ = self.info(0x20008)
+        self.assertEqual(info['name'], 'getenv')
+
+    def test_second_got_local_slot_is_its_word(self):
+        info, word = self.info(0x20000)
+        self.assertEqual((info['kind'], word), ('local', 0x1234))
+
+    def test_address_outside_every_got_is_not_a_slot(self):
+        self.assertIsNone(self.info(0x30000))
 
 
 class BranchLikely(unittest.TestCase):

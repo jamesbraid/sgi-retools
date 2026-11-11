@@ -91,6 +91,63 @@ def num(s):
 
 # ===================================================================== images
 
+class GotView:
+    """Every GOT of a linked file (.got, .got_2, ...) and the symbol each slot is bound to.
+
+    A file linked with several GOTs keeps one per 64 KiB of routines. Its first GOT lists the
+    global symbols by position (slot `local_gotno + n` is dynamic symbol `gotsym + n`), but the
+    linker does not keep that order here, and the later GOTs have no order at all: a slot is bound
+    by a dynamic relocation against the symbol it stands for, or just holds the symbol's
+    pre-linked address. So a slot is named from its relocation, else from another slot with the
+    same word that has one. `multi` is true when the file has more than one GOT; a file with one
+    keeps the position rule, which is right for it.
+    """
+
+    def __init__(self, img):
+        self.parts = []                 # (address, size, data)
+        self.named = {}                 # slot address -> (dynamic symbol index, name)
+        self.by_word = {}               # pre-linked word -> (dynamic symbol index, name)
+        self.size = img.gsz
+        elf = img.elf
+        for s in elf.iter_sections():
+            if (s.name == '.got' or s.name.startswith('.got_')) and s['sh_type'] == 'SHT_PROGBITS':
+                self.parts.append((s['sh_addr'], s['sh_size'], s.data()))
+        self.multi = len(self.parts) > 1
+        if not self.multi:
+            return
+        lo = min(a for a, _, _ in self.parts)
+        hi = max(a + n for a, n, _ in self.parts)
+        for s in elf.iter_sections():
+            if s['sh_type'] not in ('SHT_REL', 'SHT_RELA'):
+                continue
+            for r in s.iter_relocations():
+                sym = r['r_info_sym']
+                if sym and lo <= r['r_offset'] < hi and sym < len(img.dynsym) and self.word(r['r_offset']) is not None:
+                    self.named[r['r_offset']] = (sym, img.dynsym[sym])
+        seen = {}
+        for addr, sn in self.named.items():
+            w = self.word(addr)
+            if w:
+                seen.setdefault(w, set()).add(sn)
+        self.by_word = {w: next(iter(n)) for w, n in seen.items() if len(n) == 1}
+
+    def word(self, addr):
+        for ga, n, d in self.parts:
+            if ga <= addr < ga + n and (addr - ga) % self.size == 0:
+                o = addr - ga
+                return int.from_bytes(d[o:o + self.size], 'big')
+        return None
+
+    def slot(self, addr):
+        """(word, (dynamic symbol index, name) or None, index within its GOT, GOT address) of the slot at
+        addr, or None."""
+        for ga, n, d in self.parts:
+            if ga <= addr < ga + n and (addr - ga) % self.size == 0:
+                w = int.from_bytes(d[addr - ga:addr - ga + self.size], 'big')
+                return w, self.named.get(addr) or self.by_word.get(w), (addr - ga) // self.size, ga
+        return None
+
+
 class Image:
     """One file: ELF (shared object, executable, relocatable, archive member) or a flat payload."""
 
@@ -114,6 +171,7 @@ class Image:
         self.gp = None
         self.got = None         # (address, size, local_gotno, gotsym, gsz, data)
         self.dynsym = []
+        self.gots = None        # GotView, for a linked file
         self.kind = 'flat'
         self.abi = 'o32' if isa == 'mips3_32' else 'n64'
         if flat:
@@ -240,6 +298,8 @@ class Image:
                         self.got = (ga, s['sh_size'], tags['DT_MIPS_LOCAL_GOTNO'], tags['DT_MIPS_GOTSYM'],
                                     self.gsz, s.data())
                 self.gp = ga + 0x7ff0
+        if self.got is not None:
+            self.gots = GotView(self)
         if self.gp is None:
             for x in self.byname.get('_gp', []):
                 self.gp = x[0]
@@ -815,6 +875,29 @@ class Routine:
             return None
         ga, gs, local, gotsym, gsz, gdata = g
         a = ev[1] & M64 if self.img.gsz == 8 else ev[1] & 0xffffffff
+        view = self.img.gots
+        if view is not None and view.multi:
+            hit = view.slot(a)
+            if hit is None:
+                return None
+            word, bound, i, base = hit
+            first = ga <= a < ga + gs
+            info = {'gp_offset': a - (base + 0x7ff0), 'slot': i, 'slot_address': '0x%x' % a}
+            if bound:
+                info.update(kind='global', dynsym_index=bound[0], name=bound[1],
+                            formula='dynamic relocation of the slot at 0x%x' % a)
+            elif first and i >= local:
+                k = gotsym + i - local
+                info.update(kind='global', dynsym_index=k, name=self.img.dynsym[k] if k < len(self.img.dynsym) else '',
+                            formula='PLTGOT 0x%x + %d*(local_gotno %d + dynsym %d - gotsym %d)' % (
+                                ga, gsz, local, k, gotsym))
+            else:
+                info.update(kind='local', local_entry=i, value='0x%x' % word,
+                            formula='GOT slot %d at 0x%x' % (i, a))
+                nm = self.img.func_name_at(word) or self.img.symbolize(word)
+                if nm:
+                    info['value_symbol'] = nm
+            return info, word
         if not (ga <= a < ga + gs) or (a - ga) % gsz:
             return None
         i = (a - ga) // gsz
