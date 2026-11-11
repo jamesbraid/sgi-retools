@@ -1317,10 +1317,14 @@ class FirmwareRoutine:
         try:
             writes = [self.reg(ins, n) for n in ins.regs_access()[1]]
         except Exception:
-            # Capstone's M68K backend has no regs_access implementation.
-            writes = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
-            if any(o.type == 3 and self.reg(ins, o.mem.base_reg) == 'a7' for o in ins.operands):
-                writes.append('a7')
+            # Capstone's M68K backend has no regs_access implementation, and its PowerPC backend raises
+            # for some instructions: assume every register may change.
+            if self.ppc:
+                writes = ['r%d' % n for n in range(32)] + ['lr', 'ctr']
+            else:
+                writes = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
+                if any(o.type == 3 and self.reg(ins, o.mem.base_reg) == 'a7' for o in ins.operands):
+                    writes.append('a7')
         if self.arm and ins.insn_name() in ('mrc', 'mrc2'):
             # Capstone omits the destination write for coprocessor reads.
             writes.extend(self.reg(ins, o.reg) for o in ins.operands if o.type == 1)

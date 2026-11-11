@@ -1501,6 +1501,11 @@ class FirmwareFacts(unittest.TestCase):
         self.assertEqual([e['address'] for e in fs['exits']], ['0x1004', '0x1010'])
         self.assertEqual([(a['kind'], a['width']) for a in fs['accesses']], [('store', 1), ('store', 2)])
 
+    def test_ppc32_unmodelled_memory_instruction_invalidates_registers(self):
+        # lis r9,0xfa20; lmw r28,0(r9) (not modelled, has a memory operand); lwz r0,0(r9); blr
+        fs, _ = self.analyze('ppc32', '3d20fa20' 'bb890000' '80090000' '4e800020')
+        self.assertEqual([a.get('absolute') for a in fs['accesses']][-1:], [None])
+
     def test_ppc32_rejects_an_arm_abi(self):
         with self.assertRaises(ValueError):
             with tempfile.TemporaryDirectory() as d:
