@@ -3868,11 +3868,7 @@ def build(cfg, a, tmp):
                                                       ('address-unknown', unknown)) if f)
             hits, demote = function_hits(docs, name, img, addr, size, funcs, name_rows, token_images, cited,
                                          multi=row['_multi'], alias=at_address[(sec, addr)] if row['_shared'] else None)
-            put_status(row, docs.best(hits, demote))
-            if row['_multi'] and row['status'] == 'undocumented' and docs.name_hits(name):
-                row['status'] = 'named-only'
-            if row['_shared'] and not hits and docs.name_hits(name):
-                row['status'] = 'named-only'
+            put_status(row, function_status(docs, name, hits, demote))
             rows.append(row)
         base = os.path.basename(img['path'])
         mine = set()
@@ -4036,6 +4032,16 @@ def function_hits(docs, name, img, addr, size, funcs, name_rows, token_images, c
     # an entry about this name that names a build and address credits this row only as header_keeps allows
     hits = [h for h in hits if header_keeps(h.ent, name, img, addr, grp, token_images, funcs, name_rows)]
     return hits, demote
+
+
+def function_status(docs, name, hits, demote):
+    """docs.best() of the hits that credit a functions-table row. When none does but a document writes
+    the name (an entry for another build, or one that cites no address), the row is mentioned: named-only,
+    not undocumented, which means no entry names it at all."""
+    st = docs.best(hits, demote)
+    if st[0] == 'undocumented' and docs.name_hits(name):
+        return ('named-only',) + tuple(st[1:])
+    return st
 
 
 def header_site(ent, name, owners):
