@@ -800,6 +800,9 @@ def dec_contexts(text, head=None):
     return out
 
 
+SIZE_ONLY = re.compile(r'(?:id )?is an? # byte(?: [a-z])?(?: [a-z]+)? (?:routine|function)')
+
+
 def role_signature(text):
     """The role clause of a list item or paragraph, masked for comparison across workspaces: the text
     after its heading ("`name` in path:") up to the first semicolon or sentence end and before "and it
@@ -813,6 +816,8 @@ def role_signature(text):
     t = re.sub(r'`[^`]*`', ' ID ', t)
     t = re.sub(r'\b(?:0[xX][0-9a-fA-F]+|\d+)\b', ' # ', t)
     t = ' '.join(re.sub(r'[^a-z# ]+', ' ', t.lower()).split())
+    if SIZE_ONLY.fullmatch(t):
+        return ''       # "`f` is a 440-byte routine": every reading opens so; it says nothing of the role
     return t if len(t.split()) >= 4 else ''
 
 
