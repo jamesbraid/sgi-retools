@@ -49,6 +49,10 @@ def daddiu(rt, rs, v):
     return I(0x19, rs, rt, v)
 
 
+def addiu(rt, rs, v):
+    return I(0x09, rs, rt, v)
+
+
 def lw(rt, off, base):
     return I(0x23, base, rt, off)
 
@@ -573,6 +577,24 @@ class RelocationAddends(unittest.TestCase):
         words = [lui(A1, 1), lw(V0, 0x10, A1), jr(RA), NOP]
         text = self.facts_of(words, rel=[(0, self.HI16, 0), (4, self.LO16, 0)], rela=[])
         self.assertIn('=> sym(.rodata) +0x10010', text)
+
+
+class IncomingArguments(unittest.TestCase):
+    """A call lists the argument registers it passes on untouched, apart from the ones it could not follow."""
+
+    def calls(self, words):
+        return routine(words)[1]['calls']
+
+    def test_untouched_register_is_incoming_and_not_in_args(self):
+        c = self.calls([addiu(A1, 0, 7), jal(0x2000), NOP, jr(RA), NOP])[0]
+        self.assertIn('a0', c['incoming'])
+        self.assertNotIn('a1', c['incoming'])
+        self.assertEqual(c['args']['a1'], '0x7')
+        self.assertNotIn('a0', c['args'])
+
+    def test_a_register_the_routine_sets_is_not_incoming(self):
+        c = self.calls([lui(A0, 1), jal(0x2000), NOP, jr(RA), NOP])[0]
+        self.assertNotIn('a0', c.get('incoming', []))
 
 
 if __name__ == '__main__':

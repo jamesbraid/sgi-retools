@@ -1668,12 +1668,18 @@ class Recorder:
             if r.insns[i + 1:i + 2]:
                 c['delay_slot'] = self.text(r.insns[i + 1])
             # the argument registers as the callee sees them (after the delay slot)
-            args = {}
+            args, incoming = {}, []
             for k in range(r.nargs):
                 v = st.get(4 + k)
                 if v is not None and v != ('in', img.regnames[4 + k]):
                     args[img.regnames[4 + k]] = self.R(v)
+                elif v is not None:
+                    incoming.append(img.regnames[4 + k])
             c['args'] = args
+            if incoming:
+                # `args` leaves out a register that still holds what the routine was entered with and
+                # one it could not follow alike; this names the first kind, the routine's own arguments
+                c['incoming'] = incoming
             for k in range(r.nargs):
                 fv = st.f.get(12 + k)
                 if fv is not None and fv != ('in', 'f%d' % (12 + k)):
