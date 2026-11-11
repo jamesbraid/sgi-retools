@@ -237,13 +237,13 @@ def host_image(path, member=None, flat=False, load=0, isa='mips4'):
 
 
 def routine_for(path, routine, member=None, size=None, flat=False, load=0, isa='mips4', errors=None,
-                arch='mips', offset=0, abi=None, elf=False):
+                arch='mips', offset=0, abi=None, elf=False, data=None):
     if elf and (flat or arch not in ('arm', 'thumb')):
         raise ValueError('--elf requires ARM/Thumb and cannot be combined with --flat')
     if arch != 'mips':
         if member:
             raise ValueError('non-MIPS firmware does not support archive members')
-        img = FirmwareImage(path, arch, load, offset, abi, elf=elf)
+        img = FirmwareImage(path, arch, load, offset, abi, elf=elf, data=data)
         name, addr, size, source = img.find(routine, size)
         return FirmwareRoutine(img, name, addr, size, source)
     img = host_image(path, member, flat, load, isa)
@@ -259,11 +259,14 @@ def routine_for(path, routine, member=None, size=None, flat=False, load=0, isa='
 class FirmwareImage:
     """Flat firmware, mapped ARM ELF, or the MMSC a.out reader's segments."""
 
-    def __init__(self, path, arch, load, offset=0, abi=None, elf=False):
+    def __init__(self, path, arch, load, offset=0, abi=None, elf=False, data=None):
         import capstone as cs
         self.path, self.arch, self.load = path, arch, load
-        with open(path, 'rb') as stream:
-            self.data = stream.read()
+        if data is None:
+            with open(path, 'rb') as stream:
+                data = stream.read()
+        # `data` is a segment cut out of a container; path then only names it
+        self.data = data
         self.kind, self.elf, self.flat = 'flat', None, True
         self.offset, self.symbols, self.aout = offset, {}, None
         self.elf_segments, self.relocations, self.mapping_regions = [], [], []

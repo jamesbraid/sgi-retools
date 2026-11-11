@@ -55,6 +55,7 @@ os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import mips_xlate  # noqa: E402
+from firmware_layout import firmware_segments  # noqa: E402,F401
 from _workspace import find_workspace, repo_arg  # noqa: E402
 
 # The workspace is the repository whose root/ and docs/ this reads, found from the current directory
@@ -3154,38 +3155,6 @@ def pointer_table(img, elf, d):
 
 
 # ===================================================================== firmware images
-
-def firmware_segments(g, rel, data):
-    """[(member, body, load address)] for one file of a group that names a `layout`: the code a controller
-    runs, cut out of its container. `flat` is a file mapped at the group's `load` from its `offset`; the
-    sysco layouts split the controllers' ESTFBINR images the way sysco's firmware tables do."""
-    layout = g['layout']
-    if layout == 'flat':
-        off = num(g.get('offset', 0))
-        return [('', data[off:], num(g['load']))] if off < len(data) else []
-    if data[:8] != b'ESTFBINR':
-        return []
-    import zlib
-    from sysco import sysco_tables as st
-    if layout == 'sysco-l1':
-        if st.FW in rel and not st._old_layout(data):
-            pkgs = [p for p in st.l1_packages(data) if not p['linux']]
-        else:       # the base product's single image, and the sysco images that predate the container
-            pkgs = [st.pre_container_package(data)]
-        return [('l1#%d' % p['index'], p['body'], p['load']) for p in pkgs]
-    if layout == 'sysco-l2':
-        # the flash starts at the header's load address from file offset 0x2c; the kernel follows as a gzip
-        # stream and runs inflated at its own link address
-        gz = data.find(b'\x1f\x8b\x08')
-        out = [('flash', data[0x2c:gz if gz > 0x2c else len(data)], struct.unpack('>I', data[8:12])[0])]
-        if gz > 0 and g.get('kernel_load') is not None:
-            try:
-                out.append(('kernel', zlib.decompressobj(31).decompress(data[gz:]), num(g['kernel_load'])))
-            except zlib.error:
-                pass
-        return out
-    sys.exit('inventory: unknown firmware layout %r' % layout)
-
 
 def firmware_entries(arch, body, base):
     """Candidate routine entries of a flat image: {address: how found}. A routine is found by its frame
