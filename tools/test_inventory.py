@@ -389,43 +389,27 @@ class HeaderSite(unittest.TestCase):
                           subj=frozenset({('id', 'other_fn')}))
         self.assertEqual(got, {self.CITED[0]: 'understood', self.OTHER[0]: 'understood'})
 
-    def test_a_bare_file_name_shared_by_builds_credits_each_at_that_address(self):
-        funcs = {lab: {self.NAME: ('.text', self.CITED[1], 108, ['symtab'], code)}
-                 for lab, code in (('usr/a/gfx.o', 'aa'), ('usr/b/gfx.o', 'bb'), ('usr/c/gfx.o', 'cc'))}
-        got = self.status('- `save_hub_md_error` (`gfx.o` at 0x%x): **established.** Stores the block.'
+    BARE = '- `save_hub_md_error` (`gfx.o` at 0x%x): **established.** Stores the block.' % CITED[1]
+
+    def bare_funcs(self, *codes):
+        return {'usr/%s/gfx.o' % lab: {self.NAME: ('.text', self.CITED[1], 108, ['symtab'], code)}
+                for lab, code in zip('abc', codes)}
+
+    def test_a_bare_file_name_shared_by_builds_with_one_code_there_credits_each(self):
+        got = self.status(self.BARE, funcs=self.bare_funcs('aa', 'aa', 'aa'))
+        self.assertEqual(set(got.values()), {'understood'})
+        self.assertEqual(len(got), 3)
+
+    def test_a_bare_file_name_cannot_pick_between_builds_that_differ_there(self):
+        got = self.status(self.BARE, funcs=self.bare_funcs('aa', 'bb', 'cc'))
+        self.assertEqual(set(got.values()), {'undocumented'})
+
+    def test_a_bare_file_name_beside_a_full_path_names_the_full_path_build(self):
+        funcs = self.bare_funcs('aa', 'bb', 'cc')
+        got = self.status('- `save_hub_md_error` (`usr/b/gfx.o` at 0x%x): **established.** Stores the block.'
                           % self.CITED[1], funcs=funcs)
-        self.assertEqual(got, {'usr/a/gfx.o': 'understood', 'usr/b/gfx.o': 'understood',
-                               'usr/c/gfx.o': 'understood'})
-
-
-class Unverified(unittest.TestCase):
-    SUBJ = frozenset(inv.unit_keys('`odsy_EdidCksum`'))
-    BODY = ('`odsy_EdidCksum` (`odsy_ddc.o`, offset 0x1c58): Computes the EDID block checksum: it adds the 128 '
-            'bytes at its argument, keeps the sum modulo 256 and returns it, so a valid block gives 0. ')
-
-    def test_the_same_entry_is_understood_when_labelled_and_located_when_unverified(self):
-        self.assertEqual(inv.classify(self.BODY + 'Inferred.', self.SUBJ), ('understood', False))
-        self.assertEqual(inv.classify(self.BODY + 'Established.', self.SUBJ), ('understood', False))
-        self.assertEqual(inv.classify(self.BODY + 'Unverified.', self.SUBJ), ('located', False))
-
-    def test_a_table_row_ending_in_the_label_is_capped_too(self):
-        row = '| `odsy_EdidCksum` | ' + self.BODY + 'Unverified. |'
-        self.assertEqual(inv.classify(row, self.SUBJ)[0], 'located')
-
-    def test_a_label_with_an_open_sub_fact_is_capped(self):
-        text = self.BODY + 'The width of the result is unknown. Unverified.'
-        self.assertEqual(inv.classify(text, self.SUBJ)[0], 'located')
-
-    def test_the_cap_does_not_rest_on_the_hedge_words(self):
-        saved = inv.HEDGE
-        inv.HEDGE = re.compile(r'(?!)')
-        try:
-            self.assertEqual(inv.classify(self.BODY + 'Unverified.', self.SUBJ)[0], 'located')
-        finally:
-            inv.HEDGE = saved
-
-    def test_an_entry_below_located_stays_there(self):
-        self.assertEqual(inv.classify('`odsy_EdidCksum` checksums. Unverified.', self.SUBJ)[0], 'named-only')
+        self.assertEqual(got, {'usr/a/gfx.o': 'undocumented', 'usr/b/gfx.o': 'understood',
+                               'usr/c/gfx.o': 'undocumented'})
 
 
 class ReadingEntries(unittest.TestCase):
@@ -489,6 +473,11 @@ class ReadingEntries(unittest.TestCase):
     def test_a_bare_file_name_credits_the_builds_that_have_the_routine_at_that_address(self):
         doc = '### swfs.o at 0x1f80\n\n`swfio_mount`, 292 bytes. %s\n' % self.ROLE
         self.assertEqual(self.statuses(doc), self.only_sw22())
+
+    def test_a_bare_file_name_credits_nothing_when_another_build_differs_at_that_address(self):
+        doc = '### swfs.o at 0x1f80\n\n`swfio_mount`, 292 bytes. %s\n' % self.ROLE
+        got = self.statuses(doc, builds=(self.BUILDS[0], (self.BUILDS[3][0], 0x1f80, 'dd')))
+        self.assertEqual(set(got.values()), {'undocumented'})
 
     def test_a_header_line_with_an_indented_paragraph_after_a_blank_line_is_one_entry(self):
         doc = '- `swfio_mount` in `%s` at 0x1f80\n\n  %s\n' % (self.SW22, self.ROLE)

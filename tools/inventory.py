@@ -4024,37 +4024,43 @@ def function_hits(docs, name, img, addr, size, funcs, name_rows, token_images, c
 
 def header_site(ent, name, owners):
     """None when the entry is not about `name`, or its header gives no binary or no address: it is matched by
-    name alone. Otherwise (addresses, builds): the exact addresses the header writes and the builds it names.
-    The header is the part before the entry's description (its first colon or bold lead). A bare file name
-    that several builds share names each of them, since the entry cannot say which one it read."""
+    name alone. Otherwise (addresses, named, shared): the exact addresses the header writes, the builds whose
+    full path or unshared path it writes, and the builds a bare name it writes could mean. The header is the
+    part before the entry's description (its first colon or bold lead)."""
     if ent is None or ('id', name) not in ent.subj:
         return None
     head = ent.text.split('\n', 1)[0]
     cut = re.search(r':\s|\*\*|\.\s', head)
     head = head[:cut.start()] if cut else head
     addrs = frozenset(int(m.group(2), 16) for m in HEXLIT.finditer(head) if not m.group(1))
-    cands = set()
+    named, shared = set(), set()
     for m in PATHTOK.finditer(head.replace('`', ' ')):
         t = re.sub(r'^(?:\./|/)+', '', m.group(0).strip('.,;:'))
-        cands |= owners.get(t[5:] if t.startswith('root/') else t, set())
-    if not addrs or not cands:
+        got = owners.get(t[5:] if t.startswith('root/') else t, set())
+        (named if len(got) == 1 else shared).update(got)
+    if not addrs or not (named or shared):
         return None
-    return addrs, frozenset(cands)
+    return addrs, frozenset(named), frozenset(shared)
 
 
 def header_keeps(ent, name, img, addr, grp, owners, funcs, name_rows):
     """True when a hit on `name` credits the row of build `img` at `addr`, whose code group is `grp`. An
     entry that names a build and an address credits the row of that build at that address, and any row
-    whose code is identical to the code the entry cites (the same routine byte for byte). Other hits are
+    whose code is identical to the code the entry cites (the same routine byte for byte). A header that
+    writes only a file name several builds share cannot say which build was read: it credits the builds
+    that have the routine at that address only when they all run the same code there. Other hits are
     unaffected."""
     site = header_site(ent, name, owners)
     if site is None:
         return True
-    addrs, cands = site
-    if addr in addrs and img['label'] in cands:
-        return True
+    addrs, named, shared = site
+    cands = named or shared
     cited = {name_rows[name][c] for c in cands
              if name in funcs.get(c, {}) and funcs[c][name][1] in addrs}
+    if not named and len(cited) > 1:
+        return False
+    if addr in addrs and img['label'] in cands:
+        return True
     return grp in cited
 
 
