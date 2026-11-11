@@ -327,53 +327,73 @@ class CitesBinary(unittest.TestCase):
 
 
 class HeaderSite(unittest.TestCase):
-    # save_hub_md_error is one routine name and one role in two builds of the same binary
-    IMGS = fake_images(('6.5.22/unix.IP27', []), ('6.5.30/unix.IP27', []))
-    ADDR = 0xc00000000002f8f0
-    SUBJ = frozenset({('id', 'save_hub_md_error')})
+    # save_hub_md_error is one routine in two builds of the same binary; each build's routine is at its own
+    # address, and the entry's header names one build and one address
+    NAME = 'save_hub_md_error'
+    CITED = ('6.5.22/unix.IP27', 0xc00000000002f8f0)
+    OTHER = ('6.5.30/unix.IP27', 0xc00000000002fb8c)
 
-    def status(self, text, imgs=None, subj=None, name='save_hub_md_error', addr=None):
-        imgs = imgs or self.IMGS
+    def funcs(self, other_code='7d05', cited_code='7d05'):
+        return {self.CITED[0]: {self.NAME: ('.text', self.CITED[1], 108, ['symtab'], cited_code)},
+                self.OTHER[0]: {self.NAME: ('.text', self.OTHER[1], 108, ['symtab'], other_code)}}
+
+    def status(self, text, funcs=None, subj=None, name=NAME):
+        funcs = funcs or self.funcs()
+        imgs = fake_images(*[(lab, []) for lab in funcs])
         owners = inv.path_owners(imgs)
-        ent = inv.Entry(text, 'understood', subj or self.SUBJ)
+        name_rows = inv.code_groups(funcs, [])
+        ent = inv.Entry(text, 'understood', subj or frozenset({('id', name)}))
         out = {}
         for img in imgs:
+            lab = img['label']
+            addr = funcs[lab][name][1]
             hits = [inv.Hit('doc.md', 1, 'doc.md', '', 'understood', False, False, '', 0, ent)]
-            hits = [h for h in hits if inv.header_site(h.ent, name, img, addr or self.ADDR, owners)]
-            out[img['label']] = inv.DocIndex.best(hits)[0]
+            hits = [h for h in hits if inv.header_keeps(h.ent, name, img, addr, name_rows[name][lab], owners,
+                                                        funcs, name_rows)]
+            out[lab] = inv.DocIndex.best(hits)[0]
         return out
 
-    def test_an_entry_citing_one_build_and_its_address_credits_only_that_row(self):
-        got = self.status('- `save_hub_md_error` at 6.5.22/unix.IP27 0xc00000000002f8f0: **established.** '
-                          'Stores the error block and returns.')
-        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'undocumented'})
+    def cited(self, rest='stores the error block and returns.'):
+        return '- `save_hub_md_error` at %s 0x%x: **established.** %s' % (self.CITED[0], self.CITED[1], rest)
+
+    def test_identical_code_in_another_build_shares_the_credit(self):
+        self.assertEqual(self.status(self.cited()), {self.CITED[0]: 'understood', self.OTHER[0]: 'understood'})
+
+    def test_different_code_in_another_build_is_not_credited(self):
+        got = self.status(self.cited(), funcs=self.funcs(other_code='ffc3'))
+        self.assertEqual(got, {self.CITED[0]: 'understood', self.OTHER[0]: 'undocumented'})
 
     def test_another_address_in_the_cited_build_credits_nothing(self):
-        got = self.status('- `save_hub_md_error` at 6.5.22/unix.IP27 0xc00000000002f8f4: **established.** '
-                          'Stores the error block and returns.')
-        self.assertEqual(got, {'6.5.22/unix.IP27': 'undocumented', '6.5.30/unix.IP27': 'undocumented'})
+        got = self.status('- `save_hub_md_error` at %s 0xc00000000002f8f4: **established.** Stores the block.'
+                          % self.CITED[0])
+        self.assertEqual(got, {self.CITED[0]: 'undocumented', self.OTHER[0]: 'undocumented'})
 
     def test_an_entry_giving_no_binary_or_address_keeps_name_only_matching(self):
-        got = self.status('- `save_hub_md_error` stores the error block and returns.')
-        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'understood'})
+        got = self.status('- `save_hub_md_error` stores the error block and returns.',
+                          funcs=self.funcs(other_code='ffc3'))
+        self.assertEqual(got, {self.CITED[0]: 'understood', self.OTHER[0]: 'understood'})
 
     def test_an_entry_giving_a_binary_but_no_address_keeps_name_only_matching(self):
-        got = self.status('- `save_hub_md_error` in 6.5.22/unix.IP27 stores the error block and returns.')
-        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'understood'})
+        got = self.status('- `save_hub_md_error` in %s stores the error block and returns.' % self.CITED[0],
+                          funcs=self.funcs(other_code='ffc3'))
+        self.assertEqual(got, {self.CITED[0]: 'understood', self.OTHER[0]: 'understood'})
 
     def test_an_address_in_the_description_is_not_the_header_address(self):
-        got = self.status('- `save_hub_md_error` in 6.5.22/unix.IP27: stores the error block at 0xc00000000002f8f0.')
-        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'understood'})
+        got = self.status('- `save_hub_md_error` in %s: stores the error block at 0xc00000000002f8f0.'
+                          % self.CITED[0], funcs=self.funcs(other_code='ffc3'))
+        self.assertEqual(got, {self.CITED[0]: 'understood', self.OTHER[0]: 'understood'})
 
     def test_an_entry_about_another_routine_that_mentions_this_one_keeps_name_only_matching(self):
-        got = self.status('- `save_hub_md_error` is called by `other_fn` at 6.5.22/unix.IP27 0xc00000000002f8f4: '
-                          'it returns the error block.', subj=frozenset({('id', 'other_fn')}))
-        self.assertEqual(got, {'6.5.22/unix.IP27': 'understood', '6.5.30/unix.IP27': 'understood'})
+        got = self.status('- `other_fn` at %s 0x%x: calls `save_hub_md_error`, which returns the block.'
+                          % (self.CITED[0], self.CITED[1]), funcs=self.funcs(other_code='ffc3'),
+                          subj=frozenset({('id', 'other_fn')}))
+        self.assertEqual(got, {self.CITED[0]: 'understood', self.OTHER[0]: 'understood'})
 
-    def test_a_bare_file_name_shared_by_two_builds_credits_both_at_that_address(self):
-        imgs = fake_images(('usr/a/gfx.o', []), ('usr/b/gfx.o', []), ('usr/c/gfx.o', []))
-        got = self.status('- `save_hub_md_error` (`gfx.o` at 0xc00000000002f8f0): **established.** Stores the block.',
-                          imgs=imgs)
+    def test_a_bare_file_name_shared_by_builds_credits_each_at_that_address(self):
+        funcs = {lab: {self.NAME: ('.text', self.CITED[1], 108, ['symtab'], code)}
+                 for lab, code in (('usr/a/gfx.o', 'aa'), ('usr/b/gfx.o', 'bb'), ('usr/c/gfx.o', 'cc'))}
+        got = self.status('- `save_hub_md_error` (`gfx.o` at 0x%x): **established.** Stores the block.'
+                          % self.CITED[1], funcs=funcs)
         self.assertEqual(got, {'usr/a/gfx.o': 'understood', 'usr/b/gfx.o': 'understood',
                                'usr/c/gfx.o': 'understood'})
 
