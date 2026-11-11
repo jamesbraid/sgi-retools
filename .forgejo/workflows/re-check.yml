@@ -25,6 +25,8 @@ jobs:
         run: python3 tools/gr4/test_hq_ucode_disasm.py
       - name: Run the inventory tests
         run: python3 tools/test_inventory.py
+      - name: Run the environment variable scanner tests
+        run: python3 tools/test_envscan.py
       - name: Run the reading grader tests
         run: python3 tools/test_grade_readings.py
       - name: Run the decode-header check
