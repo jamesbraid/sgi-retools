@@ -624,6 +624,47 @@ def sentence_cells(text):
     return out
 
 
+READING_BINARY_EXT = re.compile(r'\.(?:o|so|a|ko|elf|sym|bin|exe)$')
+
+
+def reading_head(line):
+    """True for a heading that is the header of a routine reading: it gives an exact address and the binary
+    the routine is in (a path, a file name with an extension, or a name written before the address as
+    `name:0xADDR`). The paragraphs under it are one entry with it. A heading without both is a section
+    title, and its paragraphs stay what they were."""
+    t = re.sub(r'^#+\s*', '', line.strip()).replace('`', ' ')
+    if not any(not plus for plus, _h in HEXLIT.findall(t)):
+        return False
+    if re.search(r'[A-Za-z_][\w.+-]*:0[xX][0-9a-fA-F]', t):
+        return True
+    for m in PATHTOK.finditer(HEXLIT.sub(' ', t)):
+        tok = m.group(0).strip('.,;:')
+        if '/' in tok or (FILELIKE.fullmatch(tok) and not tok.rsplit('.', 1)[-1].isdigit()):
+            return True
+    return False
+
+
+def reading_list_head(line):
+    """True for a list item that is only the header of a routine reading: `name` in `binary` at 0xADDR,
+    with nothing after it. Indented paragraphs after it, blank lines between them included, are its text."""
+    return bool(re.match(r'\s*[-*+]\s+`[^`]+`\s+in\s+`[^`]+`(?:\s+at\s+0[xX][0-9a-fA-F]+)?\s*[.:]?\s*$', line))
+
+
+def heading_subject(line):
+    """The routine a reading's heading names, or '' when it names none and the paragraph must: a leading
+    code span that is not a binary, or else the one code-like word left when the binary and address are
+    taken out."""
+    t = re.sub(r'^#+\s*', '', line.strip())
+    m = re.match(r'`([^`\s/]+)`', t)
+    if m and not READING_BINARY_EXT.search(m.group(1)):
+        return m.group(1)
+    t = re.sub(r'`[^`]*(?:/|\.(?:o|so|a|ko|elf|sym|bin|exe))`', ' ', t)
+    t = re.sub(r'\S*0[xX][0-9a-fA-F]+\S*', ' ', t)
+    t = re.sub(r'\b\S+\.(?:o|so|a|ko)\b', ' ', t)
+    t = re.sub(r'\S*/\S*', ' ', t)
+    return cell_unit(t)
+
+
 class Entry:
     """One table row, list item, paragraph or header comment, with what it earns."""
     __slots__ = ('text', 'level', 'skel', 'capped', 'nsd_capped', 'keys', 'subj', 'sents', 'nsd_sents',
@@ -1042,25 +1083,46 @@ class DocIndex:
             ptext = ' '.join(lines[i] for i in p)
             if NSD_PHRASE.search(ptext) and NSD_ROUTES.search(ptext):
                 nsd_line.update(p)
-        # an entry is a table row, a list item with its continuation lines, or a paragraph
+        # an entry is a table row, a list item with its continuation lines, or a paragraph. A routine
+        # reading also takes the paragraphs after its header (reading_head, reading_list_head), so the
+        # binary and address the header gives are part of the entry that says what the routine does
         entry_of, entries, cur, efence = {}, [], None, False
+        folded = {}          # entry -> 'head' or 'list' for a routine header that blank lines do not close
+        fold = None
         for i, ln in enumerate(lines):
             s = ln.strip()
             if s.startswith('```'):
-                efence, cur = not efence, None
+                efence, cur, fold = not efence, None, None
                 continue
             if efence:
                 continue
-            if not s or s.startswith('#'):
+            listed = re.match(r'([-*+]|\d+\.)\s', s)
+            if s.startswith('#'):
+                cur = fold = None
+                if reading_head(s):
+                    entries.append([i])
+                    entry_of[i] = fold = len(entries) - 1
+                    folded[fold] = 'head'
+            elif not s:
                 cur = None
             elif s.startswith('|'):
                 entries.append([i])
                 entry_of[i] = len(entries) - 1
-                cur = None
+                cur = fold = None
             else:
-                if cur is None or re.match(r'([-*+]|\d+\.)\s', s):
+                if listed:
+                    fold = None
+                elif cur is None and fold is not None:
+                    if folded[fold] == 'head' or ln[:1].isspace():
+                        cur = fold
+                    else:
+                        fold = None
+                if cur is None or listed:
                     entries.append([])
                     cur = len(entries) - 1
+                    if reading_list_head(s):
+                        fold = cur
+                        folded[fold] = 'list'
                 entries[cur].append(i)
                 entry_of[i] = cur
         entry_obj = {}
@@ -1090,8 +1152,14 @@ class DocIndex:
                 e = entry_of.get(i)
                 if e is not None and e not in entry_obj:
                     etext = ' '.join(lines[j] for j in entries[e])
+                    if e in folded:
+                        # the header ends where the role begins, so an address in the role is not the header's
+                        lead = re.sub(r'^#+\s*', '', lines[entries[e][0]].strip()).rstrip(':.')
+                        etext = lead + ': ' + ' '.join(lines[j].strip() for j in entries[e][1:])
                     if is_table:
                         unit = '' if is_head else row_subject(ln, head)
+                    elif folded.get(e) == 'head':
+                        unit = heading_subject(lines[entries[e][0]]) or leading_unit(etext.split(': ', 1)[-1])
                     else:
                         unit = leading_unit(lines[entries[e][0]]) or hunit
                     keys = frozenset(unit_keys(unit)) if unit else frozenset()
@@ -3754,19 +3822,6 @@ def build(cfg, a, tmp):
     token_images = path_owners(imgs)     # path written in a document -> binaries it names
     cited = {}
 
-    def cited_groups(ent, name):
-        k = (id(ent), name)
-        if k not in cited:
-            rows_of, out = name_rows[name], set()
-            for t in ent.tokens():
-                t = re.sub(r'^(?:\./|/)+', '', t.strip('.,;:'))
-                t = t[5:] if t.startswith('root/') else t
-                got = {rows_of[b] for b in token_images.get(t, ()) if b in rows_of}
-                if len(got) == 1:
-                    out |= got
-            cited[k] = out
-        return cited[k]
-
     rows = []
     brows = []
     for img in imgs:
@@ -3785,9 +3840,6 @@ def build(cfg, a, tmp):
                    'address': '0x%x' % addr, 'size': size or '', 'name': name, 'source': '+'.join(sorted(srcs)),
                    'code_sha': csha}
             grp = name_rows[name][lab]
-            demote = None
-            if len(set(name_rows[name].values())) > 1:
-                demote = lambda h, name=name, grp=grp: h.ent is None or grp not in cited_groups(h.ent, name)
             # a name defined in several compilation units cannot be tied to one function by name: only an
             # entry that cites an address inside this row's function credits it. Several names at one
             # address are credited only by an entry that gives the binary and that exact address; it
@@ -3798,17 +3850,8 @@ def build(cfg, a, tmp):
             row['_unknown'] = unknown
             row['rejected'] = '+'.join(w for w, f in (('multi-unit', row['_multi']), ('shared-address', row['_shared']),
                                                       ('address-unknown', unknown)) if f)
-            hits = docs.name_hits(name)
-            if row['_multi']:
-                hits = [h for h in hits if h.ent is not None and cites_range(h.ent.text, addr, size)]
-            if row['_shared']:
-                # the entry that gives this binary and this exact address credits every name there
-                alias = at_address[(sec, addr)]
-                hits = [h for n in alias for h in docs.name_hits(n)
-                        if ('id', n) in (h.ent.subj if h.ent is not None else ())
-                        and names_row_by_address(h.ent, alias, addr, lambda toks, img=img: cites_binary(toks, img, token_images))]
-            # an entry about this name that names a build and address credits this row only as header_keeps allows
-            hits = [h for h in hits if header_keeps(h.ent, name, img, addr, grp, token_images, funcs, name_rows)]
+            hits, demote = function_hits(docs, name, img, addr, size, funcs, name_rows, token_images, cited,
+                                         multi=row['_multi'], alias=at_address[(sec, addr)] if row['_shared'] else None)
             put_status(row, docs.best(hits, demote))
             if row['_multi'] and row['status'] == 'undocumented' and docs.name_hits(name):
                 row['status'] = 'named-only'
@@ -3940,6 +3983,43 @@ def names_row_by_address(ent, names, addr, cites_binary):
     if not any(not m.group(1) and int(m.group(2), 16) == addr for m in HEXLIT.finditer(head)):
         return False
     return cites_binary({m.group(0).strip('.,;:') for m in PATHTOK.finditer(head.replace('`', ' '))})
+
+
+def cited_groups(ent, name, name_rows, token_images, cache):
+    """The code groups of `name` that the paths written in the entry name: a path that several code
+    groups share names none of them."""
+    k = (id(ent), name)
+    if k not in cache:
+        rows_of, out = name_rows[name], set()
+        for t in ent.tokens():
+            t = re.sub(r'^(?:\./|/)+', '', t.strip('.,;:'))
+            t = t[5:] if t.startswith('root/') else t
+            got = {rows_of[b] for b in token_images.get(t, ()) if b in rows_of}
+            if len(got) == 1:
+                out |= got
+        cache[k] = out
+    return cache[k]
+
+
+def function_hits(docs, name, img, addr, size, funcs, name_rows, token_images, cache, multi=False, alias=None):
+    """(hits, demote) for the functions-table row of `name` in build `img` at `addr`: the document hits
+    that may credit it, and the test docs.best() uses to cap a hit at located. `alias` is the list of
+    names at this address when several share it."""
+    grp = name_rows[name][img['label']]
+    demote = None
+    if len(set(name_rows[name].values())) > 1:
+        demote = lambda h: h.ent is None or grp not in cited_groups(h.ent, name, name_rows, token_images, cache)
+    hits = docs.name_hits(name)
+    if multi:
+        hits = [h for h in hits if h.ent is not None and cites_range(h.ent.text, addr, size)]
+    if alias is not None:
+        # the entry that gives this binary and this exact address credits every name there
+        hits = [h for n in alias for h in docs.name_hits(n)
+                if ('id', n) in (h.ent.subj if h.ent is not None else ())
+                and names_row_by_address(h.ent, alias, addr, lambda toks: cites_binary(toks, img, token_images))]
+    # an entry about this name that names a build and address credits this row only as header_keeps allows
+    hits = [h for h in hits if header_keeps(h.ent, name, img, addr, grp, token_images, funcs, name_rows)]
+    return hits, demote
 
 
 def header_site(ent, name, owners):
