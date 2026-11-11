@@ -2,7 +2,7 @@
 """Mechanical facts for one routine, readable as text, with no container.
 
 Usage: retools/tools/hostfacts.py BINARY[:MEMBER] ROUTINE [--size N] [--flat --load ADDR [--isa mips3|mips4]]
-                            [--arch mips|m68k|coldfire|arm|thumb|x86-16|x86-32]
+                            [--arch mips|m68k|coldfire|arm|thumb|ppc32|x86-16|x86-32]
                             [--offset N] [--abi NAME] [--elf] [--json]
 
   uv run --with capstone --with pyelftools \\
@@ -270,10 +270,10 @@ class FirmwareImage:
         self._consumed_elf_relocations = {}
         self.symbol_modes = {}
         self.bits = 16 if arch == 'x86-16' else 32
-        self.endian = 'big' if arch in ('m68k', 'coldfire') else 'little'
+        self.endian = 'big' if arch in ('m68k', 'coldfire', 'ppc32') else 'little'
         self.abi = abi or {'m68k': 'm68k-sysv', 'coldfire': 'm68k-sysv', 'arm': 'arm-aapcs',
-                           'thumb': 'arm-aapcs', 'x86-32': 'cdecl32', 'x86-16': 'unknown'}[arch]
-        expected = 'm68k-sysv' if arch in ('m68k','coldfire') else 'arm-aapcs' if arch in ('arm','thumb') else 'cdecl16' if arch=='x86-16' else 'cdecl32'
+                           'thumb': 'arm-aapcs', 'ppc32': 'ppc-sysv', 'x86-32': 'cdecl32', 'x86-16': 'unknown'}[arch]
+        expected = 'm68k-sysv' if arch in ('m68k','coldfire') else 'arm-aapcs' if arch in ('arm','thumb') else 'ppc-sysv' if arch == 'ppc32' else 'cdecl16' if arch=='x86-16' else 'cdecl32'
         if self.abi not in ('unknown',expected):
             raise ValueError('ABI %s is incompatible with %s' % (self.abi,arch))
         if offset < 0 or offset > len(self.data):
@@ -282,6 +282,7 @@ class FirmwareImage:
                  'coldfire': (cs.CS_ARCH_M68K, cs.CS_MODE_BIG_ENDIAN | cs.CS_MODE_M68K_040),
                  'arm': (cs.CS_ARCH_ARM, cs.CS_MODE_ARM | cs.CS_MODE_LITTLE_ENDIAN),
                  'thumb': (cs.CS_ARCH_ARM, cs.CS_MODE_THUMB | cs.CS_MODE_LITTLE_ENDIAN),
+                 'ppc32': (cs.CS_ARCH_PPC, cs.CS_MODE_32 | cs.CS_MODE_BIG_ENDIAN),
                  'x86-16': (cs.CS_ARCH_X86, cs.CS_MODE_16), 'x86-32': (cs.CS_ARCH_X86, cs.CS_MODE_32)}
         self.md = cs.Cs(*modes[arch])
         self.md.detail = True
@@ -667,6 +668,56 @@ class FirmwareState:
         return self.regs, self.memory, self.flags, self.direction
 
 
+PPC_MEMORY = {'lwz': False, 'lhz': False, 'lha': False, 'lbz': False, 'lfs': False, 'lfd': False,
+              'stw': True, 'sth': True, 'stb': True, 'stfs': True, 'stfd': True}
+PPC_CONDITIONS = {'eq', 'ne', 'lt', 'le', 'gt', 'ge', 'ns', 'so', 'dnz', 'dz', 'dnzt', 'dnzf', 'dzt', 'dzf'}
+
+
+def ppc_width(mnemonic):
+    """Bytes moved by a PowerPC load or store mnemonic; 4 for anything else."""
+    plain = mnemonic[:-1] if mnemonic.endswith('u') and mnemonic[:-1] in PPC_MEMORY else mnemonic
+    if plain in ('lbz', 'stb'):
+        return 1
+    if plain in ('lhz', 'lha', 'sth'):
+        return 2
+    if plain in ('lfd', 'stfd'):
+        return 8
+    return 4
+
+
+def ppc_branch(mnemonic):
+    """(kind, via, condition) for a PowerPC branch mnemonic, or None for any other instruction.
+
+    via is None for a direct branch, else 'lr' or 'ctr'.
+    """
+    simple = {'b': ('jump', None), 'ba': ('jump', None), 'bl': ('call', None), 'bla': ('call', None),
+              'blr': ('return', 'lr'), 'bctr': ('jump', 'ctr'), 'blrl': ('call', 'lr'),
+              'bctrl': ('call', 'ctr')}
+    if mnemonic in simple:
+        kind, via = simple[mnemonic]
+        return kind, via, None
+    if not mnemonic.startswith('b'):
+        return None
+    rest, via = mnemonic[1:], None
+    for suffix in ('lrl', 'ctrl', 'lr', 'ctr'):
+        if rest.endswith(suffix) and rest[:-len(suffix)] in PPC_CONDITIONS:
+            via, rest = suffix, rest[:-len(suffix)]
+            break
+    link = via in ('lrl', 'ctrl')
+    if via is None:
+        if rest.endswith('a') and rest[:-1] in PPC_CONDITIONS:
+            rest = rest[:-1]
+        if rest.endswith('l') and rest[:-1] in PPC_CONDITIONS:
+            rest, link = rest[:-1], True
+    if rest not in PPC_CONDITIONS:
+        return None
+    if via in ('lr', 'lrl'):
+        return ('conditional-call' if link else 'conditional-return'), 'lr', rest
+    if via in ('ctr', 'ctrl'):
+        return ('conditional-call' if link else 'conditional'), 'ctr', rest
+    return ('conditional-call' if link else 'conditional'), None, rest
+
+
 class FirmwareRoutine:
     """Architecture adapters share one worklist, symbolic values and fact-sheet format.
 
@@ -681,9 +732,10 @@ class FirmwareRoutine:
         self.m68k = self.arch in ('m68k', 'coldfire')
         self.arm = self.arch in ('arm', 'thumb')
         self.x86 = self.arch.startswith('x86')
+        self.ppc = self.arch == 'ppc32'
         self.word = 2 if img.bits == 16 else 4
-        self.sp = 'a7' if self.m68k else 'sp' if self.arm else 'sp' if img.bits == 16 else 'esp'
-        self.retreg = 'd0' if self.m68k else 'r0' if self.arm else 'ax' if img.bits == 16 else 'eax'
+        self.sp = 'a7' if self.m68k else 'sp' if self.arm else 'r1' if self.ppc else 'sp' if img.bits == 16 else 'esp'
+        self.retreg = 'd0' if self.m68k else 'r0' if self.arm else 'r3' if self.ppc else 'ax' if img.bits == 16 else 'eax'
         self.insns = []
         self.warnings = set()
         raw = img.read(addr, size)
@@ -833,6 +885,8 @@ class FirmwareRoutine:
                 return 4 if ins.operands[1].type == 1 else 1
             return {'.b': 1, '.w': 2, '.l': 4, '.s': 4, '.d': 8}.get(ins.mnemonic[-2:], 4)
         mn = ins.mnemonic
+        if self.ppc:
+            return ppc_width(mn)
         if mn.startswith(('ldrb', 'ldrsb', 'strb')):
             return 1
         if mn.startswith(('ldrh', 'ldrsh', 'strh')):
@@ -879,6 +933,9 @@ class FirmwareRoutine:
             return facts.add(v, disp), base, disp
         mem = op.mem
         base = self.reg(ins, mem.base) if mem.base else ''
+        if self.ppc:
+            # D-form only; a zero base register field means the constant zero.
+            return facts.add(self.getreg(st, base) if base else facts.C(0), mem.disp), base, mem.disp
         idx = self.reg(ins, mem.index) if mem.index else ''
         if self.arm and base == 'pc':
             v = self.img.code_value((ins.address + (4 if self.arch == 'thumb' else 8)) & ~3)
@@ -1015,6 +1072,16 @@ class FirmwareRoutine:
                 return 'conditional', target, 'unknown decrement-and-branch condition'
             if shortmn.startswith('b') and shortmn not in ('bset', 'bclr', 'bchg', 'btst', 'bfextu', 'bfexts'):
                 return 'conditional', target, shortmn[1:]
+        elif self.ppc:
+            parsed = ppc_branch(mn)
+            if parsed:
+                kind, via, cc = parsed
+                target = op[-1].imm & 0xffffffff if via is None and op and op[-1].type == 2 else None
+                # An explicit CR field other than cr0 is not tracked; the condition stays symbolic.
+                if cc and op and op[0].type == 1 and self.reg(ins, op[0].reg).startswith('cr') \
+                        and self.reg(ins, op[0].reg) != 'cr0':
+                    cc = 'cr-field:' + cc
+                return kind, target, cc
         elif self.arm:
             from capstone.arm_const import ARM_CC_AL, ARM_CC_INVALID
             cc = ins.cc
@@ -1097,6 +1164,69 @@ class FirmwareRoutine:
             return target & ~1
         return target if target & 3 == 0 else None
 
+    def ppc_transfer(self, st, old, ins, events):
+        """Model the PowerPC instructions that move addresses and constants; False for the rest."""
+        mn, op = ins.mnemonic, ins.operands
+        reg = lambda o: self.reg(ins, o.reg)
+        val = lambda o: facts.C(0) if o.type == 1 and not o.reg else (
+            self.getreg(st, reg(o)) if o.type == 1 else facts.C(o.imm) if o.type == 2 else None)
+        if mn in ('li', 'lis') and len(op) == 2 and op[1].type == 2:
+            imm = sc(op[1].imm & 0xffff) if mn == 'li' else (op[1].imm & 0xffff) << 16
+            self.setreg(st, reg(op[0]), facts.C(imm & 0xffffffff))
+            return True
+        if mn == 'mr' and len(op) == 2:
+            self.setreg(st, reg(op[0]), val(op[1]))
+            return True
+        if mn in ('addi', 'addis', 'subi') and len(op) == 3 and op[2].type == 2:
+            imm = sc(op[2].imm & 0xffff)
+            imm = imm << 16 if mn == 'addis' else -imm if mn == 'subi' else imm
+            self.setreg(st, reg(op[0]), self.plus(val(op[1]), facts.C(imm)))
+            return True
+        if mn in ('ori', 'oris') and len(op) == 3 and op[2].type == 2:
+            base = val(op[1])
+            imm = op[2].imm & 0xffff
+            self.setreg(st, reg(op[0]), facts.C(base[1] | (imm << 16 if mn == 'oris' else imm)) if facts.is_c(base) else None)
+            return True
+        if mn in ('cmpwi', 'cmpw') and len(op) in (2, 3):
+            if len(op) == 3:
+                st.flags = None if reg(op[0]) != 'cr0' else ('cmp', val(op[1]), val(op[2]), 4)
+            else:
+                st.flags = ('cmp', val(op[0]), val(op[1]), 4)
+            return True
+        if mn in ('cmplwi', 'cmplw'):
+            st.flags = None
+            return True
+        if mn == 'mflr' and len(op) == 1:
+            self.setreg(st, reg(op[0]), self.getreg(st, 'lr'))
+            return True
+        if mn == 'mtlr' and len(op) == 1:
+            self.setreg(st, 'lr', self.getreg(st, reg(op[0])))
+            return True
+        if mn == 'mtctr' and len(op) == 1:
+            self.setreg(st, 'ctr', self.getreg(st, reg(op[0])))
+            return True
+        if mn == 'nop' or mn == 'sync' or mn == 'isync' or mn == 'eieio':
+            return True
+        update = mn.endswith('u') and mn[:-1] in PPC_MEMORY
+        plain = mn[:-1] if update else mn
+        if plain in PPC_MEMORY and len(op) == 2 and op[1].type == 3:
+            store = PPC_MEMORY[plain]
+            address, base, disp = self.effective(old, ins, op[1])
+            width = self.width(ins)
+            if store:
+                self.memory(st, ins, address, width, events, True, val(op[0]), base, disp)
+            else:
+                value = self.memory(st, ins, address, width, events, base=base, disp=disp)
+                if plain in ('lha',):
+                    value = facts.C(sc(value[1] & 0xffff)) if facts.is_c(value) else None
+                if width < 4 and facts.is_c(value):
+                    value = facts.C(value[1] & ((1 << (8 * width)) - 1)) if plain != 'lha' else value
+                self.setreg(st, reg(op[0]), value if width <= 4 and not plain.startswith('lf') else None)
+            if update and base:
+                self.setreg(st, base, address)
+            return True
+        return False
+
     def branch_words(self, st, ins, code):
         if self.x86 and code in ('loop', 'loope', 'loopne', 'jcxz', 'jecxz'):
             bits = ins.addr_size * 8
@@ -1146,6 +1276,9 @@ class FirmwareRoutine:
         args = []
         if self.img.abi == 'arm-aapcs':
             for n in range(4):
+                args.append({'location': 'r%d' % n, 'value': self.R(self.getreg(st, 'r%d' % n))})
+        elif self.img.abi == 'ppc-sysv':
+            for n in range(3, 11):
                 args.append({'location': 'r%d' % n, 'value': self.R(self.getreg(st, 'r%d' % n))})
         elif self.img.abi in ('cdecl16', 'cdecl32', 'm68k-sysv'):
             sp = self.getreg(st, self.sp)
@@ -1292,7 +1425,7 @@ class FirmwareRoutine:
             if conditional:
                 call['taken_when'], call['falls_through_when'] = self.branch_words(old, ins, cc)
             events['calls'].append(call)
-            clobber = ['d0', 'd1', 'a0', 'a1'] if self.m68k else ['r0', 'r1', 'r2', 'r3', 'r12', 'lr'] if self.arm else ['eax', 'ecx', 'edx'] if self.word == 4 else ['ax', 'cx', 'dx']
+            clobber = ['d0', 'd1', 'a0', 'a1'] if self.m68k else ['r0', 'r1', 'r2', 'r3', 'r12', 'lr'] if self.arm else ['r0'] + ['r%d' % n for n in range(3, 13)] + ['lr', 'ctr'] if self.ppc else ['eax', 'ecx', 'edx'] if self.word == 4 else ['ax', 'cx', 'dx']
             for reg in clobber:
                 self.setreg(st, reg, None)
             result = name or hex(target) if target is not None else 'unknown'
@@ -1317,7 +1450,9 @@ class FirmwareRoutine:
         write = lambda o, v: self.operand(st, ins, o, events, store=True, value=v)
         modeled = False
         # Stack saves use the same memory model as explicit loads/stores.
-        if self.m68k and mn.startswith('movem'):
+        if self.ppc:
+            modeled = self.ppc_transfer(st, old, ins, events)
+        elif self.m68k and mn.startswith('movem'):
             from capstone import m68k_const as mc
             saving = op[0].type == 6
             reglist, mem = (op[0], op[1]) if saving else (op[1], op[0])
@@ -1592,6 +1727,8 @@ class FirmwareRoutine:
             names = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
         elif self.arm:
             names = ['r%d' % n for n in range(13)] + ['sp','lr']
+        elif self.ppc:
+            names = ['r%d' % n for n in range(32)] + ['lr', 'ctr']
         else:
             names = ['eax','ebx','ecx','edx','esi','edi','ebp','esp'] if self.word == 4 else ['ax','bx','cx','dx','si','di','bp','sp']
         for name in names:
@@ -2271,11 +2408,11 @@ def main(argv=None):
     ap.add_argument('binary', help='file, or archive:member')
     ap.add_argument('routine', help='symbol name or 0xADDRESS')
     ap.add_argument('--size', type=lambda s: int(s, 0))
-    ap.add_argument('--arch', default='mips', choices=('mips', 'm68k', 'coldfire', 'arm', 'thumb', 'x86-16', 'x86-32'))
+    ap.add_argument('--arch', default='mips', choices=('mips', 'm68k', 'coldfire', 'arm', 'thumb', 'ppc32', 'x86-16', 'x86-32'))
     ap.add_argument('--offset', type=lambda s: int(s, 0), default=0, help='flat payload file offset')
-    ap.add_argument('--abi', choices=('unknown', 'm68k-sysv', 'arm-aapcs', 'cdecl32', 'cdecl16'))
+    ap.add_argument('--abi', choices=('unknown', 'm68k-sysv', 'arm-aapcs', 'ppc-sysv', 'cdecl32', 'cdecl16'))
     formats = ap.add_mutually_exclusive_group()
-    formats.add_argument('--flat', action='store_true', help='raw payload (MIPS/M68K big-endian; ARM/x86 little-endian)')
+    formats.add_argument('--flat', action='store_true', help='raw payload (MIPS/M68K/PowerPC big-endian; ARM/x86 little-endian)')
     formats.add_argument('--elf', action='store_true', help='mapped ARM ELF32, linked coordinates and relocation taint')
     ap.add_argument('--load', type=lambda s: int(s, 0))
     ap.add_argument('--isa', default='mips4', choices=('mips3', 'mips4'))

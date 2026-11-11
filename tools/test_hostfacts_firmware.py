@@ -1465,6 +1465,50 @@ class FirmwareFacts(unittest.TestCase):
         self.assertEqual(fs['coverage']['unresolved_transfers'],['0x1005'])
         self.assertIn('known edges only',text)
 
+    def test_ppc32_decodes_big_endian_and_models_constants_loads_and_calls(self):
+        # stwu r1,-16(r1); mflr r0; stw r0,20(r1); lis r3,0x1000; ori r3,r3,0x10;
+        # lwz r4,8(r3); cmpwi r4,0; beq +16; li r5,5; bl +0xf00; lwz r0,20(r1);
+        # mtlr r0; addi r1,r1,16; blr
+        code = ('9421fff07c08' '02a690010014' '3c601000' '60630010' '80830008' '2c040000' '41820010'
+                '38a00005' '48000f01' '80010014' '7c0803a6' '38210010' '4e800020')
+        fs, text = self.analyze('ppc32', code)
+        self.assertEqual((fs['routine']['arch'], fs['routine']['abi']), ('ppc32', 'ppc-sysv'))
+        self.assertEqual(fs['warnings'], [])
+        self.assertEqual([i['mn'] for i in fs['instructions']][:4], ['stwu', 'mflr', 'stw', 'lis'])
+        load = next(a for a in fs['accesses'] if a['address'] == '0x1014')
+        self.assertEqual((load['kind'], load['width'], load['absolute']), ('load', 4, '0x10000018'))
+        call = fs['calls'][0]
+        self.assertEqual((call['address'], call['mnemonic'], call['target']), ('0x1024', 'bl', '0x1f24'))
+        self.assertEqual([a['value'] for a in call['args'][:3]], ['0x10000010', '[0x10000018]', '0x5'])
+        self.assertEqual(call['args'][0]['location'], 'r3')
+        self.assertIn('taken when [0x10000018] == 0x0', text)
+        self.assertEqual([e['address'] for e in fs['exits']], ['0x1034'])
+        self.assertEqual(fs['exits'][0]['register'], 'r3')
+
+    def test_ppc32_branch_mnemonics(self):
+        for mnemonic, expected in (('b', ('jump', None, None)), ('bl', ('call', None, None)),
+                                   ('blr', ('return', 'lr', None)), ('bctrl', ('call', 'ctr', None)),
+                                   ('ble', ('conditional', None, 'le')), ('bnel', ('conditional-call', None, 'ne')),
+                                   ('beqlr', ('conditional-return', 'lr', 'eq')),
+                                   ('bdnz', ('conditional', None, 'dnz')), ('bgtctr', ('conditional', 'ctr', 'gt'))):
+            self.assertEqual(hostfacts.ppc_branch(mnemonic), expected, mnemonic)
+        self.assertIsNone(hostfacts.ppc_branch('bcdadd'))
+        self.assertIsNone(hostfacts.ppc_branch('lwz'))
+
+    def test_ppc32_conditional_return_and_unmodelled_store_width(self):
+        # cmpwi r3,0; beqlr; stb r3,3(r4); sth r3,4(r4); blr
+        fs, _ = self.analyze('ppc32', '2c030000' '4d820020' '98640003' 'b0640004' '4e800020')
+        self.assertEqual([e['address'] for e in fs['exits']], ['0x1004', '0x1010'])
+        self.assertEqual([(a['kind'], a['width']) for a in fs['accesses']], [('store', 1), ('store', 2)])
+
+    def test_ppc32_rejects_an_arm_abi(self):
+        with self.assertRaises(ValueError):
+            with tempfile.TemporaryDirectory() as d:
+                p = os.path.join(d, 'blob')
+                with open(p, 'wb') as f:
+                    f.write(bytes(8))
+                hostfacts.routine_for(p, '0x1000', size=4, arch='ppc32', load=0x1000, abi='arm-aapcs')
+
     def test_cli_requires_load_for_non_mips_flat_image(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             hostfacts.main(['missing', '0x1000', '--arch', 'arm', '--flat', '--size', '4'])
