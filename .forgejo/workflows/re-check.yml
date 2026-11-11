@@ -21,5 +21,7 @@ jobs:
         run: python3 tools/defs/test_defs.py
       - name: Run the census header naming tests
         run: python3 tools/chips/test_gen_headers.py
+      - name: Run the host-interface microcode reader tests
+        run: python3 tools/gr4/test_hq_ucode_disasm.py
       - name: Run the decode-header check
         run: tools/defs/ci-check
