@@ -4049,8 +4049,11 @@ def header_site(ent, name, owners):
     cut = re.search(r':\s|\*\*|\.\s', head)
     head = head[:cut.start()] if cut else head
     addrs = frozenset(int(m.group(2), 16) for m in HEXLIT.finditer(head) if not m.group(1))
+    # a `Build:` line right under the header names the build the entry was read from
+    m = re.match(r'[^`]*`[^`]*`[^:]*:\s*(?:\*\*[^*]*\*\*)?\s*Build:\s*`?([^\s`]+)', ent.text)
+    build = m.group(1) if m else ''
     named, shared = set(), set()
-    for m in PATHTOK.finditer(head.replace('`', ' ')):
+    for m in PATHTOK.finditer((head + ' ' + build).replace('`', ' ')):
         t = re.sub(r'^(?:\./|/)+', '', m.group(0).strip('.,;:'))
         got = owners.get(t[5:] if t.startswith('root/') else t, set())
         (named if len(got) == 1 else shared).update(got)

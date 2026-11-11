@@ -479,6 +479,14 @@ class ReadingEntries(unittest.TestCase):
         got = self.statuses(doc, builds=(self.BUILDS[0], (self.BUILDS[3][0], 0x1f80, 'dd')))
         self.assertEqual(set(got.values()), {'undocumented'})
 
+    def test_a_build_line_under_a_bare_file_name_names_the_build(self):
+        # the shape driver-functions.md uses: a shared member name in the header, the full path on a Build line
+        doc = ('- `swfio_mount` (`swfs.o`, offset 0x1f80, 292 bytes): **established.**\n'
+               '  Build: `%s`.\n  %s\n' % (self.SW22, self.ROLE))
+        other = (self.BUILDS[3][0], 0x1f80, 'dd')     # same address, different code
+        got = self.statuses(doc, builds=(self.BUILDS[0], other))
+        self.assertEqual(got, {self.SW22: 'located', other[0]: 'undocumented'})
+
     def test_a_long_paragraph_naming_many_callees_still_credits_its_routine(self):
         callees = ', '.join('`swf_callee_%d` at 0x%x' % (k, 0x2000 + 4 * k) for k in range(inv.MAX_ITEMS + 4))
         doc = '### `%s` at 0x1f80\n\n`swfio_mount`, 292 bytes. It calls %s. Grade: inferred.\n' % (self.SW22, callees)
