@@ -1506,6 +1506,33 @@ class FirmwareFacts(unittest.TestCase):
         fs, _ = self.analyze('ppc32', '3d20fa20' 'bb890000' '80090000' '4e800020')
         self.assertEqual([a.get('absolute') for a in fs['accesses']][-1:], [None])
 
+    def test_ppc32_indexed_forms(self):
+        # lis r11,0x1000; lwzx r0,r11,r3 (r3 unknown); li r4,0x10; stbx r0,r11,r4; lwzux r5,r11,r4; lwz r6,0(r11); blr
+        fs, _ = self.analyze('ppc32', '3d601000' '7c0b182e' '38800010' '7c0b21ae' '7cab226e' '80cb0000' '4e800020')
+        unknown, known, update, after = fs['accesses']
+        self.assertEqual((unknown['kind'], unknown['width'], unknown['indexed'], unknown['index_base']),
+                         ('load', 4, True, '0x10000000'))
+        self.assertNotIn('absolute', unknown)
+        self.assertEqual((known['kind'], known['width'], known['absolute']), ('store', 1, '0x10000010'))
+        self.assertNotIn('indexed', known)
+        self.assertEqual((update['kind'], update['absolute']), ('load', '0x10000010'))
+        # the update form wrote the address back to r11
+        self.assertEqual(after['absolute'], '0x10000010')
+
+    def test_coldfire_unknown_index_is_marked_and_a_known_one_is_not(self):
+        # movea.l #0x10000000,a0; move.l 0x10(a0,d1.l),d0; moveq #4,d1; move.l 0x10(a0,d1.l),d0; rts
+        fs, _ = self.analyze('coldfire', '207c10000000' '20301810' '7204' '20301810' '4e75')
+        unknown, known = [a for a in fs['accesses'] if not a['implicit']]
+        self.assertEqual((unknown['indexed'], unknown['index_base']), (True, '0x10000010'))
+        self.assertNotIn('absolute', unknown)
+        self.assertEqual(known['absolute'], '0x10000014')
+        self.assertNotIn('indexed', known)
+
+    def test_coldfire_index_flag_does_not_leak_into_a_later_access(self):
+        # movea.l #0x10000000,a0; lea 0x10(a0,d1.l),a1 (no access); move.b (a2),d0; rts
+        fs, _ = self.analyze('coldfire', '207c10000000' '43f01810' '1012' '4e75')
+        self.assertTrue(all('indexed' not in a for a in fs['accesses']))
+
     def test_ppc32_rejects_an_arm_abi(self):
         with self.assertRaises(ValueError):
             with tempfile.TemporaryDirectory() as d:

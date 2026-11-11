@@ -86,6 +86,14 @@ class AccessRenderingTests(unittest.TestCase):
 
         self.assertTrue(output.startswith("- `requested_alias` in `usr/lib/a.so`"))
 
+class IndexedAccessTests(unittest.TestCase):
+    def test_an_indexed_access_names_its_base_and_the_unknown_index(self):
+        access = {"address": "0x1000", "base": "a0", "kind": "load", "mnemonic": "move.l", "width": 4,
+                  "indexed": True, "index_base": "0x10000010", "origin": "d1", "origin_offset": 0x10000010,
+                  "text": "move.l $10(a0, d1.l), d0"}
+        self.assertEqual(render_reading.access_sentences([access], 0), [
+            "The `move.l` at 0x1000 loads 4 bytes from abs 0x10000010 plus an unknown index."])
+
 
 def have_capstone():
     try:

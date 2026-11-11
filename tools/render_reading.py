@@ -22,6 +22,8 @@ def _address(value):
 
 
 def access_target(access, nargs):
+    if "index_base" in access:
+        return "abs %s plus an unknown index" % access["index_base"]
     if "absolute" in access:
         return "abs %s%s" % (access["absolute"],
                              " (%s)" % access["symbol"] if access.get("symbol") else "")
