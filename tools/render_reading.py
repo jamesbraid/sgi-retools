@@ -185,16 +185,71 @@ def _unreached_sentences(facts):
             (_address(start), _address(end)) for start, end in ranges]
 
 
+def _firmware_args(call):
+    shown = [a for a in call.get("args", []) if a["value"] not in ("?", a["location"])]
+    return ", ".join("%s=%s" % (a["location"], a["value"]) for a in shown) or "none set"
+
+
+def firmware_sentences(routine, facts):
+    """Sentences for a routine from the non-MIPS adapters (m68k, ColdFire, ARM, PowerPC).
+
+    The adapters have no delay slots, so each sentence reads straight off the fact sheet.
+    """
+    mnemonic = {hex(ins["addr"]): ins["mn"] for ins in routine.insns}
+    lines = access_sentences(facts.get("accesses", []), 0)
+    for call in facts.get("calls", []):
+        name = call.get("callee") or ("(unnamed)" if call.get("target") else "(unknown callee)")
+        if call.get("target"):
+            name += " [%s]" % call["target"]
+        line = "The `%s` at %s calls %s with %s" % (call["mnemonic"], call["address"], name, _firmware_args(call))
+        if call.get("taken_when"):
+            line += ", when %s" % call["taken_when"]
+        lines.append(line + ".")
+    for block in facts.get("blocks", []):
+        if block["kind"] != "conditional":
+            continue
+        mn = mnemonic.get(block["last"], "?")
+        if block["target"] is None:
+            lines.append("The `%s` branch at %s has an unresolved target." % (mn, block["last"]))
+        else:
+            lines.append("The `%s` branch at %s targets %s, is taken when %s, and falls through when %s." % (
+                mn, block["last"], block["target"], block["taken_when"], block["falls_through_when"]))
+    for exit_fact in facts.get("exits", []):
+        line = "The return at %s has %s = %s" % (exit_fact["address"], exit_fact["register"], exit_fact["value"])
+        if exit_fact.get("condition"):
+            line += "; it is taken when %s" % exit_fact["condition"]
+        lines.append(line + ".")
+    unreached = set(facts.get("unreached", []))
+    run = []
+    for ins in routine.insns + [None]:
+        address = hex(ins["addr"]) if ins else None
+        if ins and address in unreached:
+            run.append(address)
+        elif run:
+            lines.append("The instructions from %s to %s are not reached by any path from the entry, "
+                         "and their branches are not listed." % (run[0], run[-1]))
+            run = []
+    lines.extend("Analysis note: %s." % warning.rstrip(".") for warning in facts.get("warnings", []))
+    return lines
+
+
 def render_entry(routine, facts, install_path, grade, requested_name=None):
     rt = facts["routine"]
     name = requested_name or rt.get("name") or "(unnamed)"
     address = rt["address"]
-    end = rt["end"]
+    end = rt.get("end") or hex(int(address, 16) + int(rt["size"]))
     lines = ["- `%s` in `%s` at %s (%s)." % (name, install_path, address, rt.get("abi", "unknown")),
              "  Evidence grade: %s." % grade.lower(),
              "  Exact binary: `%s`." % install_path,
              "  Range: %s-%s (%d bytes)." % (address, end, int(rt["size"])),
              "  It occupies %d bytes." % int(rt["size"])]
+    if isinstance(routine, hostfacts.FirmwareRoutine):
+        # Names the image layout so the grader can reload the same bytes.
+        lines.insert(3, "  Architecture: %s, load %s, offset %s%s." % (
+            routine.arch, hex(routine.img.load), hex(routine.img.offset), ", elf" if routine.img.elf else ""))
+        sentences = firmware_sentences(routine, facts)
+        lines.extend("  " + sentence for sentence in sentences)
+        return "\n".join(lines) + "\n"
     sentences = access_sentences(facts.get("accesses", []), routine.nargs)
     sentences.extend(_call_sentences(routine, facts))
     sentences.extend(_branch_sentences(routine, facts))
