@@ -448,11 +448,11 @@ class ReadingEntries(unittest.TestCase):
         for img in imgs:
             hits, demote = inv.function_hits(docs, self.NAME, img, funcs[img['label']][self.NAME][1], 292, funcs,
                                              name_rows, owners, cache)
-            out[img['label']] = docs.best(hits, demote)[0]
+            out[img['label']] = inv.function_status(docs, self.NAME, hits, demote)[0]
         return out
 
     def only_sw22(self):
-        return {lab: ('located' if lab == self.SW22 else 'undocumented') for lab, _a, _c in self.BUILDS}
+        return {lab: ('located' if lab == self.SW22 else 'named-only') for lab, _a, _c in self.BUILDS}
 
     def test_a_header_line_and_its_text_credit_only_the_cited_row(self):
         doc = '- `swfio_mount` in `%s` at 0x1f80: %s\n' % (self.SW22, self.ROLE)
@@ -477,7 +477,7 @@ class ReadingEntries(unittest.TestCase):
     def test_a_bare_file_name_credits_nothing_when_another_build_differs_at_that_address(self):
         doc = '### swfs.o at 0x1f80\n\n`swfio_mount`, 292 bytes. %s\n' % self.ROLE
         got = self.statuses(doc, builds=(self.BUILDS[0], (self.BUILDS[3][0], 0x1f80, 'dd')))
-        self.assertEqual(set(got.values()), {'undocumented'})
+        self.assertEqual(set(got.values()), {'named-only'})
 
     def test_a_build_line_under_a_bare_file_name_names_the_build(self):
         # the shape driver-functions.md uses: a shared member name in the header, the full path on a Build line
@@ -485,7 +485,7 @@ class ReadingEntries(unittest.TestCase):
                '  Build: `%s`.\n  %s\n' % (self.SW22, self.ROLE))
         other = (self.BUILDS[3][0], 0x1f80, 'dd')     # same address, different code
         got = self.statuses(doc, builds=(self.BUILDS[0], other))
-        self.assertEqual(got, {self.SW22: 'located', other[0]: 'undocumented'})
+        self.assertEqual(got, {self.SW22: 'located', other[0]: 'named-only'})
 
     def test_a_long_paragraph_naming_many_callees_still_credits_its_routine(self):
         callees = ', '.join('`swf_callee_%d` at 0x%x' % (k, 0x2000 + 4 * k) for k in range(inv.MAX_ITEMS + 4))
