@@ -11,9 +11,11 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import hostfacts  # noqa: E402
+import render_reading  # noqa: E402
 
 
 HEX = r"0x[0-9a-fA-F]+"
+ARCH_LINE = re.compile(r"^\s*Architecture: ([\w-]+), load (" + HEX + r"), offset (" + HEX + r")(, elf)?\.\s*$", re.M)
 HEADER = re.compile(r"^- `(?P<name>[^`]+)`(?: in `(?P<binary>[^`]+)` at (?P<address>" + HEX + r")| \(`(?P<legacy>[^`]+)`, (?P<legacy_address>" + HEX + r"), (?P<legacy_size>\d+) bytes\))")
 
 
@@ -51,11 +53,15 @@ def parse_lines(lines):
         # Old entries put the binary and address in the title. Exact binary overrides it.
         if binary and "(" in binary and binary.endswith(")"):
             binary = re.sub(r"\(([^()]*)\)$", r":\1", binary)
+        arch = ARCH_LINE.search(meta)
+        firmware = ({"arch": arch.group(1), "load": int(arch.group(2), 16), "offset": int(arch.group(3), 16),
+                     "elf": bool(arch.group(4))} if arch else None)
         sentences = [line.strip() for line in block[1:] if line.strip() and not re.match(
-            r"(?:Evidence grade:|Exact binary:|Exact build:|Range:|Role:)", line.strip())]
+            r"(?:Evidence grade:|Exact binary:|Exact build:|Architecture:|Range:|Role:)", line.strip())]
         entries.append({"name": name, "binary": binary, "address": address, "size": size,
                         "sentences": sentences, "line": start + 1, "end": end,
-                        "install": install, "grade": grade_line.group(1) if grade_line else None})
+                        "install": install, "grade": grade_line.group(1) if grade_line else None,
+                        "firmware": firmware})
     return entries
 
 
@@ -152,6 +158,15 @@ def resolve_binary(root, entry):
         else:
             raise FileNotFoundError(binary)
     return binary, (member if separator else None)
+
+
+def firmware_facts(root, entry):
+    """(routine, facts) of an entry written for a non-MIPS image."""
+    binary, _member = resolve_binary(root, entry)
+    fw = entry["firmware"]
+    routine = hostfacts.routine_for(binary, entry["address"], size=entry["size"], arch=fw["arch"],
+                                    load=fw["load"], offset=fw["offset"], elf=fw["elf"])
+    return routine, routine.facts(False)
 
 
 def facts_for(root, entry):
@@ -596,6 +611,14 @@ def check_sentence(sentence, facts, rendered, maps):
 
 
 def grade_entry(root, entry):
+    if entry.get("firmware"):
+        # Non-MIPS sentences are plain renderings of the fact sheet: each must be one the
+        # renderer produces now from the same image bytes.
+        routine, facts = firmware_facts(root, entry)
+        expected = set(render_reading.firmware_sentences(routine, facts))
+        expected.add("It occupies %d bytes." % routine.size)
+        return [("OK", "") if sentence in expected else ("MISMATCH", "not in the facts: " + sentence[:100])
+                for sentence in entry["sentences"]]
     facts, rendered = facts_for(root, entry)
     maps = _render_maps(facts, rendered)
     calls = maps[1]

@@ -8,12 +8,23 @@ docs/instruction-readings-REPO-gN.md, committing every 25 entries. Never pushes.
 Run from the workspace root (it needs `root/`, the binary root, and the retools submodule):
 
     uv run --with capstone --with pyelftools --with numpy --with unicorn \\
-        python -I retools/tools/reading_round.py --repo-name kona --round g43 --out-dir DIR \\
-            --call-check PATH/TO/check_call_addrs.py
+        python -I retools/tools/reading_round.py --repo-name kona --round g43 --out-dir DIR
+
+The call check is built in: every call sentence of the finished document must name a real call
+site of the routine it cites, with the mnemonic and (when cited) the target the facts give.
+`--call-check PATH` runs an external checker instead.
+
+Repos whose routines are mostly `located` (kona, voyager, crime, chips) need
+`--from-grade located`, usually with `--hardware-only`. A firmware image of another
+architecture takes `--arch coldfire|m68k|arm|thumb|ppc32 --load ADDR` (plus `--offset N` for a
+payload that starts inside its file, `--elf` for a mapped ARM ELF, `--binary PATH` to keep one
+image's rows). Those entries carry an `Architecture:` line so grade_readings can reload them.
 
 Target selection, in order:
-  1. Rows of docs/inventory/functions.tsv on HEAD with status named-only or undocumented
-     and scope `in` (out:N rows are excluded from coverage on purpose).
+  1. Rows of docs/inventory/functions.tsv on HEAD with a status at or below --from-grade
+     (default named-only: named-only or undocumented; located adds located rows) and scope
+     `in` (out:N rows are excluded from coverage on purpose). --hardware-only then keeps only
+     the rows rule 5 ranks 1, routines a hardware table names, whatever their role.
   2. Drop rows that already have an entry header in docs/*.md, matched on binary + routine
      (an archive member is part of the binary: lib.a(member.o)) or on binary + address.
   3. Drop rows at address 0x0 with an empty size: the renderer cannot resolve them.
@@ -41,7 +52,9 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 BATCH = 25
-STATUSES = ("named-only", "undocumented")
+# Lowest grade first; --from-grade names the highest one a round may pick up.
+GRADES = ("undocumented", "named-only", "located")
+FIRMWARE_ARCHES = ("m68k", "coldfire", "arm", "thumb", "ppc32")
 HEX = r"0x[0-9a-fA-F]+"
 NEW_HEADER = re.compile(r"^\s*- `([^`]+)` in `([^`]+)`(?: at (" + HEX + r"))?")
 OLD_HEADER = re.compile(r"^\s*- `([^`]+)` \(`([^`]+)`, (" + HEX + r"), \d+ bytes\)")
@@ -125,11 +138,22 @@ def rank(row, link_names, link_addrs):
     return 2
 
 
-def select_targets(rows, doc_names, doc_addrs, link_names=(), link_addrs=()):
+def hardware_linked(row, link_names, link_addrs):
+    """Whether a hardware table (mmio, ioctls, tokens) names this routine."""
+    return row["name"] in link_names or (norm_binary(row["binary"]), to_int(row["address"])) in link_addrs
+
+
+def select_targets(rows, doc_names, doc_addrs, link_names=(), link_addrs=(),
+                   from_grade="named-only", hardware_only=False, binaries=()):
     """Apply the selection rules in the module docstring; returns rows in target order."""
+    statuses = GRADES[:GRADES.index(from_grade) + 1]
     seen, picked = set(), []
     for row in rows:
-        if row.get("status") not in STATUSES or row.get("scope") != "in":
+        if row.get("status") not in statuses or row.get("scope") != "in":
+            continue
+        if binaries and norm_binary(row["binary"]) not in binaries:
+            continue
+        if hardware_only and not hardware_linked(row, link_names, link_addrs):
             continue
         if "address-unknown" in (row.get("rejected") or ""):
             continue
@@ -184,8 +208,8 @@ def intro_text(docs_dir, own):
             "behavior, and each locator names an address in the identified binary.\n")
 
 
-def render_one(row, root):
-    """Render one routine; returns entry text."""
+def render_one(row, root, firmware=None):
+    """Render one routine; returns entry text. firmware is the non-MIPS image layout, if any."""
     import hostfacts
     import render_reading
     binary = norm_binary(row["binary"])
@@ -193,9 +217,14 @@ def render_one(row, root):
     arg = os.path.join(root, m.group(1) if m else binary)
     member = m.group(2) if m else None
     size = to_int(row.get("size") or "")
-    routine = hostfacts.routine_for(arg, row["address"], member=member, size=size or None)
+    if firmware:
+        routine = hostfacts.routine_for(arg, row["address"], size=size or None, **firmware)
+    else:
+        routine = hostfacts.routine_for(arg, row["address"], member=member, size=size or None)
     facts = routine.facts(False)
-    return render_reading.render_entry(routine, facts, binary, "Inferred")
+    # Firmware images carry no symbols, so the inventory's name is the only one there is.
+    return render_reading.render_entry(routine, facts, binary, "Inferred",
+                                       requested_name=row["name"] if firmware else None)
 
 
 def grade_one(entry_text, root, scratch):
@@ -211,6 +240,65 @@ def grade_one(entry_text, root, scratch):
     if bad:
         return False, "; ".join("%s: %s" % b for b in bad[:3])
     return True, ""
+
+
+CALL_SENTENCES = (
+    # (pattern, group order of mnemonic, address, callee)
+    (re.compile(r"The `(\w[\w.]*)` at (" + HEX + r") calls (.*?) with "), (1, 2, 3)),
+    (re.compile(r"Calls (.*?) via \S+ with .*? \(`(\w[\w.]*)` at (" + HEX + r")\)"), (2, 3, 1)),
+)
+
+
+def check_call_addrs(doc, root):
+    """Check the call sentences of a readings document against the routines they cite.
+
+    Each call address must be a call site of its routine, carry the cited mnemonic, and, when
+    the sentence cites a `[0xTARGET]`, reach that target. Returns (calls checked, problems).
+    """
+    import grade_readings
+    checked, problems = 0, []
+    for entry in grade_readings.parse_entries(doc):
+        sites = None
+        for sentence in entry["sentences"]:
+            for pattern, (mn_at, addr_at, callee_at) in CALL_SENTENCES:
+                m = pattern.match(sentence.rstrip("."))
+                if not m:
+                    continue
+                if sites is None:
+                    try:
+                        if entry.get("firmware"):
+                            routine, facts = grade_readings.firmware_facts(root, entry)
+                        else:
+                            routine = hostfacts_routine(root, entry)
+                            facts = routine.facts(False)
+                    except (Exception, SystemExit) as error:
+                        problems.append("%s: cannot load routine: %s" % (entry["name"], one_line(error)))
+                        sites = {}
+                        break
+                    sites = {call["address"]: (call["mnemonic"], call.get("target"))
+                             for call in facts.get("calls", [])}
+                mn, address, callee = m.group(mn_at), m.group(addr_at), m.group(callee_at)
+                checked += 1
+                address = hex(int(address, 16))
+                if address not in sites:
+                    problems.append("%s: %s is not a call site" % (entry["name"], address))
+                    break
+                site_mn, target = sites[address]
+                if site_mn != mn:
+                    problems.append("%s: %s is `%s`, not `%s`" % (entry["name"], address, site_mn, mn))
+                cited = re.search(r"\[(" + HEX + r")\]", callee)
+                if cited and target and int(cited.group(1), 16) != int(target, 16):
+                    problems.append("%s: call at %s reaches %s, not %s" % (
+                        entry["name"], address, target, cited.group(1)))
+                break
+    return checked, problems
+
+
+def hostfacts_routine(root, entry):
+    import grade_readings
+    import hostfacts
+    binary, member = grade_readings.resolve_binary(root, entry)
+    return hostfacts.routine_for(binary, entry["address"], member=member, size=entry["size"])
 
 
 def one_line(text):
@@ -247,8 +335,28 @@ def main(argv=None):
     ap.add_argument("--round", required=True, help="round label such as g43")
     ap.add_argument("--count", type=int, default=500, help="targets to render (default 500)")
     ap.add_argument("--out-dir", required=True, help="where the targets, conflicts and logs go")
-    ap.add_argument("--call-check", required=True, help="check_call_addrs.py path")
+    ap.add_argument("--call-check", help="external call checker run as `python3 -I PATH DOC`; "
+                    "default is the built-in check")
+    ap.add_argument("--from-grade", choices=GRADES, default="named-only",
+                    help="highest inventory status to pick up (default named-only, which also "
+                    "takes undocumented rows); located adds located rows")
+    ap.add_argument("--hardware-only", action="store_true",
+                    help="keep only routines the mmio, ioctls or tokens tables name")
+    ap.add_argument("--arch", default="mips", choices=("mips",) + FIRMWARE_ARCHES,
+                    help="architecture of the binaries (default mips)")
+    ap.add_argument("--load", type=lambda s: int(s, 0), help="firmware load address (non-MIPS)")
+    ap.add_argument("--offset", type=lambda s: int(s, 0), default=0, help="firmware payload offset in its file")
+    ap.add_argument("--elf", action="store_true", help="the firmware is a mapped ARM ELF")
+    ap.add_argument("--binary", action="append", default=[], metavar="PATH",
+                    help="keep only rows of this binary (repeatable)")
     args = ap.parse_args(argv)
+    firmware = None
+    if args.arch != "mips":
+        if args.load is None:
+            ap.error("--arch %s needs --load ADDR" % args.arch)
+        firmware = dict(arch=args.arch, load=args.load, offset=args.offset, elf=args.elf)
+    elif args.load is not None or args.offset or args.elf:
+        ap.error("--load, --offset and --elf need a non-MIPS --arch")
 
     repo = os.getcwd()
     root = "root"
@@ -268,7 +376,8 @@ def main(argv=None):
             with open(os.path.join("docs", name), encoding="utf-8") as handle:
                 lines.extend(handle.read().splitlines())
     doc_names, doc_addrs = header_keys(lines)
-    targets = select_targets(rows, doc_names, doc_addrs, link_names, link_addrs)
+    targets = select_targets(rows, doc_names, doc_addrs, link_names, link_addrs, args.from_grade,
+                             args.hardware_only, {norm_binary(b) for b in args.binary})
 
     targets_path = os.path.join(args.out_dir, "targets-%s.tsv" % tag)
     with open(targets_path, "w", encoding="utf-8") as out:
@@ -309,7 +418,7 @@ def main(argv=None):
     for i, row in enumerate(targets[:args.count], 1):
         binary = norm_binary(row["binary"])
         try:
-            text = render_one(row, root)
+            text = render_one(row, root, firmware)
         except BaseException as error:   # the renderer exits through SystemExit on some inputs
             if isinstance(error, KeyboardInterrupt):
                 raise
@@ -352,19 +461,27 @@ def main(argv=None):
             sys.stdout = saved
     grade_tail = open(grade_log, encoding="utf-8").read().strip().splitlines()[-1:]
     call_log = os.path.join(args.out_dir, "calls-%s.txt" % tag)
-    with open(call_log, "w", encoding="utf-8") as log:
-        call = subprocess.run(["python3", "-I", args.call_check, doc_rel], stdout=log,
-                              stderr=subprocess.STDOUT, text=True, cwd=repo)
+    if args.call_check:
+        with open(call_log, "w", encoding="utf-8") as log:
+            call = subprocess.run(["python3", "-I", args.call_check, doc_rel], stdout=log,
+                                  stderr=subprocess.STDOUT, text=True, cwd=repo)
+        call_status = call.returncode
+    else:
+        calls, problems = check_call_addrs(doc_rel, root)
+        with open(call_log, "w", encoding="utf-8") as log:
+            log.write("%d calls checked, %d problems\n" % (calls, len(problems)))
+            log.writelines(p + "\n" for p in problems)
+        call_status = 1 if problems else 0
     call_tail = open(call_log, encoding="utf-8").read().strip().splitlines()[:1]
 
     print("repo %s round %s: %d targets, %d entries written, %d skipped (renderer %d, grader %d)" % (
         args.repo_name, args.round, len(targets), done, sum(skips.values()),
         skips["renderer"], skips["grader"]))
     print("full-doc grade (exit %d): %s" % (grade_status, " ".join(grade_tail)))
-    print("call check (exit %d): %s" % (call.returncode, " ".join(call_tail)))
+    print("call check (exit %d): %s" % (call_status, " ".join(call_tail)))
     print("logs: %s, %s, %s" % (grade_log, call_log, conflicts_path))
     print("elapsed %.1f s" % (time.time() - started))
-    return 1 if grade_status or call.returncode else 0
+    return 1 if grade_status or call_status else 0
 
 
 if __name__ == "__main__":
