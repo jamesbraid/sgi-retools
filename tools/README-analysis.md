@@ -44,3 +44,40 @@ base is read from the dispatcher. `--cross-check DIR` compares numbering with co
 jump tables and following compare trees, and writes the code address each selector reaches and the first
 routine that code calls. Selectors that share a target are flagged. Selectors that never narrow to a single
 value are not listed. Tests for the walker and the list parsers: `tools/test_syssgi_selectors.py`.
+
+## Routine role entries
+
+`tools/reading_round.py` and the readers that write `docs/routines/*.md` state what a routine does, in
+the author's own words, so that `tools/inventory.py` can move its row from located to understood. The
+inventory credits an entry only for the build it names, so the entry must say which build and where.
+
+The canonical entry is a list item whose first line is the header and whose indented lines are the role:
+
+    - `swfio_mount` in `sw22_474-ip30-flame834/var/sysgen/boot/swfs.o` at 0x1f80
+      **Inferred.** Copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The
+      return is the constant 0xe or the mount result at 0x2084.
+
+- The header is `` `routine` in `path/of/binary` at 0xADDR ``: the routine, the binary written as its path
+  under `root/` (the full path when other builds have a file of the same name), and the exact address of
+  the routine in that binary. `reading_round.py` writes this header and `grade_readings.py` reads it.
+- The role lines carry an `Established.` or `Inferred.` label, state what the routine does in words that
+  do not just repeat its name, and cite the addresses, callees or constants they come from. A statement
+  that says the role is unknown or not derived is held at located, one that cites nothing is a mention.
+- A bare file name (`swfs.o`) in the header credits a build only when every build that has the routine at
+  that address runs the same code there. When the routine's code differs between builds the entry is held
+  at located: write the full path.
+
+Two other shapes are accepted, because they cannot be mistaken for prose: a heading (`###` or deeper)
+that gives the exact address and the binary (`` ### `routine` in `path` at 0xADDR ``, or a heading with
+the binary and address that is followed by a paragraph starting with the routine in backticks), whose
+paragraphs up to the next heading, list or table are its role; and a header-only list item followed by an
+indented paragraph after a blank line. A heading without an address and binary is a section title, and a
+paragraph under it is not an entry.
+
+    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --check-doc
+
+lints one file the way the inventory reads it and exits 1 when it reports anything. For each entry that will
+not credit its routine it prints the line and the reason: no routine named, a heading with no address or no
+binary, no citation, too few role words or items, a header that is not a row of `docs/inventory/functions.tsv`
+(`--inventory PATH` selects another table), or a bare file name that cannot pick between builds. Entries
+held at located by their own wording are listed as notes and do not change the exit status.

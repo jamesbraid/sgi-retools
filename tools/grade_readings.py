@@ -1,7 +1,19 @@
 #!/usr/bin/env python3
-"""Compare facts-only instruction readings with hostfacts output."""
+"""Compare facts-only instruction readings with hostfacts output, or lint a routine-role document.
+
+    grade_readings.py DOC --root ROOT [--count N | --routine NAME...]    grade instruction readings
+    grade_readings.py DOC --check-doc [--inventory functions.tsv]         lint docs/routines/*.md
+
+--check-doc reads DOC the way tools/inventory.py does and reports every routine entry that will not
+reach located or understood, with the reason, plus every heading that looks like a routine header and
+is not one. It exits 1 when it reports anything. It needs no root/. With the workspace's functions
+table (default docs/inventory/functions.tsv when it exists) it also checks that the header's binary
+and address are a row of the table and that a bare file name several builds share can say which build.
+The canonical entry is in README-analysis.md, "Routine role entries".
+"""
 import argparse
 import collections
+import csv
 import itertools
 import os
 import random
@@ -642,15 +654,142 @@ def grade_entry(root, entry):
     return results
 
 
+def _function_rows(path):
+    """{name: [(binary, address, code_sha)]} of a functions table, and the builds it lists."""
+    rows, builds = collections.defaultdict(list), set()
+    with open(path, encoding="utf-8", newline="") as table:
+        for row in csv.DictReader(table, delimiter="\t"):
+            builds.add(row["binary"])
+            try:
+                address = int(row["address"], 16)
+            except ValueError:
+                continue
+            rows[row["name"]].append((row["binary"], address, row.get("code_sha", "")))
+    return rows, builds
+
+
+def check_doc(doc, inventory=None, out=None):
+    """Lint a routine-role document. Prints each problem as DOC:LINE: subject, then the reason, and
+    returns how many entries were reported. See the module docstring."""
+    import inventory as inv
+    out = out or sys.stdout
+    saved = inv.REPO
+    inv.REPO = os.path.dirname(os.path.abspath(doc))
+    try:
+        index = inv.DocIndex({"docs": {}})
+        index.read_md(os.path.abspath(doc), False)
+    finally:
+        inv.REPO = saved
+    index.cap_entries()
+    rows, owners = {}, None
+    if inventory and os.path.isfile(inventory):
+        rows, builds = _function_rows(inventory)
+        owners = inv.path_owners([{"label": b, "copies": []} for b in sorted(builds)])
+    with open(doc, encoding="utf-8", errors="replace") as source:
+        lines = source.read().split("\n")
+    logged = {line: (kind, unit, ent) for _file, line, kind, unit, ent in index.entry_log}
+    problems, counts = [], collections.Counter()
+
+    def report(line, subject, reason, problem=True):
+        problems.append((line, subject, reason, problem))
+
+    fence = False
+    for i, text in enumerate(lines):
+        n = i + 1
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        heading = re.match(r"#{2,6}\s+(.*)", stripped)
+        candidate = heading or re.match(r"[-*+]\s+`", stripped)
+        if not candidate:
+            continue
+        if heading and not inv.reading_head(stripped):
+            title = heading.group(1)
+            if not (re.search(HEX, title) or "`" in title):
+                continue                     # a section title, not a header
+            if not re.search(HEX, title):
+                reason = "the heading gives no exact address (0xADDR)"
+            else:
+                reason = ("the heading gives an address but no binary; write `routine` in `path/of/binary` "
+                          "at 0xADDR")
+            report(n, "heading %r" % title, reason + ", so the paragraphs under it are not one entry")
+            continue
+        kind, unit, ent = logged.get(n, (None, None, None))
+        if ent is None:
+            continue                         # a list item inside another entry
+        subject = unit or "(no routine named)"
+        if kind == "head" and not unit:
+            report(n, subject, "the heading names no routine and the paragraph does not start with one in "
+                   "backticks")
+            continue
+        body = ent.text
+        status = ent.level
+        why = ""
+        if status != "understood":
+            if inv.UNVERIFIED.search(inv.bare_text(body)):
+                why = "it closes with Unverified (at most located)"
+            else:
+                why = inv.read_why(body, ent.subj)[2]
+        elif ent.capped:
+            status, why = "located", ("it shares sentences with more than %d other entries, so the "
+                                      "template cap holds it at located" % inv.TEMPLATE_CAP)
+        counts[status] += 1
+        if status == "named-only":
+            report(n, subject, "named-only: %s" % (why or "no role the classifier can read is stated"))
+        elif why:
+            report(n, subject, "%s, not understood: %s" % (status, why), problem=False)
+        if owners is not None and unit:
+            site = inv.header_site(ent, unit, owners)
+            if site is None:
+                report(n, subject, "the header gives no binary the functions table lists, or no exact address; "
+                       "write `routine` in `path/of/binary` at 0xADDR")
+                continue
+            addresses, named, shared = site
+            where = [(b, a, c) for (b, a, c) in rows.get(unit, ()) if a in addresses and b in (named or shared)]
+            if not where:
+                report(n, subject, "no row of the functions table has %s at %s in the binary the header names"
+                       % (unit, ", ".join("0x%x" % a for a in sorted(addresses))))
+            elif not named and len({c for _b, _a, c in where}) > 1:
+                report(n, subject, "the header writes only a file name that %d builds share and their code "
+                       "differs there, so no build is credited; write the build's full path" % len(where))
+            elif not named and status == "understood" and len({c for _b, _a, c in rows[unit]}) > 1:
+                report(n, subject, "the header writes only a file name that %d builds share, and %s has different "
+                       "code in some of them, so the entry is held at located; write the build's full path"
+                       % (len({b for b, _a, _c in rows[unit]}), unit))
+                counts["understood"] -= 1
+                counts["located"] += 1
+    for line, subject, reason, problem in problems:
+        print("%s:%d: %s%s\n  %s" % (doc, line, subject, "" if problem else " (note)", reason), file=out)
+    count = sum(1 for p in problems if p[3])
+    print("entries=%d understood=%d located=%d named-only=%d problems=%d" % (
+        sum(counts.values()), counts["understood"], counts["located"], counts["named-only"], count), file=out)
+    return count
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("doc")
-    parser.add_argument("--root", required=True, help="directory containing the cited binaries")
+    parser.add_argument("--check-doc", action="store_true",
+                        help="lint DOC as a routine-role document instead of grading instruction readings")
+    parser.add_argument("--inventory", metavar="FUNCTIONS_TSV",
+                        help="functions table for --check-doc (default: docs/inventory/functions.tsv of the workspace)")
+    parser.add_argument("--root", help="directory containing the cited binaries")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--seed", type=int, default=0)
     group.add_argument("--routine", nargs="+", help="grade named routine entries")
     parser.add_argument("--count", type=int, default=12, help="sample size; 0 grades every entry")
     args = parser.parse_args(argv)
+    if args.check_doc:
+        table = args.inventory
+        if table is None:
+            from _workspace import find_workspace
+            table = os.path.join(find_workspace(), "docs", "inventory", "functions.tsv")
+        return 1 if check_doc(args.doc, table) else 0
+    if not args.root:
+        parser.error("--root is required to grade readings")
     entries = parse_entries(args.doc)
     if args.routine:
         selected = [e for e in entries if e["name"] in args.routine]

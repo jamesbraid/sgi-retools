@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the shared facts-only reading grader."""
+import contextlib
+import io
 import os
 import sys
 import tempfile
@@ -370,6 +372,105 @@ class SentenceChecks(unittest.TestCase):
 
     def test_unknown_sentence_is_reported(self):
         self.assertEqual(self.check("This sentence is not a hostfacts claim."), ("UNPARSED", "This sentence is not a hostfacts claim."))
+
+
+class CheckDoc(unittest.TestCase):
+    """--check-doc: the lint of a docs/routines file, one entry at a time."""
+    BINARY = "sw22/var/sysgen/boot/swfs.o"
+    OTHER = "sw23/var/sysgen/boot/swfs.o"
+    ROLE = ("Copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The return is the "
+            "constant 0xe or the mount result at 0x2084.")
+
+    def lint(self, text, table=True, rows=None):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, directory)
+        doc = os.path.join(directory, "b000.md")
+        with open(doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\nIntro that names `swfio_mount` at 0x1f80 and is not an entry.\n\n" + text)
+        path = None
+        if table:
+            path = os.path.join(directory, "functions.tsv")
+            rows = rows or [(self.BINARY, "0x1f80", "aa"), (self.OTHER, "0x1fe0", "bb")]
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("binary\taddress\tname\tcode_sha\n")
+                for binary, address, code in rows:
+                    handle.write("%s\t%s\tswfio_mount\t%s\n" % (binary, address, code))
+        out = io.StringIO()
+        problems = grade.check_doc(doc, path, out)
+        return problems, out.getvalue()
+
+    def test_the_canonical_entry_has_no_problem(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s\n" % (self.BINARY, self.ROLE))
+        self.assertEqual(problems, 0, out)
+        self.assertIn("understood=1", out)
+
+    def test_a_heading_with_a_paragraph_has_no_problem(self):
+        problems, out = self.lint("### `swfio_mount` in `%s` at 0x1f80\n\n%s\n\nGrade: inferred.\n"
+                                  % (self.BINARY, self.ROLE))
+        self.assertEqual(problems, 0, out)
+
+    def test_a_heading_without_an_address_is_reported(self):
+        problems, out = self.lint("### `swfio_mount` in `%s`\n\n%s\n" % (self.BINARY, self.ROLE))
+        self.assertEqual(problems, 1)
+        self.assertIn("no exact address", out)
+
+    def test_a_heading_with_an_address_and_no_binary_is_reported(self):
+        problems, out = self.lint("### `swfio_mount` at 0x1f80\n\n%s\n" % self.ROLE)
+        self.assertEqual(problems, 1)
+        self.assertIn("no binary", out)
+
+    def test_a_section_title_is_not_a_header(self):
+        problems, out = self.lint("## Scope\n\nSome words about the batch.\n")
+        self.assertEqual(problems, 0, out)
+
+    def test_a_heading_that_names_no_routine_is_reported(self):
+        problems, out = self.lint("### `%s` at 0x1f80\n\n12 bytes are copied in. Grade: inferred.\n" % self.BINARY)
+        self.assertEqual(problems, 1)
+        self.assertIn("names no routine", out)
+
+    def test_an_entry_that_states_no_role_is_reported_with_the_reason(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** Mounts the filesystem.\n"
+                                  % self.BINARY)
+        self.assertEqual(problems, 1)
+        self.assertIn("named-only", out)
+        self.assertIn("role words", out)
+
+    def test_an_entry_held_at_located_by_its_own_words_is_a_note_not_a_problem(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s The 0xe is not confirmed.\n"
+                                  % (self.BINARY, self.ROLE))
+        self.assertEqual(problems, 0, out)
+        self.assertIn("(note)", out)
+        self.assertIn("located=1", out)
+
+    def test_a_header_that_is_not_a_row_of_the_table_is_reported(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f84\n  **Inferred.** %s\n" % (self.BINARY, self.ROLE))
+        self.assertEqual(problems, 1)
+        self.assertIn("no row of the functions table", out)
+
+    def test_a_bare_file_name_over_builds_with_different_code_is_reported(self):
+        problems, out = self.lint("- `swfio_mount` in `swfs.o` at 0x1f80\n  **Inferred.** %s\n" % self.ROLE,
+                                  rows=[(self.BINARY, "0x1f80", "aa"), (self.OTHER, "0x1f80", "bb")])
+        self.assertEqual(problems, 1)
+        self.assertIn("full path", out)
+
+    def test_a_bare_file_name_the_routine_shares_one_code_over_is_held_at_located_only_if_code_differs(self):
+        rows = [(self.BINARY, "0x1f80", "aa"), (self.OTHER, "0x1f80", "aa")]
+        problems, out = self.lint("- `swfio_mount` in `swfs.o` at 0x1f80\n  **Inferred.** %s\n" % self.ROLE, rows=rows)
+        self.assertEqual(problems, 0, out)
+
+    def test_without_a_table_only_the_entry_is_checked(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f84\n  **Inferred.** %s\n" % (self.BINARY, self.ROLE),
+                                  table=False)
+        self.assertEqual(problems, 0, out)
+
+    def test_main_exits_nonzero_when_it_reports_something(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, directory)
+        doc = os.path.join(directory, "b.md")
+        with open(doc, "w", encoding="utf-8") as handle:
+            handle.write("### `swfio_mount` at 0x1f80\n\n%s\n" % self.ROLE)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(grade.main([doc, "--check-doc", "--inventory", os.path.join(directory, "none.tsv")]), 1)
 
 
 if __name__ == "__main__":
