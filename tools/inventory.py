@@ -524,23 +524,47 @@ def classify_read(text, subj=frozenset(), head=None):
     understood. An "unknown" about a sub-fact does not demote an entry whose role and effect, read without
     the sentences that say it, still qualify: it stays understood and is returned as open, so the summary
     can count it. The result is (status, open)."""
+    status, open_, _why = read_why(text, subj, head)
+    return status, open_
+
+
+MATCH_WHY = ('it identifies the routine by a match to a public routine and states no offset, constant or callee '
+             'read from this build (at most located)')
+
+
+def read_why(text, subj=frozenset(), head=None):
+    """classify_read with the reason an entry falls short of understood, in words an author can act on
+    ('' when it is understood). The result is (status, open, why)."""
     t = bare_text(text)
     own = frozenset()
     if head is not None and t.strip().startswith('|'):
         own = own_values([c.strip() for c in t.strip().strip('|').split('|')])
     if not item_cite(t, subj, own):
-        return 'named-only', False
+        return 'named-only', False, 'it cites no address, callee or source file beyond its own subject'
     if HEDGE.search(t):
-        return ('located' if LOCATED.search(t) else 'named-only'), False
+        m = HEDGE.search(t)
+        loc = LOCATED.search(t)
+        return (('located' if loc else 'named-only'), False,
+                'it says "%s", which leaves the role not derived (at most located)' % m.group(0))
     if UNKNOWN.search(t):
         rest, dropped = open_split(t)
         if (not any(ROLE_UNKNOWN.search(d) for d in dropped) and item_cite(rest, subj, own)
                 and stated(rest, subj, own, head)):
-            return identified('understood', rest, t), True
-        return ('located' if LOCATED.search(t) else 'named-only'), False
+            st = identified('understood', rest, t)
+            return st, True, MATCH_WHY if st != 'understood' else ''
+        return (('located' if LOCATED.search(t) else 'named-only'), False,
+                'a sentence says the role or effect is unknown (at most located)')
     if stated(t, subj, own, head):
-        return identified('understood', t, t), False
-    return 'named-only', False
+        st = identified('understood', t, t)
+        return st, False, MATCH_WHY if st != 'understood' else ''
+    why = []
+    if not LABEL.search(t):
+        why.append('no Established or Inferred label')
+    if len(role_words(t, subj)) < MIN_ROLE_WORDS:
+        why.append('fewer than %d role words that do not restate the routine name' % MIN_ROLE_WORDS)
+    if len(row_items(t, subj, own, head)) < MIN_DATA:
+        why.append('fewer than %d items (numbers or code names) stated about the routine' % MIN_DATA)
+    return 'named-only', False, ' and '.join(why) or 'the role is not stated'
 
 
 def match_only(text):
@@ -937,6 +961,7 @@ class DocIndex:
         self.defs = collections.defaultdict(list)      # value -> [hit] for header #define / enum values
         self.order = 0
         self.entries = []                              # every prose entry, for the template cap
+        self.entry_log = []                            # (file, first line, folded kind, subject, entry) of each, for lint
         d = cfg['docs']
         index = set()
         for p in d.get('index', []):
@@ -965,12 +990,16 @@ class DocIndex:
                     continue
                 seen.add(rel)
                 self.read_table(rel)
+        self.cap_entries()
+        self.sibling_report = self.check_siblings(siblings)
+
+    def cap_entries(self):
+        """Mark each entry that shares too many sentences with the others as templated."""
         count = collections.Counter(sk for e in self.entries for sk in {sk for sk, n, ev in e.sents if sk is not None})
         ncount = collections.Counter(sk for e in self.entries for sk in set(e.nsd_sents))
         for e in self.entries:
             e.capped = e.cap(count)
             e.nsd_capped = any(ncount[sk] > TEMPLATE_CAP for sk in e.nsd_sents)
-        self.sibling_report = self.check_siblings(siblings)
 
     def check_siblings(self, siblings):
         """Mark each understood entry whose role text is, or is at least SIMILAR to, the sibling workspace's
@@ -1171,6 +1200,8 @@ class DocIndex:
                     head_unit[e] = unit if folded.get(e) == 'head' else ''
                     if not is_head and not index:
                         self.entries.append(entry_obj[e][0])
+                    if not is_table and not index:
+                        self.entry_log.append((rel, entries[e][0] + 1, folded.get(e), unit, entry_obj[e][0]))
                 if e in entry_obj:
                     ent, subj = entry_obj[e]
                 level = ent.level if ent is not None else 'named-only'

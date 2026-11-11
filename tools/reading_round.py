@@ -20,6 +20,9 @@ architecture takes `--arch coldfire|m68k|arm|thumb|ppc32 --load ADDR` (plus `--o
 payload that starts inside its file, `--elf` for a mapped ARM ELF, `--binary PATH` to keep one
 image's rows). Those entries carry an `Architecture:` line so grade_readings can reload them.
 
+The entry it writes is the canonical routine role entry of README-analysis.md, which
+`grade_readings.py DOC --check-doc` lints.
+
 Target selection, in order:
   1. Rows of docs/inventory/functions.tsv on HEAD with a status at or below --from-grade
      (default named-only: named-only or undocumented; located adds located rows) and scope
