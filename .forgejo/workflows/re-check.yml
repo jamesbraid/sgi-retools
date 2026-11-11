@@ -19,5 +19,7 @@ jobs:
         uses: https://code.forgejo.org/actions/checkout@v4
       - name: Run the decode-header tests
         run: python3 tools/defs/test_defs.py
+      - name: Run the census header naming tests
+        run: python3 tools/chips/test_gen_headers.py
       - name: Run the decode-header check
         run: tools/defs/ci-check
