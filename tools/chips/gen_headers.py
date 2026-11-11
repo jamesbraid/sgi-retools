@@ -131,6 +131,37 @@ def mask_of(bits):
     return v
 
 
+def view_widths(widths, halves):
+    """Width text for one register. The Bridge-family code reads and writes a 32-bit register as the low
+    word of its 64-bit slot, at slot +4 on a big-endian machine; the census records that as halves 4. The
+    listed offset stays the slot address, so say where the access lands."""
+    ws, hs = widths.split(','), halves.split(',')
+    if len(hs) != len(ws) or not low_word_access({'widths': widths, 'halves': halves}):
+        return '%s byte(s)' % '/'.join(ws)
+    return ' / '.join('%s byte(s)%s' % (w, ' at slot+4' if (w == '4' and h == '4') else '') for w, h in zip(ws, hs))
+
+
+def low_word_access(r):
+    ws, hs = r['widths'].split(','), r.get('halves', '').split(',')
+    return len(ws) == len(hs) and any(w == '4' and h == '4' for w, h in zip(ws, hs))
+
+
+def view_notes(rows, rules):
+    """Preamble lines that say which view of a register the offsets and widths describe."""
+    out = []
+    if any(low_word_access(r) for r in rows):
+        out += [' * Views: the offset is the 8-byte slot address. "4 at slot+4" is a 32-bit load or store at that',
+                ' * address plus 4, the low word of the slot on a big-endian machine; a 64-bit access to the slot',
+                ' * address reaches the same register.']
+    if rules == 'bedrock':
+        out += [' * Bedrock offsets: bits 23:0 of the window address the code forms; the window literals sit 0x1000000',
+                ' * above them, so add 0x1000000 for the offset the kernel uses. Offsets with bit 23 set come through the',
+                ' * node-indexed alias (the code adds the node number << 33); the same register is at offset - 0x800000',
+                ' * in the local alias [I]. Example: 0xe80100, the network-interface error word, is 0x680100 in the local',
+                ' * alias, where the code reads its neighbours (0x680108 to 0x680120) directly.']
+    return out
+
+
 def gen(chip, spec):
     dirn, variant, base, title, rules = spec
     P = chip.upper()
@@ -145,7 +176,7 @@ def gen(chip, spec):
            ' * Labels: [E] established, [I] inferred, [U] unknown.',
            ' * Offsets and widths: [E] a load or store in the cited routine reaches that offset with that width.',
            ' * Names: [I] from the accessor routine names the shipped objects carry. Fields: [I] masks and constants',
-           ' * the code applies; their meaning is not read. Reset values: [U] throughout.'] + (
+           ' * the code applies; their meaning is not read. Reset values: [U] throughout.'] + view_notes(rows, rules) + (
           [' * HEART: names come from the config register_names (the shipped diagnostic prints them, or the public',
            ' * Linux driver where it prints none); offsets 0x100000 and up are the widget block, see the chip page.']
           if rules == 'heart' else []) + [' */',
@@ -192,9 +223,9 @@ def gen(chip, spec):
         macro = '%s_%s' % (P, label)
         if '%s ' % macro in ''.join(out[-400:]):
             macro += '_%X' % off
-        w = r['widths'].replace(',', '/')
+        w = view_widths(r['widths'], r.get('halves', ''))
         acc = r['access_seen']
-        out.append('#define %-34s 0x%06x   /* [E] width %s byte(s), access %s%s; name [I] from %s; reached in %s sites, %s routine(s) */' % (
+        out.append('#define %-34s 0x%06x   /* [E] width %s, access %s%s; name [I] from %s; reached in %s sites, %s routine(s) */' % (
             macro, base + off, w, acc, ', indexed (family base)' if r['idx'] == '1' else '',
             name_source if given else (', '.join(names) or 'no accessor name'),
             r['sites'], r['functions']))
