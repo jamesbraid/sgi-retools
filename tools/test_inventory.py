@@ -428,6 +428,91 @@ class Unverified(unittest.TestCase):
         self.assertEqual(inv.classify('`odsy_EdidCksum` checksums. Unverified.', self.SUBJ)[0], 'named-only')
 
 
+class ReadingEntries(unittest.TestCase):
+    """The shapes a routine-reading round writes into docs/routines/*.md, and what each credits in a
+    table of builds that share a routine name: swfio_mount sits at a different address in every build
+    and its code differs in some."""
+    NAME = 'swfio_mount'
+    SW22 = 'sw22_474-ip30-flame834/var/sysgen/boot/swfs.o'
+    BUILDS = (('sw22_474-ip30-flame834/var/sysgen/boot/swfs.o', 0x1f80, 'aa'),
+              ('sw23_566-ip27-inferno55/var/sysgen/boot/swfs.o', 0x1fe0, 'bb'),
+              ('sw24_681-ip30-flame90/var/sysgen/boot/swfs.o', 0x2040, 'cc'),
+              ('sw25_793-ip27-inferno625/var/sysgen/boot/swfs.o', 0x1f8c, 'dd'))
+    ROLE = ('It copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The return is either '
+            'the constant 0xe or the mount result, and the facts do not show which one is an error code, so '
+            'that reading is unconfirmed.')
+
+    def index(self, doc):
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root)
+        os.makedirs(os.path.join(root, 'docs', 'routines'))
+        with open(os.path.join(root, 'docs', 'routines', 'b000.md'), 'w') as f:
+            f.write(doc)
+        saved, inv.REPO = inv.REPO, root
+        try:
+            return inv.DocIndex({'docs': {'prose': ['docs/routines/*.md'], 'index': [], 'skip': []}})
+        finally:
+            inv.REPO = saved
+
+    def statuses(self, doc, builds=None):
+        builds = builds or self.BUILDS
+        docs = self.index(doc)
+        funcs = {lab: {self.NAME: ('.text', addr, 292, ['symtab'], code)} for lab, addr, code in builds}
+        imgs = fake_images(*[(lab, []) for lab, _a, _c in builds])
+        name_rows = inv.code_groups(funcs, [])
+        owners, cache, out = inv.path_owners(imgs), {}, {}
+        for img in imgs:
+            hits, demote = inv.function_hits(docs, self.NAME, img, funcs[img['label']][self.NAME][1], 292, funcs,
+                                             name_rows, owners, cache)
+            out[img['label']] = docs.best(hits, demote)[0]
+        return out
+
+    def only_sw22(self):
+        return {lab: ('located' if lab == self.SW22 else 'undocumented') for lab, _a, _c in self.BUILDS}
+
+    def test_a_header_line_and_its_text_credit_only_the_cited_row(self):
+        doc = '- `swfio_mount` in `%s` at 0x1f80: %s\n' % (self.SW22, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_sw22())
+
+    def test_a_heading_and_its_paragraph_credit_only_the_cited_row(self):
+        doc = '### `swfio_mount` in `%s` at 0x1f80\n\n%s\n\nGrade: inferred.\n' % (self.SW22, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_sw22())
+
+    def test_a_heading_with_the_build_and_address_and_a_paragraph_that_names_the_routine(self):
+        doc = '### `%s` at 0x1f80\n\n`swfio_mount`, 292 bytes. %s\n' % (self.SW22, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_sw22())
+
+    def test_a_heading_with_the_build_the_address_and_the_name_after_them(self):
+        doc = '### %s:0x1f80 swfio_mount\n\n%s\n' % (self.SW22, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_sw22())
+
+    def test_a_bare_file_name_credits_the_builds_that_have_the_routine_at_that_address(self):
+        doc = '### swfs.o at 0x1f80\n\n`swfio_mount`, 292 bytes. %s\n' % self.ROLE
+        self.assertEqual(self.statuses(doc), self.only_sw22())
+
+    def test_a_header_line_with_an_indented_paragraph_after_a_blank_line_is_one_entry(self):
+        doc = '- `swfio_mount` in `%s` at 0x1f80\n\n  %s\n' % (self.SW22, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_sw22())
+
+    def test_identical_code_in_another_build_shares_the_credit(self):
+        doc = '### `swfio_mount` in `%s` at 0x1f80\n\n%s\n' % (self.SW22, self.ROLE)
+        same = self.statuses(doc, builds=(self.BUILDS[0], (self.BUILDS[3][0], 0x1f8c, 'aa')))
+        self.assertEqual(set(same.values()), {'located'})
+
+    def test_a_heading_without_an_address_is_not_folded_into_its_paragraph(self):
+        doc = '### Mounting\n\n`swfio_mount` in `%s`: %s\n' % (self.SW22, self.ROLE)
+        self.assertFalse(any(e.text.startswith('Mounting') for e in self.index(doc).entries))
+
+    def test_a_heading_with_an_address_and_no_binary_is_not_folded_into_its_paragraph(self):
+        doc = '### Register 0x2000\n\n`swfio_mount` writes it. %s\n' % self.ROLE
+        self.assertFalse(any(e.text.startswith('Register') for e in self.index(doc).entries))
+
+    def test_text_after_a_list_under_a_routine_heading_is_not_folded_in(self):
+        doc = '### `%s` at 0x1f80\n\n- Something else.\n\nLater prose about the area.\n' % self.SW22
+        texts = [e.text for e in self.index(doc).entries]
+        self.assertFalse(any('Later prose' in t and '0x1f80' in t for t in texts))
+
+
 @unittest.skipIf(ELFFile is None, 'pyelftools is not installed')
 class AddressZero(unittest.TestCase):
     """A relocatable object's first function is at address 0; that is an address, not a missing one."""
