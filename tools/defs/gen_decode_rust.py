@@ -65,12 +65,37 @@ KEYWORDS = {
     "unsized", "virtual", "yield", "try",
 }
 
+# A Rust identifier cannot start with a digit, but a header name can once the
+# prefix is stripped (KONA_TOKEN_1D_... becomes 1D_...). Such a constant gets
+# this word in front, the same default enum variants use (see Header.variant).
+# Stripping the digit instead would make two names collide.
+DIGIT_PREFIX = "V"
+IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+DECL_RE = re.compile(r"^\s*(?:pub )?(?:const (?:fn )?|fn |struct |enum |mod )([^\s:(<{;]+)")
+VARIANT_RE = re.compile(r"^    ([^\s(,:{}]+)[(,]")
+
 def camel(s):
     return "".join(p[:1].upper() + p[1:] for p in re.split(r"_+", s.lower()) if p)
 
 
 def ident(name):
     return name + "_" if name in KEYWORDS else name
+
+
+def digit_safe(name):
+    return DIGIT_PREFIX + name if name[:1].isdigit() else name
+
+
+# Every name the generator declares must be a plain identifier. A digit-led
+# name or a stray character makes the module fail to compile, and rustc is not
+# installed everywhere ci-check runs, so the generator checks it itself.
+def check_identifiers(text):
+    bad = []
+    for line in text.splitlines():
+        m = DECL_RE.match(line) or VARIANT_RE.match(line)
+        if m and (not IDENT_RE.match(m.group(1)) or m.group(1) in KEYWORDS):
+            bad.append(m.group(1))
+    assert not bad, f"generated names are not Rust identifiers: {bad}"
 
 
 def mask_of(hi, lo):
@@ -384,6 +409,7 @@ def emit_consts(h):
         if name in h.used_in_enum or name.endswith(("_SHIFT", "_MASK")) or name.endswith("_H"):
             continue
         n = name[len(h.prefix):] if name.startswith(h.prefix) else name
+        n = digit_safe(n)
         assert n not in names, f"constant {n} defined twice"
         names.add(n)
         d = doc(cmt)
@@ -392,7 +418,7 @@ def emit_consts(h):
         ct = "u64" if val > 0xFFFFFFFF else "u32"
         o.append(f"pub const {n}: {ct} = {val:#x};" if val >= 0x100 else f"pub const {n}: {ct} = {val};")
     for name, base in h.funcs:
-        n = (name[len(h.prefix):] if name.startswith(h.prefix) else name).lower()
+        n = digit_safe((name[len(h.prefix):] if name.startswith(h.prefix) else name).lower())
         o += ["", f"/// `{n}(i)` is the opcode of descriptor `i`: `{base:#06x}` plus `i`.",
               f"pub const fn {n}(i: u32) -> u32 {{", f"    {base:#06x} + i", "}"]
     if o:
@@ -463,6 +489,7 @@ def generate(project, h, headers, commit):
     out = "\n".join(o).rstrip("\n") + "\n"
     bad = [l for l in out.splitlines()[1:] if pointer_re(project).search(l)]
     assert not bad, f"pointer text in output: {bad}"
+    check_identifiers(out)
     return out
 
 

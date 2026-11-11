@@ -92,6 +92,32 @@ class DefsTest(unittest.TestCase):
         with open(os.path.join(self.out, 'uart.rs'), encoding='utf-8') as f:
             self.assertRegex(f.readline(), r'generated from mini [0-9a-f]{12}-dirty ')
 
+    def test_digit_led_constant_gets_a_prefix(self):
+        with open(self.header, 'a') as f:
+            f.write('#define UART_1D_LOAD 0x12 /* established */\n')
+        self.assertEqual(self.generate('--commit', 'abcdef012345').returncode, 0)
+        with open(os.path.join(self.out, 'uart.rs'), encoding='utf-8') as f:
+            rs = f.read()
+        self.assertIn('pub const V1D_LOAD: u32 = 18;', rs)
+        self.assertNotIn('pub const 1D_', rs)
+
+    def test_digit_prefix_must_not_collide(self):
+        with open(self.header, 'a') as f:
+            f.write('#define UART_1D_LOAD 0x12\n#define UART_V1D_LOAD 0x13\n')
+        r = self.generate('--commit', 'abcdef012345')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('constant V1D_LOAD defined twice', r.stderr)
+
+    def test_generated_names_must_be_identifiers(self):
+        sys.path.insert(0, HERE)
+        import gen_decode_rust
+        with open(os.path.join(FIXTURE, 'expected', 'uart.rs'), encoding='utf-8') as f:
+            gen_decode_rust.check_identifiers(f.read())
+        for bad in ('pub const 1D_LOAD: u32 = 1;\n', '    pub const fn 2d(i: u32) -> u32 {\n',
+                    '    1Ds,\n', 'pub struct fn(u32);\n'):
+            with self.assertRaises(AssertionError, msg=bad):
+                gen_decode_rust.check_identifiers(bad)
+
     # -- checker -----------------------------------------------------------
     def committed_rust(self):
         self.assertEqual(self.generate().returncode, 0)
