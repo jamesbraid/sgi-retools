@@ -19,6 +19,9 @@ Repos whose routines are mostly `located` (kona, voyager, crime, chips) need
 architecture takes `--arch coldfire|m68k|arm|thumb|ppc32 --load ADDR` (plus `--offset N` for a
 payload that starts inside its file, `--elf` for a mapped ARM ELF, `--binary PATH` to keep one
 image's rows). Those entries carry an `Architecture:` line so grade_readings can reload them.
+A row keyed by a segment of a firmware container (`l1.bin(l1#2)`, `l2.bin(kernel)`, which the inventory
+writes for a binaries group with a `layout`) needs none of those options: the arch, the bytes and the load
+address come from the workspace's scripts/inventory-config.json, the same layout code the inventory used.
 
 The entry it writes is the canonical routine role entry of README-analysis.md, which
 `grade_readings.py DOC --check-doc` lints.
@@ -30,9 +33,6 @@ Target selection, in order:
      the rows rule 5 ranks 1, routines a hardware table names, whatever their role.
   2. Drop rows that already have an entry header in docs/*.md, matched on binary + routine
      (an archive member is part of the binary: lib.a(member.o)) or on binary + address.
-     Rows of a firmware container's segment (`l1.bin(l1#2)`, `(flash)`, `(kernel)`, which the sysco
-     inventory writes for the routines that reach a register window) are dropped too: the renderer cannot
-     open one package of a container yet.
   3. Drop rows at address 0x0 with an empty size: the renderer cannot resolve them.
   4. Keep the first row per binary + address (glFoo and glFooEXT share one).
   5. Rank hardware-facing first, stable within a rank (inventory order):
@@ -144,14 +144,6 @@ def rank(row, link_names, link_addrs):
     return 2
 
 
-def renderable(binary):
-    """False for a segment cut out of a firmware container, `l1.bin(l1#2)`, `l2.bin(flash)`,
-    `l2.bin(kernel)`: render_one opens a file, or a member of a `.a` archive, and has no way to give a
-    package offset and load address per row. Listing those rows would only produce renderer conflicts."""
-    m = re.fullmatch(r"(.+)\((.+)\)", norm_binary(binary))
-    return not m or m.group(1).endswith(".a")
-
-
 def hardware_linked(row, link_names, link_addrs):
     """Whether a hardware table (mmio, ioctls, tokens) names this routine."""
     return row["name"] in link_names or (norm_binary(row["binary"]), to_int(row["address"])) in link_addrs
@@ -170,8 +162,6 @@ def select_targets(rows, doc_names, doc_addrs, link_names=(), link_addrs=(),
         if hardware_only and not hardware_linked(row, link_names, link_addrs):
             continue
         if "address-unknown" in (row.get("rejected") or ""):
-            continue
-        if not renderable(row["binary"]):
             continue
         binary = norm_binary(row["binary"])
         addr = to_int(row["address"])
@@ -224,15 +214,22 @@ def intro_text(docs_dir, own):
             "behavior, and each locator names an address in the identified binary.\n")
 
 
-def render_one(row, root, firmware=None):
-    """Render one routine; returns entry text. firmware is the non-MIPS image layout, if any."""
+def render_one(row, root, firmware=None, config=None):
+    """Render one routine; returns entry text. firmware is the non-MIPS image layout, if any. config is
+    the workspace's inventory config: a binary that names a segment of a firmware container
+    (`l1.bin(l1#2)`) is cut out of its file by the config's layout, the way the inventory cut it."""
+    import firmware_layout
     import hostfacts
     import render_reading
     binary = norm_binary(row["binary"])
+    size = to_int(row.get("size") or "")
+    segment = firmware_layout.segment_routine(config, root, binary, row["address"], size or None) if config else None
+    if segment:
+        facts = segment.facts(False)
+        return render_reading.render_entry(segment, facts, binary, "Inferred", requested_name=row["name"])
     m = re.fullmatch(r"(.+\.a)\((.+)\)", binary)
     arg = os.path.join(root, m.group(1) if m else binary)
     member = m.group(2) if m else None
-    size = to_int(row.get("size") or "")
     if firmware:
         routine = hostfacts.routine_for(arg, row["address"], size=size or None, **firmware)
     else:
@@ -379,6 +376,8 @@ def main(argv=None):
     if not os.path.isdir(root):
         ap.error("run from a workspace root with a root/ link")
     os.makedirs(args.out_dir, exist_ok=True)
+    import firmware_layout
+    config = firmware_layout.read_config(repo)
     tag = "%s-%s" % (args.repo_name, args.round)
     doc_rel = "docs/instruction-readings-%s.md" % tag
     started = time.time()
@@ -434,7 +433,7 @@ def main(argv=None):
     for i, row in enumerate(targets[:args.count], 1):
         binary = norm_binary(row["binary"])
         try:
-            text = render_one(row, root, firmware)
+            text = render_one(row, root, firmware, config)
         except BaseException as error:   # the renderer exits through SystemExit on some inputs
             if isinstance(error, KeyboardInterrupt):
                 raise
