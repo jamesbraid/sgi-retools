@@ -27,6 +27,9 @@ Target selection, in order:
      the rows rule 5 ranks 1, routines a hardware table names, whatever their role.
   2. Drop rows that already have an entry header in docs/*.md, matched on binary + routine
      (an archive member is part of the binary: lib.a(member.o)) or on binary + address.
+     Rows of a firmware container's segment (`l1.bin(l1#2)`, `(flash)`, `(kernel)`, which the sysco
+     inventory writes for the routines that reach a register window) are dropped too: the renderer cannot
+     open one package of a container yet.
   3. Drop rows at address 0x0 with an empty size: the renderer cannot resolve them.
   4. Keep the first row per binary + address (glFoo and glFooEXT share one).
   5. Rank hardware-facing first, stable within a rank (inventory order):
@@ -138,6 +141,14 @@ def rank(row, link_names, link_addrs):
     return 2
 
 
+def renderable(binary):
+    """False for a segment cut out of a firmware container, `l1.bin(l1#2)`, `l2.bin(flash)`,
+    `l2.bin(kernel)`: render_one opens a file, or a member of a `.a` archive, and has no way to give a
+    package offset and load address per row. Listing those rows would only produce renderer conflicts."""
+    m = re.fullmatch(r"(.+)\((.+)\)", norm_binary(binary))
+    return not m or m.group(1).endswith(".a")
+
+
 def hardware_linked(row, link_names, link_addrs):
     """Whether a hardware table (mmio, ioctls, tokens) names this routine."""
     return row["name"] in link_names or (norm_binary(row["binary"]), to_int(row["address"])) in link_addrs
@@ -156,6 +167,8 @@ def select_targets(rows, doc_names, doc_addrs, link_names=(), link_addrs=(),
         if hardware_only and not hardware_linked(row, link_names, link_addrs):
             continue
         if "address-unknown" in (row.get("rejected") or ""):
+            continue
+        if not renderable(row["binary"]):
             continue
         binary = norm_binary(row["binary"])
         addr = to_int(row["address"])

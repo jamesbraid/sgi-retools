@@ -35,6 +35,14 @@ def pick(rows, doc_lines=(), links=((), ()), **options):
 
 
 class SelectionTests(unittest.TestCase):
+    def test_container_segments_are_not_offered(self):
+        got = pick([
+            row("6.5.30/usr/cpu/firmware/sysco/l1.bin(l1#2)", "0xffe10000", "64", "sub_ffe10000", role="sysco-l1-firmware"),
+            row("6.5.30/usr/cpu/firmware/sysco/l2.bin(kernel)", "0xc0001000", "64", "sub_c0001000", role="sysco-l2-firmware"),
+            row("usr/lib/lib.a(m.o)", "0x10", "8", "in_archive"),
+            row("usr/lib/a.so", "0x20", "8", "plain")])
+        self.assertEqual([n for _, n in got], ["in_archive", "plain"])
+
     def test_scope_and_status_filter(self):
         got = pick([
             row("usr/lib/a.so", "0x100", "8", "keep_named"),
