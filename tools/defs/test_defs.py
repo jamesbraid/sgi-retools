@@ -300,6 +300,17 @@ class DefsTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn('banner is not', r.stdout)
 
+    def test_ci_check_runs_the_prose_checks(self):
+        self.committed_rust()
+        ci = os.path.join(HERE, 'ci-check')
+        r = subprocess.run([sys.executable, ci], cwd=self.root, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.edit(os.path.join(self.root, 'docs', 'uart.md'),
+                  'bits 31:16 of the control word', 'bits 30:16 of the control word')
+        r = subprocess.run([sys.executable, ci], cwd=self.root, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('publish-safe check', r.stderr)
+
     def test_docs_scan(self):
         self.committed_rust()
         with open(self.cfg, 'a') as f:
