@@ -479,6 +479,11 @@ class ReadingEntries(unittest.TestCase):
         got = self.statuses(doc, builds=(self.BUILDS[0], (self.BUILDS[3][0], 0x1f80, 'dd')))
         self.assertEqual(set(got.values()), {'undocumented'})
 
+    def test_a_long_paragraph_naming_many_callees_still_credits_its_routine(self):
+        callees = ', '.join('`swf_callee_%d` at 0x%x' % (k, 0x2000 + 4 * k) for k in range(inv.MAX_ITEMS + 4))
+        doc = '### `%s` at 0x1f80\n\n`swfio_mount`, 292 bytes. It calls %s. Grade: inferred.\n' % (self.SW22, callees)
+        self.assertEqual(self.statuses(doc)[self.SW22], 'understood')
+
     def test_a_header_line_with_an_indented_paragraph_after_a_blank_line_is_one_entry(self):
         doc = '- `swfio_mount` in `%s` at 0x1f80\n\n  %s\n' % (self.SW22, self.ROLE)
         self.assertEqual(self.statuses(doc), self.only_sw22())
