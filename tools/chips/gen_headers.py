@@ -105,13 +105,31 @@ def load(dirn, variant):
     return rows, fl
 
 
+# A PROM image has no symbols; the scanner cuts it into pseudo-functions named after the address they start at.
+# Such a name says nothing about the register and embeds a raw address, so it never names a define.
+PSEUDO_FUNCTION = re.compile(r'^prom_[0-9a-f]+$')
+
+
+def pseudo_only_slots(dirn, variant):
+    """(slot, idx) pairs that only pseudo-functions reach."""
+    p = 'chips/%s/census/census-sites.tsv' % dirn
+    d = set()
+    if os.path.exists(p):
+        for r in csv.DictReader(open(p), delimiter='\t'):
+            if PSEUDO_FUNCTION.match(r['function'].split('@')[0]) and (variant is None or variant in r['variant'].split('|')):
+                d.add((int(r['offset'], 16) & ~7, r['idx']))
+    return d
+
+
 def names_by_slot(dirn, variant):
     p = 'chips/%s/census/census-sites.tsv' % dirn
     d = collections.defaultdict(collections.Counter)
     if os.path.exists(p):
         for r in csv.DictReader(open(p), delimiter='\t'):
+            if PSEUDO_FUNCTION.match(r['function'].split('@')[0]):
+                continue
             if variant is None or variant in r['variant'].split('|'):
-                d[int(r['offset'], 16) & ~7][stem(r['function'])] += 1
+                d[(int(r['offset'], 16) & ~7, r['idx'])][stem(r['function'])] += 1
     return d
 
 
@@ -167,6 +185,7 @@ def gen(chip, spec):
     P = chip.upper()
     rows, fl = load(dirn, variant)
     nm = names_by_slot(dirn, variant)
+    pseudo_only = pseudo_only_slots(dirn, variant) - set(nm)
     # where a census row's name comes from: the config's "name_source" (for example the specification the rows
     # were joined with), else the HEART text
     cfgp = 'tools/configs/%s.json' % dirn
@@ -217,9 +236,12 @@ def gen(chip, spec):
         if blk != cur_block:
             out += ['', '/* ---- %s %s */' % (blk, '-' * max(3, 60 - len(blk))), '']
             cur_block = blk
-        names = [n for n, _ in nm.get(off, collections.Counter()).most_common(3)]
+        names = [n for n, _ in nm.get((off, r['idx']), collections.Counter()).most_common(3)]
         given = r.get('name', '')
-        label = ident(given) if given else (ident(names[0]) if names else '%X' % off)
+        # Only a symbol-less PROM reaches the register: name it by its offset, which is a hardware fact, rather
+        # than by the address of a pseudo-function. Other unnamed registers keep their bare offset.
+        label = ident(given) if given else (ident(names[0]) if names else
+                                            ('REG_%06X' if (off, r['idx']) in pseudo_only else '%X') % off)
         macro = '%s_%s' % (P, label)
         if '%s ' % macro in ''.join(out[-400:]):
             macro += '_%X' % off
