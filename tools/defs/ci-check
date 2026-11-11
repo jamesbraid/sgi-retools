@@ -35,7 +35,7 @@ def main():
         cfg = tomllib.load(f)
     py = sys.executable
     run("publish-safe check",
-        [py, os.path.join(HERE, "check-publish-safe.py"), "--config", "defs.toml", "--rust"])
+        [py, os.path.join(HERE, "check-publish-safe.py"), "--config", "defs.toml"])
     # A workspace whose headers carry no `module` key has no generated Rust to check.
     if any(h.get("module") for h in cfg.get("headers", [])):
         run("generated Rust is stale or invalid",

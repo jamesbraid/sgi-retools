@@ -10,7 +10,7 @@ directory holds the two tools every workspace shares for them:
 | `check-publish-safe.py --config defs.toml` | refuses leaks, checks the header against itself, checks it against the workspace's prose notes |
 | `gen_decode_rust.py --config defs.toml` | writes one plain Rust module per header; `--check` fails when the checked-in output is stale |
 | `test_defs.py` | tests for both, over `testdata/mini/` |
-| `ci-check` | the one command a workspace's CI runs: check, staleness, C and Rust compile |
+| `ci-check` | the one command a workspace's CI runs: full check, staleness, C and Rust compile |
 | `forgejo-workflow.yml` | template for the workspace's `.forgejo/workflows/re-check.yml` |
 
 Needs Python 3.11 or newer (for `tomllib`) and nothing else. Run them from the
@@ -246,7 +246,8 @@ that commit, and also fails on a missing or extra `.rs` file.
 `retools/`. With no `defs.toml` it prints `no decode headers` and exits 0.
 Otherwise it runs, in order:
 
-1. `check-publish-safe.py --config defs.toml --rust`
+1. `check-publish-safe.py --config defs.toml` (every check: leaks, header self-consistency,
+   prose claims, generated Rust)
 2. `gen_decode_rust.py --config defs.toml --check` (never writes files)
 3. `cc -fsyntax-only -Wall -Werror` over each header listed in `defs.toml`
 4. `rustc --edition 2021 --crate-type lib --emit=metadata` over each generated
