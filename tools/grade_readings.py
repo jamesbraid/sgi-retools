@@ -713,6 +713,11 @@ def check_doc(doc, inventory=None, out=None):
             continue
         heading = re.match(r"#{2,6}\s+(.*)", stripped)
         candidate = heading or re.match(r"[-*+]\s+`", stripped)
+        if not candidate and re.match(r"[-*+]\s+[\w.+@$/-]+\s+at\s+0x[0-9a-fA-F]+\s*:\s*\S", stripped):
+            # `- libGLcore.so at 0x1234: routine` is not a header the inventory reads
+            report(n, stripped[:70], "a list item that gives `file at 0xADDR: routine` is not an entry the inventory "
+                   "reads; write `routine` in `path/of/binary` at 0xADDR with the role lines under it")
+            continue
         if not candidate:
             continue
         if heading and not inv.reading_head(stripped):

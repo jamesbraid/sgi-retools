@@ -419,6 +419,11 @@ class CheckDoc(unittest.TestCase):
         self.assertEqual(problems, 1)
         self.assertIn("no binary", out)
 
+    def test_a_file_at_address_colon_routine_item_is_reported(self):
+        problems, out = self.lint("- swfs.o at 0x1f80: swfio_mount\n\n  %s\n" % self.ROLE)
+        self.assertEqual(problems, 1, out)
+        self.assertIn("not an entry the inventory reads", out)
+
     def test_a_section_title_is_not_a_header(self):
         problems, out = self.lint("## Scope\n\nSome words about the batch.\n")
         self.assertEqual(problems, 0, out)
