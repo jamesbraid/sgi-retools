@@ -993,5 +993,46 @@ class RoleSignature(unittest.TestCase):
                                                 'three factors')
 
 
+class RoleHedge(unittest.TestCase):
+    """A sentence that says the routine's whole role is open holds the entry at located; a sentence that
+    says one fact of it is unknown does not."""
+    SUBJ = frozenset({('id', 'swfio_mount')})
+    ROLE = ('Copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The return is the '
+            'constant 0xe or the mount result at 0x2084.')
+
+    def read(self, extra):
+        return inv.read_why('- `swfio_mount` in `swfs.o` at 0x1f80\n  **Inferred.** %s %s' % (self.ROLE, extra), self.SUBJ)
+
+    def test_the_bare_role_is_understood(self):
+        self.assertEqual(self.read('')[0], 'understood')
+
+    def test_a_statement_that_the_role_is_open_caps_the_entry_at_located(self):
+        for sentence in ('The role is open.', 'Beyond the mount call the role stays open.',
+                         'The role is not derived.', 'Its role is not shown in the facts.',
+                         'The facts do not show the role.', 'The purpose is left open.',
+                         'The name points at a mount, but the reading is open.',
+                         'What the routine does is not established.', 'What it does is unknown.',
+                         'What `swfio_mount` does is not established.',
+                         'The meaning of the result is unknown.',
+                         'The role beyond the mount call is open.',
+                         'The name suggests a mount, so its role is open.', 'Its role is not settled.'):
+            status, open_, why = self.read(sentence)
+            self.assertEqual((status, open_), ('located', False), sentence)
+            self.assertIn('role', why, sentence)
+
+    def test_an_unknown_sub_fact_does_not_cap_the_role(self):
+        for sentence in ('The stored value is unknown.', 'What the callee does is not visible.',
+                         'The purpose of the 0x2084 word is open.', 'The facts do not say what the flag byte means.',
+                         'What `swf_mount_fs` does is open.',
+                         'The role is only partly open.', 'The reads are not used, so their purpose is open.',
+                         'The role in the retry path is open.',
+                         'The field at +0x128 is used but its role is not settled.', 'The width of the stored word is unknown.'):
+            self.assertEqual(self.read(sentence)[0], 'understood', sentence)
+
+    def test_an_entry_without_a_citation_stays_named_only(self):
+        self.assertEqual(inv.read_why('- `swfio_mount`: **Inferred.** Mounts it. The role is open.', self.SUBJ)[0],
+                         'named-only')
+
+
 if __name__ == '__main__':
     unittest.main()

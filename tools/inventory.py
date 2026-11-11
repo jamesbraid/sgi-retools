@@ -212,6 +212,51 @@ HEDGE = re.compile(
     r"\bguess(?:ed|es|work)?\b|\bpresum(?:ably|ed|es|ing)\b|\bspeculat\w*|\bassum(?:ed|ing)\b|"
     r"\bnamed\s+(?:for|after)\b|\bfrom\s+(?:its|the|their)\s+(?:names?|labels?)\b|\bname[- ]only\b|"
     r"\bname-derived\b|\bun(?:determined|identified|confirmed|verified|clear)\b", re.I)
+# A hedge about the whole role, not about one fact in it: the sentence says the routine's role, purpose or
+# function is open, not derived or not shown, or that what the routine does is. A fact the entry can still be
+# missing ("the stored value is unknown", "what the callee does is not visible") leaves the role standing, so
+# the sentence has to be about the role itself. "The role is partly open" says part of it is known and is not
+# a hedge; "the role beyond X is open" says the rest is not and is.
+_NOT_SHOWN = (r"(?:unknown|open|unclear|undetermined|unresolved|unsettled|"
+              r"not\s+(?:yet\s+|fully\s+|really\s+)?(?:shown|derived|established|known|settled|clear|visible|"
+              r"determined|decoded|identified|stated|given|read|resolved|explained|understood|confirmed))")
+_ROLE_NOUN = r"(?:role|purpose|function|reading)"
+_SELF_NOUN = r"(?:routine|function|handler|wrapper|entry|stub)"
+# The subject of "... is open": the routine's role. "Its" counts only where it can only mean the routine, at the
+# start of a sentence or after "so": mid-sentence it is as often a field or a block of stores. "Its purpose" is
+# left out for the same reason, and "the purpose of X" names X, which is a sub-fact.
+_ROLE_SUBJ = (r"(?:(?:^|(?<=\.\s)|(?<=;\s)|(?<=\bso\s))its\s+(?:role|function|reading)|"
+              r"the\s+(?:role|function|reading|purpose)|"
+              r"(?:the|this)\s+" + _SELF_NOUN + r"'s\s+" + _ROLE_NOUN + r")")
+ROLE_HEDGE = re.compile(
+    # "its role is open", "the purpose stays open", "so the reading is open", "the role beyond X is not derived"
+    r"\b" + _ROLE_SUBJ + r"\b(?!\s+(?:in|within|during|on|of)\b)"
+    r"(?:\s+(?:beyond|past)\b[^.;|,]{0,50}?)?\s+(?:is|are|was|stays?|remains?|is\s+left|is\s+still)\s+"
+    r"(?!(?:only\s+|just\s+)?(?:partly|partially|in\s+part)\b)(?:still\s+|left\s+)?" + _NOT_SHOWN + r"\b|"
+    # "the facts do not show the role"
+    r"\b(?:do|does|did)\s+not\s+(?:show|say|state|derive|establish|reveal|give|explain|determine|name|tell)\w*"
+    r"\s+(?:the|its|this)\s+(?:routine's\s+)?" + _ROLE_NOUN + r"\b|"
+    # "what the routine does is not established", "what it does is open"
+    r"\bwhat\s+(?:the\s+" + _SELF_NOUN + r"|this\s+" + _SELF_NOUN + r"|it)\s+(?:does|is\s+for)\s+"
+    r"(?:is|remains|stays)\s+" + _NOT_SHOWN + r"\b|"
+    # "the meaning of the result is unknown"
+    r"\b(?:meaning|semantics)\s+of\s+(?:the|its)\s+(?:result|return(?:ed)?\s+value|routine)\s+"
+    r"(?:is|are|remains|stays)\s+" + _NOT_SHOWN + r"\b", re.I)
+
+
+def role_hedge(text, subj=frozenset()):
+    """The match of a sentence that says the routine's whole role is open, not derived or not shown
+    (ROLE_HEDGE), or None. The routine's own name stands in for "it" in "what NAME does is not shown"."""
+    m = ROLE_HEDGE.search(text)
+    if m:
+        return m
+    names = sorted({re.escape(k[1]) for k in subj if k[0] == 'id'}, key=len, reverse=True)
+    if names:
+        return re.search(r"\bwhat\s+`?(?:" + '|'.join(names) + r")`?\s+(?:does|is\s+for)\s+(?:is|remains|stays)\s+"
+                         + _NOT_SHOWN + r"\b", text, re.I)
+    return None
+
+
 # What a citation must name to tie an entry to its own item: an offset, an address, a callee or
 # caller, or a source file. A release or a binary name is shared by every item of the build.
 CITE_OFFSET = re.compile(r'\+0[xX]([0-9a-fA-F]+)|\b(?:[Oo]ffsets?|[Aa]ddress(?:es)?|[Aa]ddr|[Aa]t|[Ee]ntry|[Rr]ecord)\s*[:=]?\s*'
@@ -547,6 +592,10 @@ def read_why(text, subj=frozenset(), head=None):
         loc = LOCATED.search(t)
         return (('located' if loc else 'named-only'), False,
                 'it says "%s", which leaves the role not derived (at most located)' % m.group(0))
+    m = role_hedge(t, subj)
+    if m:
+        return (('located' if LOCATED.search(t) else 'named-only'), False,
+                'it says "%s", which leaves the role open (at most located)' % m.group(0))
     if UNKNOWN.search(t):
         rest, dropped = open_split(t)
         if (not any(ROLE_UNKNOWN.search(d) for d in dropped) and item_cite(rest, subj, own)

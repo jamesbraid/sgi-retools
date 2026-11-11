@@ -62,7 +62,9 @@ The canonical entry is a list item whose first line is the header and whose inde
   the routine in that binary. `reading_round.py` writes this header and `grade_readings.py` reads it.
 - The role lines carry an `Established.` or `Inferred.` label, state what the routine does in words that
   do not just repeat its name, and cite the addresses, callees or constants they come from. A statement
-  that says the role is unknown or not derived is held at located, one that cites nothing is a mention.
+  that says the role or purpose is unknown, open, not derived or not shown, or that what the routine does
+  or what its result means is, holds the entry at located; one that cites nothing is a mention. A sub-fact marked unknown
+  ("the stored value is unknown") is an open sub-fact and leaves the role understood.
 - A bare file name (`swfs.o`) in the header credits a build only when every build that has the routine at
   that address runs the same code there. When the routine's code differs between builds the entry is held
   at located: write the full path.
