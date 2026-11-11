@@ -673,6 +673,11 @@ class FirmwareState:
 
 PPC_MEMORY = {'lwz': False, 'lhz': False, 'lha': False, 'lbz': False, 'lfs': False, 'lfd': False,
               'stw': True, 'sth': True, 'stb': True, 'stfs': True, 'stfd': True}
+# Indexed forms, rA + rB: the D-form mnemonic with the width and direction it shares. A `u` form (lwzux)
+# also writes the address back to rA; the byte-reversed forms move the same widths.
+PPC_INDEXED = {'lwzx': 'lwz', 'lhzx': 'lhz', 'lhax': 'lha', 'lbzx': 'lbz', 'lfsx': 'lfs', 'lfdx': 'lfd',
+               'stwx': 'stw', 'sthx': 'sth', 'stbx': 'stb', 'stfsx': 'stfs', 'stfdx': 'stfd',
+               'lwbrx': 'lwz', 'lhbrx': 'lhz', 'stwbrx': 'stw', 'sthbrx': 'sth'}
 PPC_CONDITIONS = {'eq', 'ne', 'lt', 'le', 'gt', 'ge', 'ns', 'so', 'dnz', 'dz', 'dnzt', 'dnzf', 'dzt', 'dzf'}
 
 
@@ -741,6 +746,7 @@ class FirmwareRoutine:
         self.retreg = 'd0' if self.m68k else 'r0' if self.arm else 'r3' if self.ppc else 'ax' if img.bits == 16 else 'eax'
         self.insns = []
         self.warnings = set()
+        self._index_base = None
         raw = img.read(addr, size)
         if self.arch == 'arm':
             # ARM words have fixed boundaries. A literal can be undecodable even
@@ -900,6 +906,7 @@ class FirmwareRoutine:
 
     def effective(self, st, ins, op):
         """Return effective address, base name, displacement; no implicit updates here."""
+        self._index_base = None
         if self.m68k:
             from capstone import m68k_const as c
             mode = op.address_mode
@@ -920,6 +927,7 @@ class FirmwareRoutine:
             if mode == c.M68K_AM_REGI_ADDR_PRE_DEC:
                 step = 2 if base == 'a7' and self.width(ins, op) == 1 else self.width(ins, op)
                 v = facts.add(v, -step)
+            pre = facts.add(v, disp) if facts.is_c(v) else None
             if op.mem.index_reg:
                 idx = self.getreg(st, self.reg(ins, op.mem.index_reg))
                 if op.mem.index_size == 0:
@@ -927,6 +935,8 @@ class FirmwareRoutine:
                 scale = op.mem.scale or 1
                 idx = facts.C(idx[1] * scale) if facts.is_c(idx) else idx if scale == 1 else None
                 v = self.plus(v, idx)
+                # a known base with an index that is not known: the access is base + something
+                self._index_base = None if facts.is_c(idx) else pre
             # Full 68020 memory-indirect modes need an extra memory read; never flatten them.
             supported = {c.M68K_AM_REGI_ADDR, c.M68K_AM_REGI_ADDR_POST_INC, c.M68K_AM_REGI_ADDR_PRE_DEC,
                          c.M68K_AM_REGI_ADDR_DISP, c.M68K_AM_AREGI_INDEX_8_BIT_DISP,
@@ -970,9 +980,17 @@ class FirmwareRoutine:
         a = {'address': hex(ins.address), 'mnemonic': ins.mnemonic, 'text': ins.mnemonic + ' ' + ins.op_str,
              'kind': kind, 'width': width, 'base': base, 'offset': disp, 'value': self.R(value),
              'implicit': implicit}
+        index_base, self._index_base = self._index_base, None
         if facts.is_c(address):
             bits = ins.addr_size * 8 if self.x86 else self.img.bits
             a['absolute'] = hex(address[1] & ((1 << bits) - 1))
+        elif index_base is not None and not implicit:
+            # base + index with a base that is a known constant and an index that is not: the base is the
+            # one part of the address the code fixes
+            a['indexed'], a['index_base'] = True, hex(index_base[1] & 0xffffffff)
+            if address is not None:
+                origin, off = facts.split(address)
+                a['origin'], a['origin_offset'] = self.R(origin), off
         elif address is not None:
             origin, off = facts.split(address)
             a['origin'], a['origin_offset'] = self.R(origin), off
@@ -1210,6 +1228,9 @@ class FirmwareRoutine:
             return True
         if mn == 'nop' or mn == 'sync' or mn == 'isync' or mn == 'eieio':
             return True
+        indexed = PPC_INDEXED.get(mn.replace('ux', 'x') if mn.endswith('ux') else mn)
+        if indexed and len(op) == 3 and op[1].type == 1 and op[2].type == 1:
+            return self.ppc_indexed(st, old, ins, events, indexed, mn.endswith('ux'), val)
         update = mn.endswith('u') and mn[:-1] in PPC_MEMORY
         plain = mn[:-1] if update else mn
         if plain in PPC_MEMORY and len(op) == 2 and op[1].type == 3:
@@ -1229,6 +1250,33 @@ class FirmwareRoutine:
                 self.setreg(st, base, address)
             return True
         return False
+
+    def ppc_indexed(self, st, old, ins, events, plain, update, val):
+        """A load or store at rA + rB (rA field 0 reads as zero). Both registers known gives an absolute
+        address; one known and one not gives the known one as the base of an indexed access."""
+        self._index_base = None
+        op = ins.operands
+        first, second = val(op[1]), val(op[2])
+        address = self.plus(first, second)
+        if not facts.is_c(address):
+            known = [v for v in (first, second) if facts.is_c(v)]
+            self._index_base = known[0] if len(known) == 1 else None
+        width = ppc_width(plain)
+        base = self.reg(ins, op[1].reg) if op[1].reg else ''
+        if PPC_MEMORY[plain]:
+            self.memory(st, ins, address, width, events, True, val(op[0]), base, 0)
+        else:
+            value = self.memory(st, ins, address, width, events, base=base, disp=0)
+            if plain == 'lha':
+                value = facts.C(sc(value[1] & 0xffff)) if facts.is_c(value) else None
+            if width < 4 and facts.is_c(value) and plain != 'lha':
+                value = facts.C(value[1] & ((1 << (8 * width)) - 1))
+            reverses = ins.mnemonic.endswith('brx')
+            self.setreg(st, self.reg(ins, op[0].reg), value if width <= 4 and not plain.startswith('lf')
+                        and not reverses else None)
+        if update and base:
+            self.setreg(st, base, address)
+        return True
 
     def branch_words(self, st, ins, code):
         if self.x86 and code in ('loop', 'loope', 'loopne', 'jcxz', 'jecxz'):
