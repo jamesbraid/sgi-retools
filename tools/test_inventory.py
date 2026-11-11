@@ -854,6 +854,110 @@ class FirmwareMmio(unittest.TestCase):
         self.assertEqual(sorted(u.out_mmio), [('FLASH', 0x40)])
         self.assertEqual(funcs, {})
 
+    def test_coldfire_base_in_an_address_register_with_a_displacement(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',
+            '207c10000000',             # movea.l #0x10000000,a0
+            '20280014',                 # move.l 0x14(a0),d0: MBAR+0x14
+            '11400016',                 # move.b d0,0x16(a0): MBAR+0x16
+            '4e5e', '4e75'))
+        self.assertEqual(sorted(u.out_mmio), [('MBAR', 0x14), ('MBAR', 0x16)])
+        self.assertEqual(u.out_mmio[('MBAR', 0x16)]['acc'], {'w1'})
+
+    def test_coldfire_lea_absolute_base_and_post_increment(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',
+            '41f910000020',             # lea (0x10000020).l,a0
+            '1018',             # move.b (a0)+,d0: MBAR+0x20
+            '1018',             # move.b (a0)+,d0: MBAR+0x21
+            '4e5e', '4e75'))
+        self.assertEqual(sorted(u.out_mmio), [('MBAR', 0x20), ('MBAR', 0x21)])
+
+    def test_coldfire_base_survives_a_call_in_a_callee_saved_register_only(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',
+            '247c10000000',             # movea.l #0x10000000,a2
+            '207c10000000',             # movea.l #0x10000000,a0
+            '4eb900002000',             # jsr 0x2000.l
+            '102a0004',                 # move.b 4(a2),d0: a2 is kept across the call
+            '10280008',                 # move.b 8(a0),d0: a0 is not
+            '4e5e', '4e75'))
+        self.assertEqual(sorted(u.out_mmio), [('MBAR', 0x4)])
+
+    def test_coldfire_unknown_index_records_the_base_and_marks_the_index(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',
+            '207c10000000',             # movea.l #0x10000000,a0
+            '20301810',                 # move.l 0x10(a0,d1.l),d0: d1 is not known
+            '4e5e', '4e75'))
+        self.assertEqual(sorted(u.out_mmio), [('MBAR', 0x10)])
+        self.assertEqual(u.out_mmio[('MBAR', 0x10)]['acc'], {'r4 indexed'})
+        self.assertEqual(u.out_mmio[('MBAR', 0x10)]['ev'], {'constant base, unknown index'})
+        self.assertEqual(list(funcs), ['sub_1000'])
+
+    def test_coldfire_known_index_is_an_ordinary_constant_site(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',
+            '207c10000000',
+            '7204',                     # moveq #4,d1
+            '20301810',                 # move.l 0x10(a0,d1.l),d0: MBAR+0x14
+            '4e5e', '4e75'))
+        self.assertEqual(sorted(u.out_mmio), [('MBAR', 0x14)])
+        self.assertEqual(u.out_mmio[('MBAR', 0x14)]['acc'], {'r4'})
+
+    def test_coldfire_base_loaded_from_memory_is_not_resolved(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',
+            '206e0008',                 # movea.l 8(a6),a0: a pointer argument
+            '20280014',                 # move.l 0x14(a0),d0
+            '20301810',                 # move.l 0x10(a0,d1.l),d0
+            '4e5e', '4e75'))
+        self.assertEqual(u.out_mmio, {})
+        self.assertEqual(funcs, {})
+
+    def test_coldfire_indexed_table_in_a_memory_window_is_not_a_site(self):
+        u, funcs = firmware_scan('coldfire', 0x1000, hexbytes(
+            '4e560000',
+            '207cffe00000',             # movea.l #0xffe00000,a0: the flash
+            '20301810',                 # move.l 0x10(a0,d1.l),d0: a table lookup
+            '4e5e', '4e75'))
+        self.assertEqual(u.out_mmio, {})
+
+    def test_ppc_indexed_with_an_unknown_index_register(self):
+        u, funcs = firmware_scan('ppc32', 0xfe000000, hexbytes(
+            '9421fff0',
+            '3d60fa20',                 # lis r11,0xfa20
+            '7c0b182e',                 # lwzx r0,r11,r3: r3 is not known
+            '7c0b19ae',                 # stbx r0,r11,r3
+            '38210010', '4e800020'))
+        self.assertEqual(sorted(u.out_mmio), [('IMMR', 0x0)])
+        self.assertEqual(u.out_mmio[('IMMR', 0x0)]['acc'], {'r4 indexed', 'w1 indexed'})
+
+    def test_ppc_indexed_with_both_registers_known_is_a_constant_site(self):
+        u, funcs = firmware_scan('ppc32', 0xfe000000, hexbytes(
+            '9421fff0',
+            '3d60fa20',                 # lis r11,0xfa20
+            '38800010',                 # li r4,0x10
+            '7c0b222e',                 # lhzx r0,r11,r4: IMMR+0x10
+            '38210010', '4e800020'))
+        self.assertEqual(sorted(u.out_mmio), [('IMMR', 0x10)])
+        self.assertEqual(u.out_mmio[('IMMR', 0x10)]['acc'], {'r2'})
+
+    def test_ppc_indexed_with_neither_register_known_is_not_a_site(self):
+        u, funcs = firmware_scan('ppc32', 0xfe000000, hexbytes(
+            '9421fff0',
+            '7c0b182e',                 # lwzx r0,r11,r3: nothing is known
+            '38210010', '4e800020'))
+        self.assertEqual(u.out_mmio, {})
+
+    def test_ppc_base_with_a_displacement_from_memory_is_not_resolved(self):
+        u, funcs = firmware_scan('ppc32', 0xfe000000, hexbytes(
+            '9421fff0',
+            '8161000c',                 # lwz r11,12(r1): a pointer from the stack
+            '800b0014',                 # lwz r0,0x14(r11)
+            '38210010', '4e800020'))
+        self.assertEqual(u.out_mmio, {})
+
     def test_the_smaller_window_wins_where_windows_nest(self):
         m = inv.Model(FIRMWARE_WINDOWS)
         self.assertEqual(inv.window_at(m, 0xffe00040), ('FLASH', 0x40))
