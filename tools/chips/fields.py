@@ -57,6 +57,7 @@ def main():
     a = ap.parse_args()
     cfg = json.load(open(a.config))
     slot_of, _part_of = slots.make(cfg)
+    space_of = slots.space_of(cfg)
     sites = list(csv.DictReader(open(a.sites), delimiter='\t'))
     want = collections.defaultdict(set)
     for s in sites:
@@ -81,8 +82,9 @@ def main():
                     continue
                 ins = insns[k]
                 off = int(s['offset'], 16)
-                slot = slot_of(off)
-                key0 = (s['variant'], slot)
+                space = space_of(s['window'])
+                slot = slot_of(off, space)
+                key0 = (s['variant'], space, slot)
                 call = ins.mn in scan.CALLS
                 rt = 2 if call and s['rw'] == 'r' else 4 if call else scan.reg(ins.ops[0])
                 if s['rw'] == 'r' and rt == 0:
@@ -144,7 +146,7 @@ def main():
                             break
                 lo = max(0, k - 4)
                 ctx = ' / '.join('%s %s' % (i.mn, ','.join(i.ops)) for i in insns[lo:k + 5])
-                ctx_rows.append((label, name, s['addr'][-6:], s['variant'], hex(off), s['rw'], s['width'], ctx))
+                ctx_rows.append((label, name, s['addr'][-6:], s['variant'], space, hex(off), s['rw'], s['width'], ctx))
                 for kind, val in found:
                     if kind == 'mask' and val:
                         rng = ranges(val)
@@ -178,10 +180,12 @@ def main():
                 if val == 0:
                     continue
                 for (v, slot) in reg_of.get(c['callee'], ()):
+                    space = ''
+
                     if v in ('probe?',) or v.endswith('-face'):
                         continue
                     rng = ranges(val) if 'bit' in c['callee'] else hex(val)
-                    ak = (v, slot, 'w', kind + ' via ' + c['callee'], rng)
+                    ak = (v, space, slot, 'w', kind + ' via ' + c['callee'], rng)
                     e = agg[ak]
                     key = (v, slot, c['addr'], arg)
                     if key in seen:
@@ -191,12 +195,12 @@ def main():
                     e['funcs'].add(c['caller'])
                     e['example'] = e['example'] or '%s@%s' % (c['caller'], c['addr'][-6:])
     with open(a.out + '-fields.tsv', 'w') as f:
-        f.write('variant\tregister\tsource\tkind\tbits_or_value\tsites\tfunctions\texample\n')
-        for (v, slot, rw, kind, rng), e in sorted(agg.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][3], -kv[1]['sites'])):
-            f.write('%s\t%#x\t%s\t%s\t%s\t%d\t%d\t%s\n' % (v, slot, 'load' if rw == 'r' else 'store', kind, rng,
+        f.write('variant\tspace\tregister\tsource\tkind\tbits_or_value\tsites\tfunctions\texample\n')
+        for (v, space, slot, rw, kind, rng), e in sorted(agg.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2], kv[0][4], -kv[1]['sites'])):
+            f.write('%s\t%s\t%#x\t%s\t%s\t%s\t%d\t%d\t%s\n' % (v, space, slot, 'load' if rw == 'r' else 'store', kind, rng,
                                                           e['sites'], len(e['funcs']), e['example']))
     with open(a.out + '-context.tsv', 'w') as f:
-        f.write('image\tfunction\taddr\tvariant\toffset\trw\twidth\tinstructions_around_site\n')
+        f.write('image\tfunction\taddr\tvariant\tspace\toffset\trw\twidth\tinstructions_around_site\n')
         for r in ctx_rows:
             f.write('\t'.join(str(x) for x in r) + '\n')
     print('fields rows', len(agg), 'context rows', len(ctx_rows))

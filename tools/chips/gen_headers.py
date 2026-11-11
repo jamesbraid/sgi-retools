@@ -100,12 +100,14 @@ def load(dirn, variant):
     if not os.path.exists(p):
         return [], {}
     rows = [r for r in csv.DictReader(open(p), delimiter='\t') if variant is None or r['variant'] == variant]
+    for r in rows:
+        r['space'] = r.get('space') or ''       # a census written before address spaces were separated has none
     fl = collections.defaultdict(list)
     fp = 'chips/%s/census/fields.tsv' % dirn
     if os.path.exists(fp):
         for r in csv.DictReader(open(fp), delimiter='\t'):
             if variant is None or r['variant'] in (variant, '?'):
-                fl[int(r['register'], 16)].append(r)
+                fl[(r.get('space') or '', int(r['register'], 16))].append(r)
     return rows, fl
 
 
@@ -117,7 +119,7 @@ PSEUDO_FUNCTION = re.compile(r'^prom_[0-9a-f]+$')
 class SiteNames:
     """The accessor names the census sites give each register row.
 
-    A site is recorded under its exact (offset, width, idx). A row asks for the sites whose offset the
+    A site is recorded under its exact (space, offset, width, idx). A row asks for the sites whose offset the
     census folded into its slot (the chip's own slot rules, the same ones the join used) and whose width the row
     saw, so a 4-byte register never takes the name of the 4-byte neighbour that shares its 8-byte-aligned slot.
     """
@@ -132,10 +134,10 @@ class SiteNames:
         for r in csv.DictReader(open(p), delimiter='\t'):
             if not (variant is None or variant in r['variant'].split('|')):
                 continue
-            off, width = int(r['offset'], 16), int(r['width'])
-            key = (off, width, r['idx'])
+            space, off, width = r.get('space') or '', int(r['offset'], 16), int(r['width'])
+            key = (space, off, width, r['idx'])
             if key not in self.exact:
-                self.by_slot[(slot_of(off), r['idx'])].append(key)
+                self.by_slot[(space, slot_of(off, space), r['idx'])].append(key)
             ent = self.exact[key]
             if PSEUDO_FUNCTION.match(r['function'].split('@')[0]):
                 ent[1] += 1
@@ -144,11 +146,11 @@ class SiteNames:
 
     def of_row(self, r):
         """(names by count, whether only pseudo-functions reach the row) for a census row."""
-        slot = int(r['offset'], 16)
+        space, slot = r.get('space') or '', int(r['offset'], 16)
         widths = {int(w) for w in r['widths'].split(',') if w != ''}
         names, pseudo = collections.Counter(), 0
-        for key in self.by_slot.get((slot, r['idx']), ()):
-            if key[1] in widths:
+        for key in self.by_slot.get((space, slot, r['idx']), ()):
+            if key[2] in widths:
                 names.update(self.exact[key][0])
                 pseudo += self.exact[key][1]
         return [n for n, _ in names.most_common(3)], bool(pseudo) and not names
@@ -228,23 +230,33 @@ def gen(chip, spec):
     cur_block = None
     seen = set()
     emitted = set()
-    taken = set()          # names a row's define has already used
     skip = set(cfg.get('header_skip', []))
-    for r in sorted(rows, key=lambda r: (int(r['offset'], 16), r['idx'])):
+    # A define whose meaning changed keeps its old name as an alias of the define that now carries the meaning,
+    # so no downstream name disappears: config "deprecated_defines" [{name, space, offset, why, field}]. The old
+    # name follows the row's own define, or with "field" (a suffix such as "_B_0") the row's field define.
+    aliases = collections.defaultdict(list)
+    for d in cfg.get('deprecated_defines', []):
+        aliases[(d.get('space', ''), int(d['offset'], 0))].append(d)
+    used_aliases = set()
+    taken = set()          # names a row's define has already used
+    for r in sorted(rows, key=lambda r: (r['space'] != '', r['space'], int(r['offset'], 16), r['idx'])):
         off = int(r['offset'], 16)
-        if r['offset'] in skip:
+        space = r['space']
+        if r['offset'] in skip and not space:
             continue
         # the Hub is reached through two aliases of one register file: one define per offset
-        key = (off,) if rules == 'hub' else (off, r['idx'])
+        key = (space, off) if rules == 'hub' else (space, off, r['idx'])
         if key in seen:
             continue
         seen.add(key)
         blk = 'registers'
-        if rules == 'bedrock':
+        if space:
+            blk = ('%s: accesses through a separate address-space window, not registers of this ASIC; offsets are from the '
+                   'window base [E]' % space)
+        elif rules == 'bedrock':
             for lo, hi, n, d in BEDROCK_BLOCKS:
                 if lo <= off + 0 < hi or (off < 0x1000000 and lo <= off + 0x1000000 < hi):
                     blk = '%s: %s [I, routine-name prefixes]' % (n, d)
-            full = off if off >= 0x1000000 else off
         elif rules == 'heart':
             blk = [n for lo, n in HEART_BLOCKS if off >= lo][-1]
         elif rules == 'hub':
@@ -262,9 +274,14 @@ def gen(chip, spec):
         given = r.get('name', '')
         # Only a symbol-less PROM reaches the register: name it by its offset, which is a hardware fact, rather
         # than by the address of a pseudo-function. Other unnamed registers keep their bare offset.
-        label = ident(given) if given else (ident(names[0]) if names else
-                                            ('REG_%06X' if pseudo_only else '%X') % off)
-        macro = '%s_%s' % (P, label)
+        if space:
+            prefix = '%s_%s' % (P, ident(space))
+            label = ident(given) if given else (ident(names[0]) if names else 'OFF_%06X' % off)
+        else:
+            prefix = P
+            label = ident(given) if given else (ident(names[0]) if names else
+                                                ('REG_%06X' if pseudo_only else '%X') % off)
+        macro = '%s_%s' % (prefix, label)
         if macro in taken:
             macro += '_%X' % off
         while macro in taken:           # the same offset reached with and without an index
@@ -272,11 +289,20 @@ def gen(chip, spec):
         taken.add(macro)
         w = view_widths(r['widths'], r.get('halves', ''))
         acc = r['access_seen']
-        out.append('#define %-34s 0x%06x   /* [E] width %s, access %s%s; name [I] from %s; reached in %s sites, %s routine(s) */' % (
+        out.append('#define %-34s 0x%06x   /* [E] width %s, access %s%s%s; name [I] from %s; reached in %s sites, %s routine(s) */' % (
             macro, base + off, w, acc, ', indexed (family base)' if r['idx'] == '1' else '',
+            ', through the %s window' % space if space else '',
             name_source if given else (', '.join(names) or 'no accessor name'),
             r['sites'], r['functions']))
-        for f in sorted(fl.get(off, []), key=lambda x: (x['kind'], x['bits_or_value'])):
+        mine = aliases.get((space, off), [])
+        used_aliases.update(d['name'] for d in mine if d.get('field', '') == '')
+
+        def alias(suffix, target):
+            for d in mine:
+                if d.get('field', '') == suffix:
+                    out.append('#define %-34s %s   /* deprecated: %s; use %s */' % (d['name'], target, d['why'], target))
+        alias('', macro)
+        for f in sorted(fl.get((space, off), []), key=lambda x: (x['kind'], x['bits_or_value'])):
             b = f['bits_or_value']
             if f['kind'] in ('mask', 'clear-mask') or 'via' in f['kind'] and re.fullmatch(r'[0-9:,]+', b):
                 if not re.fullmatch(r'[0-9:,]+', b):
@@ -287,13 +313,25 @@ def gen(chip, spec):
                     continue
                 emitted.add(nm2)
                 out.append('#define   %-32s 0x%x   /* [I] %s %s: the code %s these bits (%s sites) */' % (
-                    '%s_B_%s' % (macro, b.replace(':', '_').replace(',', '_')), m, f['source'], f['kind'],
+                    nm2, m, f['source'], f['kind'],
                     'isolates' if f['source'] == 'load' else 'writes', f['sites']))
+                alias(nm2[len(macro):], nm2)
+                used_aliases.update(d['name'] for d in mine if d.get('field') == nm2[len(macro):])
             elif f['kind'].startswith('shift'):
                 continue
             elif f['kind'] == 'const' and b.startswith('0x'):
+                nm2 = '%s_V_%s' % (macro, b[2:].upper())
                 out.append('#define   %-32s %s   /* [I] a constant the code writes here (%s sites); meaning unknown [U] */' % (
-                    '%s_V_%s' % (macro, b[2:].upper()), b, f['sites']))
+                    nm2, b, f['sites']))
+                alias(nm2[len(macro):], nm2)
+                used_aliases.update(d['name'] for d in mine if d.get('field') == nm2[len(macro):])
+    unused = {d['name'] for ds in aliases.values() for d in ds} - used_aliases
+    if unused:
+        raise SystemExit('%s: deprecated_defines name a row the census does not have: %s' % (chip, ', '.join(sorted(unused))))
+    names_out = collections.Counter(m.group(1) for m in re.finditer(r'^#define\s+(\w+)', '\n'.join(out), re.M))
+    dup = sorted(n for n, c in names_out.items() if c > 1)
+    if dup:
+        raise SystemExit('%s: defines generated twice: %s' % (chip, ', '.join(dup)))
     out += ['', '#endif /* %s_H */' % P, '']
     return '\n'.join(out)
 

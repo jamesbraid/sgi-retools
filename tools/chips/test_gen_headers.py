@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Tests for define naming in gen_headers.py.
+"""Tests for define naming in gen_headers.py and for the address-space key in join.py.
 
 Run: python3 tools/chips/test_gen_headers.py
 A symbol-less PROM is cut into pseudo-functions named after their start address. Those names must never reach
 a define or its comment, and a register must keep the name its named routines gave it when a PROM image is added.
-A register keeps the name of its own accessors, not those of a neighbour in the same 8-byte-aligned slot.
+A register keeps the name of its own accessors, not those of a neighbour in the same 8-byte-aligned slot. An
+access through a separate address-space window (the boot space) never merges with a register row at the same
+offset, and a define whose meaning moved there keeps its old name as an alias.
 """
 import collections
 import csv
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -112,12 +115,76 @@ class SlotNaming(unittest.TestCase):
     def test_a_name_never_crosses_a_width(self):
         # a 4-byte site at the offset of an 8-byte row is not that row's accessor
         names = gen_headers.SiteNames.__new__(gen_headers.SiteNames)
-        names.slot_of = lambda off: off & ~7
-        names.exact = {(0x10, 4, '0'): [collections.Counter({'half_reader': 1}), 0],
-                       (0x10, 8, '0'): [collections.Counter({'full_reader': 1}), 0]}
-        names.by_slot = {(0x10, '0'): list(names.exact)}
-        got, _ = names.of_row({'offset': '0x10', 'idx': '0', 'widths': '8'})
+        names.slot_of = lambda off, space='': off & ~7
+        names.exact = {('', 0x10, 4, '0'): [collections.Counter({'half_reader': 1}), 0],
+                       ('', 0x10, 8, '0'): [collections.Counter({'full_reader': 1}), 0]}
+        names.by_slot = {('', 0x10, '0'): list(names.exact)}
+        got, _ = names.of_row({'space': '', 'offset': '0x10', 'idx': '0', 'widths': '8'})
         self.assertEqual(got, ['full_reader'])
+
+
+class BootSpace(unittest.TestCase):
+    """Boot-space accesses keep their own rows, and the header keeps old names as aliases."""
+
+    CFG = {'address_spaces': {'window-18': {'space': 'boot-space', 'slot_bytes': 4}},
+           'deprecated_defines': [
+               {'name': 'BEDROCK_OLD_NAME', 'space': 'boot-space', 'offset': '0x78', 'why': 'was a boot-space row'},
+               {'name': 'BEDROCK_OLD_NAME_B_0', 'space': '', 'offset': '0x78', 'field': '_B_0', 'why': 'was a boot-space row'}]}
+    SCAN = ['image', 'function', 'addr', 'insn', 'rw', 'width', 'partial', 'window', 'offset', 'idx', 'variant', 'basis']
+
+    def setUp(self):
+        self.old = os.getcwd()
+        self.addCleanup(os.chdir, self.old)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        os.chdir(tmp.name)
+        os.makedirs('tools/configs')
+        cfg = dict(self.CFG, asic='bedrock', mode='no-spec', variant_model={'default': {'access': 'dw64'}})
+        json.dump(cfg, open('tools/configs/bedrock.json', 'w'))
+        site = lambda fn, win, insn, w, off: ['ip35-kernel', fn, '1000', insn, 'r', w, '0', win, off, '0', 'bedrock', 'image-hint']
+        write('sites.tsv', self.SCAN, [
+            site('reg_reader', 'local-block-window', 'ld', '8', '0x78'),
+            site('reg_reader', 'local-block-window', 'ld', '8', '0x98'),
+            site('boot_reader', 'window-18', 'ld', '8', '0x78'),
+            site('boot_word', 'window-18', 'lwu', '4', '0x9c'),
+        ])
+        json.dump({}, open('ref.json', 'w'))
+        subprocess.run([sys.executable, os.path.join(HERE, 'join.py'), 'tools/configs/bedrock.json', '--sites', 'sites.tsv',
+                        '--ref', 'ref.json', '--out', 'out'], check=True, capture_output=True)
+        self.rows = list(csv.DictReader(open('out-census.tsv'), delimiter='\t'))
+
+    def test_window_is_part_of_the_row_key(self):
+        got = sorted((r['space'], r['offset'], r['widths'], r['sites']) for r in self.rows)
+        self.assertEqual(got, [('', '0x78', '8', '1'), ('', '0x98', '8', '1'),
+                               ('boot-space', '0x78', '8', '1'), ('boot-space', '0x9c', '4', '1')])
+
+    def test_boot_space_row_is_not_compared_and_has_no_register_flag(self):
+        boot = [r for r in self.rows if r['space']]
+        self.assertTrue(all(r['model'] == 'out-of-scope' and not r['flags'] for r in boot))
+
+    def test_register_row_keeps_its_width(self):
+        reg = {r['offset']: r for r in self.rows if not r['space']}
+        self.assertEqual(reg['0x98']['widths'], '8')
+
+    def test_sites_carry_their_space(self):
+        sites = list(csv.DictReader(open('out-census-sites.tsv'), delimiter='\t'))
+        self.assertEqual({(s['function'], s['space']) for s in sites},
+                         {('reg_reader', ''), ('boot_reader', 'boot-space'), ('boot_word', 'boot-space')})
+
+    def test_header_separates_the_spaces_and_keeps_old_names(self):
+        d = 'chips/bedrock/census/'
+        os.makedirs(d)
+        for f in ('census', 'census-sites'):
+            os.replace('out-%s.tsv' % f, d + f + '.tsv')
+        write(d + 'fields.tsv', ['variant', 'space', 'register', 'source', 'kind', 'bits_or_value', 'sites', 'functions', 'example'],
+              [['bedrock', '', '0x78', 'load', 'mask', '0', '1', '1', 'x']])
+        text = gen_headers.gen('bedrock', gen_headers.CHIPS['bedrock'])
+        defs = {m.group(1): m.group(2) for m in re.finditer(r'^#define\s+(\w+)\s+(\S+)', text, re.M)}
+        self.assertEqual(defs.get('BEDROCK_REG_READER'), '0x000078')
+        self.assertEqual(defs.get('BEDROCK_BOOT_SPACE_BOOT_READER'), '0x000078')
+        self.assertEqual(defs.get('BEDROCK_BOOT_SPACE_BOOT_WORD'), '0x00009c')
+        self.assertEqual(defs.get('BEDROCK_OLD_NAME'), 'BEDROCK_BOOT_SPACE_BOOT_READER')
+        self.assertIn('deprecated: was a boot-space row', text)
 
 
 if __name__ == '__main__':
