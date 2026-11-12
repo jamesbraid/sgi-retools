@@ -226,9 +226,9 @@ cannot be rendered says so in place of the facts. It needs `root/`, as `--check-
 
 reads a reviewer's verdicts, a JSON object from entry key (the `routine@0xADDR@binary` of the review pack) to
 
-    {"verdict": "ok" | "fixed" | "reject", "text": "corrected lines under the header", "reviewer": "optional"}
+    {"verdict": "ok" | "fixed" | "reject", "text": "corrected lines under the header", "reviewer": "ignored"}
 
 `ok` keeps the entry as written, `fixed` replaces the lines under its header with `text`, and both add
-`Reviewed: DATE (reviewer)` as the entry's last line, replacing an older marker. `reject` changes nothing and
+`Reviewed: DATE` (no reviewer name; a `reviewer` key is accepted and ignored) as the entry's last line, replacing an older marker. `reject` changes nothing and
 leaves the entry unreviewed, so the inventory still holds it at located. A key that is not in the file, an unknown
 verdict or a `fixed` with no text stops the run before the file is written. The date defaults to today.
