@@ -45,6 +45,13 @@ class LoaderTest(RepoTest):
         self.assertNotIn("irq_mask", base["registers"])
         self.assertEqual(repo.units["uart_rev2"].layers, ["defs/uart.toml", "defs/uart.rev2.toml"])
 
+    def test_overlay_does_not_inherit_the_base_legacy_header(self):
+        self.edit("defs/uart.toml", 'public_from =', 'c = { offset_macro = "bare", legacy_header = "UART_DECODE.h", aliases = { A = "B" } }\npublic_from =')
+        o = self.load().units["uart_rev2"].model
+        self.assertEqual(o["c"]["offset_macro"], "bare")
+        self.assertNotIn("legacy_header", o["c"])
+        self.assertEqual(o["c"]["aliases"], {})
+
     def test_overlay_can_name_its_unit(self):
         self.edit("defs/uart.rev2.toml", "[override]\n", '[override]\nunit = "uart2"\nprefix = "UART2"\n')
         self.assertIn("uart2", self.load().units)

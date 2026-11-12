@@ -85,6 +85,10 @@ def _walk(node, parts, where):
 def apply_overlay(base, ov, where, rev):
     """Return the merged source dict, or raise KeyError/ValueError naming the problem."""
     u = copy.deepcopy(base)
+    # A revision does not take over the base's old header path or old names.
+    if "c" in u:
+        for k in ("legacy_header", "legacy_guard", "aliases"):
+            u["c"].pop(k, None)
     for k, v in ov.get("override", {}).items():
         u[k] = v
     if "unit" not in ov.get("override", {}):
