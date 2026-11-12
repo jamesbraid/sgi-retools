@@ -101,6 +101,9 @@ with an ISO date. The list defaults to empty, so a workspace that does not set i
 `grade_readings.py --check-doc` reads the same list and reports an unreviewed entry that would otherwise
 be understood as a note.
 
+Review does not lift every cap. An entry with a sentence that starts `Role (from name):` states a role
+that comes from the routine's name, not from its facts, and earns at most located however it is reviewed.
+
 ### Checking an entry's claims against its facts
 
     tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --check-doc --check-facts

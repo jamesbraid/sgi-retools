@@ -559,6 +559,15 @@ class ReviewCap(unittest.TestCase):
         got = self.levels({'t2-a.md': two, 'other.md': self.ENTRY}, review=['docs/routines/t2-*.md'])
         self.assertEqual(sorted(got), ['located', 'understood', 'understood'])
 
+    def test_a_role_from_the_name_is_capped_at_located_even_when_reviewed(self):
+        named = self.ENTRY.rstrip('\n') + ' Role (from name): a mount helper.\n  Reviewed: 2026-11-12\n'
+        self.assertEqual(self.levels({'b.md': named}), ['located'])
+        self.assertEqual(self.levels({'b.md': named}, review=['docs/routines/*.md']), ['located'])
+
+    def test_a_role_from_the_facts_is_not_capped(self):
+        cited = self.ENTRY.rstrip('\n') + ' Role (from facts): copies a block, then mounts it.\n'
+        self.assertEqual(self.levels({'b.md': cited}), ['understood'])
+
     def test_a_cap_does_not_raise_an_entry_that_is_already_below_located(self):
         weak = '- `swfio_mount` in `sw22_474-ip30-flame834/var/sysgen/boot/swfs.o` at 0x1f80\n  It exists.\n'
         self.assertEqual(self.levels({'b.md': weak}, review=['docs/routines/*.md']),
