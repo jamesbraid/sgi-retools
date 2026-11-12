@@ -13,10 +13,10 @@ and address are a row of the table and that a bare file name several builds shar
 The canonical entry is in README-analysis.md, "Routine role entries".
 
 --check-facts adds the mechanical fact check of fact_check.py: for each entry it renders the routine's
-facts, pulls the checkable claims out of the prose (argument slots, branch direction, call order,
-conditional wording) and reports each one the facts contradict, with the reason. It needs root/, reads
-the entry's size from the functions table when the header has none, and skips entries it cannot render
-(non-MIPS images, binaries that are not in root/) with a count.
+facts, pulls the checkable claims out of the prose (argument slots, branch direction, call order, loads
+against stores, conditional wording, return values) and reports each one the facts contradict, with the
+reason. It needs root/, reads the entry's size from the functions table when the header has none, and
+skips entries it cannot render (non-MIPS images, binaries that are not in root/) with a count.
 """
 import argparse
 import collections

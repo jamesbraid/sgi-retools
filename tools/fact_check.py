@@ -491,6 +491,83 @@ def check_order(sentences, sheet):
     return problems
 
 
+# ---------------------------------------------------------------- loads and stores
+
+_READ = r"(?:reads?|loads?|loaded|reading|fetch(?:es)?)"
+_WRITE = r"(?:writes?|written|stores?|stored|storing|resets?|clears?|zeroe?s|advances?)"
+_BREAK = r"\b(?:calls?|passes|forwards|returns?|copies|tests|compares|branches|mallocs|frees|through|via|from|using|of the)\b"
+
+
+def _verb_kind(word):
+    return "load" if re.fullmatch(_READ, word.lower()) else "store"
+
+
+def check_access_kind(sentence, sheet):
+    problems = []
+    if re.search(r"\b(reads and writes|loads and stores|read-modify-write|reads or writes)\b", sentence):
+        return problems
+    verbs = [(m.start(), m.end(), _verb_kind(m.group(0))) for m in
+             re.finditer(r"\b(?:" + _READ + "|" + _WRITE + r")\b", sentence)]
+    kinds_at = {}
+    for a in sheet.accesses:
+        if a["offset"] is not None:
+            kinds_at.setdefault(a["offset"], set()).add(a["kind"])
+    # offsets named right after a read or write verb: "reads the state at p +0xba8 and +0xbb0 and stores a word to +0xd8"
+    for m in re.finditer(r"\+(0x[0-9a-fA-F]+)\b", sentence):
+        offset = int(m.group(1), 16)
+        prior = [v for v in verbs if v[1] <= m.start()]
+        if not prior or offset not in kinds_at:
+            continue
+        verb = prior[-1]
+        between = sentence[verb[1]:m.start()]
+        lead = sentence[max(0, verb[0] - 24):verb[0]]
+        if (re.search(_BREAK + r"|[(),:;.]", re.sub(r"(?:,|, and| and) \+0x[0-9a-f]+", "", between)) or len(between) > 60
+                or re.search(r"[\w\])]$", sentence[:m.start()])
+                or re.search(r"\b(no|not|never|without|nor)\b", lead + between)
+                or re.search(r"\bof the\b|\bthrough\b|\bat \+0x[0-9a-f]+ of\b", sentence[m.end():m.end() + 12])):
+            continue
+        if verb[2] not in kinds_at[offset]:
+            claimed = "reads" if verb[2] == "load" else "writes"
+            actual = "loaded" if "load" in kinds_at[offset] else "stored"
+            problems.append(("access-kind", "the entry says it %s +0x%x, but the facts only show it %s" % (
+                claimed, offset, actual), sentence))
+    # "reads comm_stdsize (0xADDR) and comm_buffer (0xADDR, 0xADDR)": the cited instruction's kind
+    kind_of = {a["address"]: a["kind"] for a in sheet.accesses}
+    for m in re.finditer(r"\b(?P<v>" + _READ + "|" + _WRITE + r")\b(?P<rest>(?: [\w+\-./\[\]]+){1,6}? \((?P<a>" + HEX +
+                         r"(?:, " + HEX + r")*)\)(?: and [\w+\-./]+ \(" + HEX + r"(?:, " + HEX + r")*\))*)", sentence):
+        if re.search(r"\b(?:" + _READ + "|" + _WRITE + r")\b", m.group("rest")):
+            continue                      # "reads and writes the word at x (a, b)": two verbs share the addresses
+        kind = _verb_kind(m.group("v"))
+        listed = [a for a in re.findall(HEX, m.group("rest")) if a in kind_of]
+        if listed and all(kind_of[a] != kind for a in listed):
+            problems.append(("access-kind", "the entry says it %s at %s, but the instruction there is a %s" % (
+                "reads" if kind == "load" else "writes", listed[0], kind_of[listed[0]]), sentence))
+    return problems
+
+
+# ---------------------------------------------------------------- returns
+
+def check_return(sentence, sheet):
+    if not re.search(r"\b[Rr]eturns\b", sentence) or re.search(
+            r"\b(or|either|one of|depending|depends|whichever|otherwise|when|if|path|paths|each|both|on|upon|fail\w*|"
+            r"error|zero|nonzero|null|miss\w*)\b", sentence, re.I):
+        return []
+    cited = [a for a in re.findall(HEX, sentence) if a in sheet.returns]
+    values = [sheet.returns[a] for a in cited]
+    if not cited and len(sheet.returns) == 1 and re.match(r"(It|The routine|Returns?)\b", sentence):
+        cited = list(sheet.returns)
+        values = list(sheet.returns.values())
+    for address, value in zip(cited, values):
+        # Two call results are a routine's ordinary tail; a value beside a call result is an error path left out.
+        import hostfacts
+        parts = hostfacts.split_top_level(value[7:]) if value.startswith("one of ") else []
+        mixed = any(p.startswith("ret(") for p in parts) and any(not re.match(r"\[?ret\(", p) for p in parts)
+        if value.startswith("one of ") and "?" not in value and mixed and not re.search(r"result|ret\(|callee", sentence):
+            return [("return-value", "the entry gives one return value, but the return at %s is %s" % (address, value),
+                     sentence)]
+    return []
+
+
 # ---------------------------------------------------------------- conditional wording
 
 _COND = (r"\b(when|whenever|if|unless|otherwise|else|only|any|path|paths|branch|branches|test|tests|tested|gated|guard|"
@@ -545,6 +622,53 @@ def check_conditional_wording(sentence, entry_text, sheet):
     return problems
 
 
+# ---------------------------------------------------------------- enable and disable
+
+def check_enable(sentence, entry_text, sheet):
+    problems = []
+    if re.search(r"disabl|\bclears?\b|\boff\b|a1 of 0\b", entry_text):
+        return problems
+    for m in re.finditer(r"\benables (?P<v>" + NUMBER + r")(?![\w.])", sentence):
+        value = _int(m.group("v"))
+        for item in mentions(sentence, sheet):
+            for site in item["sites"]:
+                call = sheet.calls[site]
+                if "nable" not in (call["callee"] or ""):
+                    continue
+                for other, c in sheet.calls.items():
+                    if c["callee"] == call["callee"] and _int(c["args"].get(0, "")) == value \
+                            and _int(c["args"].get(1, "")) == 0:
+                        problems.append(("enable-only", "the entry says it enables %s, but %s passes a1=0x0 at %s" % (
+                            m.group("v"), call["callee"], other), sentence))
+                        return problems
+    return problems
+
+
+# ---------------------------------------------------------------- role words
+
+_ROLE_OK = {"zero", "null", "nil", "empty", "negative", "positive", "blocking", "trivial", "standard", "default",
+            "local", "volatile", "matching", "leaf", "inline", "existent", "overlapping", "aligned", "present",
+            "maskable", "power", "interactive", "reentrant", "recursive", "atomic", "cacheable", "cached", "speculative"}
+
+
+def check_role_words(sentence, sheet):
+    problems = []
+    facts_text = sheet.text.lower()
+    for m in re.finditer(r"\bnon-([a-z]+)\b", sentence, re.I):
+        word = m.group(1).lower()
+        if word not in _ROLE_OK and word not in facts_text:
+            problems.append(("role-word", "%r denies a property the facts never mention; a negated role qualifier is "
+                             "carried over from a name, not shown by the facts" % m.group(0), sentence))
+    # "The float fields suggest a colour-and-position move": a role pinned on the facts. A guess that says it
+    # rests on names, or that the facts do not show it, is the honest form.
+    for m in re.finditer(r"\b(?P<subj>(?:[\w-]+ ){1,3}(?:stores|fields|loads|values|constants|offsets|operands|"
+                         r"halfwords|words))\s+(?:suggest|imply|indicate|point to)s?\s+(?P<role>[^.,;]*)", sentence):
+        if not re.search(r"\b(not|no|cannot|names?|alone)\b", sentence):
+            problems.append(("role-word", "%r names a role the facts do not give; attribute the guess to the routine's "
+                             "name or say the facts do not show it" % (m.group(0)[:70]), sentence))
+    return problems
+
+
 # ---------------------------------------------------------------- the entry
 
 def check_entry(sentences, sheet):
@@ -554,7 +678,11 @@ def check_entry(sentences, sheet):
     for sentence in sentences:
         problems.extend(check_arguments(sentence, sheet))
         problems.extend(check_branch_direction(sentence, sheet))
+        problems.extend(check_access_kind(sentence, sheet))
+        problems.extend(check_return(sentence, sheet))
         problems.extend(check_conditional_wording(sentence, entry_text, sheet))
+        problems.extend(check_enable(sentence, entry_text, sheet))
+        problems.extend(check_role_words(sentence, sheet))
     problems.extend(check_order(sentences, sheet))
     seen, unique = set(), []
     for item in problems:
