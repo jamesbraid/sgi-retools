@@ -358,6 +358,193 @@ def check_arguments(sentence, sheet):
     return problems
 
 
+# ---------------------------------------------------------------- branch direction
+
+_POLARITY = {"clear": 0, "cleared": 0, "unset": 0, "zero": 0, "null": 0, "false": 0, "not set": 0,
+             "set": 1, "nonzero": 1, "non-zero": 1, "non-null": 1, "nonnull": 1, "true": 1}
+_WORD = {0: "zero (clear)", 1: "nonzero (set)"}
+
+
+def _runs_when(sheet, site, claim_address):
+    """1 or 0 when the branch deciding site compares a word with zero and runs site on a nonzero or zero
+    word. None when the facts leave that open."""
+    options = []
+    for address, side in sheet.deciding(site):
+        branch = sheet.branches.get(address)
+        if not branch:
+            continue
+        text = branch["taken" if side == "taken" else "fall"]
+        m = re.fullmatch(r"(?P<l>.+?) (?P<op>==|!=) 0", text)
+        if not m:
+            continue
+        if claim_address and claim_address not in text:
+            continue
+        options.append((_int(address), 0 if m.group("op") == "==" else 1, text))
+    if not options:
+        return None
+    options.sort()
+    return options[-1][1], options[-1][2]
+
+
+def _compares(token, condition):
+    """Whether the compared value is the register or number the prose names. A register inside a
+    bracket is a field of what it points to, not the register itself."""
+    token = token.lstrip("+")
+    if re.fullmatch(r"[av]\d", token):
+        return re.search(r"(?<![\w\[+])" + token + r"(?![\w+])", condition) is not None
+    return token in condition
+
+
+def check_branch_direction(sentence, sheet):
+    """"when the flag is clear, calls X" and "calls X when the flag is set" against the branch that decides X."""
+    problems = []
+    items = mentions(sentence, sheet)
+    if not items:
+        return problems
+    pattern = (r"\b(?P<w>when|if|unless)\b(?P<subj>[^,;.]{0,70}?)\b(?:is|are|was|equals)\s+"
+               r"(?P<v>not set|non-zero|nonzero|non-null|nonnull|cleared|clear|unset|zero|null|set|true|false)\b")
+    for m in re.finditer(pattern, sentence):
+        value = _POLARITY[m.group("v")]
+        if m.group("w") == "unless":
+            value = 1 - value
+        lead = sentence[:m.start()]
+        if re.search(r"\b(skips?|bypass\w*|avoids?|omits?|suppress\w*|ignores?)\b[^,;.]*$", lead):
+            value = 1 - value
+        if re.search(r"\b(result|return value|returned|returns)\b", m.group("subj")):
+            continue                      # a condition on a call's result, not on a flag
+        tail = sentence[m.end():]
+        if re.match(r"[^,;.]{0,60}?\b(and|or|but)\b", tail) and not re.match(r"\s*\([^)]*\)\s*,", tail):
+            continue                      # a compound condition
+        starts_clause = re.search(r"(?:^|[,;.]\s*|\band\s*,?\s*)$", lead) is not None
+        if starts_clause:
+            after = [i for i in items if i["pos"] >= m.end() and not re.search(r"[;.]", sentence[m.end():i["pos"]])
+                     and i["pos"] - m.end() <= 90]
+            target = after[0] if after else None
+        else:
+            before = [i for i in items if i["end"] <= m.start() and not re.search(r"[,;.]", sentence[i["end"]:m.start()])
+                      and m.start() - i["end"] <= 90]
+            target = before[-1] if before else None
+        if target is None:
+            continue
+        addresses = [a for a in re.findall(HEX, sentence[:m.end()]) if a not in sheet.calls]
+        flag = addresses[-1] if addresses else None
+        if starts_clause and re.search(r"\b(skips?|bypass\w*|avoids?)\b", sentence[m.end():target["pos"]]):
+            value = 1 - value
+        subject = set(re.findall(r"\ba[0-7]\b|\bv[01]\b|\+?\b\d{2,}\b", m.group("subj")))
+        wrong = []
+        for site in target["sites"]:
+            found = _runs_when(sheet, site, flag)
+            if found is not None and not flag and not any(_compares(t, found[1]) for t in subject):
+                found = None              # nothing ties the words to the compared value
+            if found is None or found[0] == value:
+                wrong = []
+                break
+            wrong.append((site, found))
+        if wrong:
+            site, (actual, text) = wrong[0]
+            problems.append(("branch-direction", "%r puts %s under a %s word, but the branch that decides it runs it "
+                             "when %s, a %s word" % (m.group(0) + "...", _label(sheet, site), "zero" if value == 0 else "nonzero",
+                                                     text, "zero" if actual == 0 else "nonzero"), sentence))
+    return problems
+
+
+# ---------------------------------------------------------------- call order
+
+_LINKING = {"calls", "call", "invokes", "runs", "falls", "into", "the", "a", "to", "through", "makes", "passes",
+            "jumps", "it", "and", "again", "also", "with", "via", "by", "at", "its", "then", "also"}
+_NORETURN = re.compile(r"^(assfail|panic|cmn_err\w*|abort|exit|_exit)$")
+
+
+def check_order(sentences, sheet):
+    """Claims written as "A, then B", "A after B" and "A before B" between two named calls."""
+    problems = []
+    text = " ".join(sentences)
+    items = mentions(text, sheet)
+    for first, second in zip(items, items[1:]):
+        if first["callee"] == second["callee"] and first["sites"] == second["sites"]:
+            continue
+        between = text[first["end"]:second["pos"]]
+        if len(between) > 160 or re.search(r"\b(when|if|unless|otherwise|else)\b", between):
+            continue
+        # one sentence, or a next sentence that opens with "then": "A at x. It then calls B"
+        if re.search(r"\.", between) and not re.fullmatch(r"[^.]*\.\s+(?:It |The routine )?then\b[^.]*", between):
+            continue
+        if _NORETURN.search(first["callee"][0] or "") or _NORETURN.search(second["callee"][0] or ""):
+            continue                      # a panic path is not a step in the order
+        # the connector leads straight into the second call: "A with x, then B", "A, then falls into B"
+        link = re.search(r"\b(?:then|followed by|after that|next)\b(?P<rest>[^.]*)$", between)
+        near = re.search(r"\b(?P<w>before|after)\b(?P<rest>[^.]*)$", between)
+        if link and set(re.findall(r"[a-z]+", link.group("rest").lower())) <= _LINKING:
+            early, late, word = first, second, "then"
+        elif near and len(near.group("rest")) < 12 and not re.search(r"\bthen\b", between):
+            early, late, word = (first, second, "before") if near.group("w") == "before" else (second, first, "after")
+        else:
+            continue
+        pairs = [(a, b) for a in early["sites"] for b in late["sites"]]
+        if any(sheet.reaches(a, b) for a, b in pairs):
+            continue
+        if any(sheet.reaches(b, a) for a, b in pairs):
+            a, b = next((a, b) for a, b in pairs if sheet.reaches(b, a))
+            problems.append(("call-order", "the entry puts %s before %s (%r), but the facts reach %s first and never "
+                             "reach %s from it" % (_label(sheet, a), _label(sheet, b), word, _label(sheet, b),
+                                                   _label(sheet, a)), text[max(0, first["pos"] - 20):second["end"] + 20]))
+    return problems
+
+
+# ---------------------------------------------------------------- conditional wording
+
+_COND = (r"\b(when|whenever|if|unless|otherwise|else|only|any|path|paths|branch|branches|test|tests|tested|gated|guard|"
+         r"guards|guarded|depending|depends|either|loop|loops|until|while|each|every|retry|retries|falls|skips|skipped|"
+         r"taken|check|checks|checked|compare|compares|nonzero|zero|null|case|error|fails|fail|success|whether|"
+         r"alternate|alternatively)\b")
+_ACKNOWLEDGED = r"\b(variants?|selects?|switches|depending|depends|either|other path|alternative|covers)\b"
+
+
+def _actions(sentence, sheet):
+    """Calls and stores the sentence cites by instruction address."""
+    store = {a["address"] for a in sheet.accesses if a["kind"] == "store"}
+    return [(m.start(), m.group(0)) for m in re.finditer(HEX + r"(?![0-9A-Fa-f])", sentence)
+            if m.group(0) in sheet.calls or m.group(0) in store]
+
+
+# A release or teardown stated flatly is the claim a guard most often falsifies: free(NULL) is skipped, a
+# lock is dropped only when it was taken. Other calls are described with a condition often enough that a
+# bare statement of one proves nothing.
+_RELEASE = re.compile(r"free|release|destroy|dealloc|unmap", re.I)
+
+
+def check_conditional_wording(sentence, entry_text, sheet):
+    problems = []
+    explicit = re.search(r"\b(unconditionally|on every path|every path|on all paths|regardless of)\b", sentence)
+    if explicit:
+        for _pos, address in _actions(sentence, sheet):
+            if sheet.guarded(address):
+                problems.append(("conditional-wording", "the entry says %r about %s, but a branch can skip it" % (
+                    explicit.group(1), address), sentence))
+    for m in re.finditer(r"\b(?:otherwise|else)\b(?P<rest>[^.]*)", sentence):
+        for _pos, address in _actions(m.group("rest"), sheet):
+            if sheet.guarded(address) is False:
+                problems.append(("conditional-wording", "the entry puts %s on the 'otherwise' side of a branch, but it "
+                                 "runs on every path" % address, sentence))
+    if not explicit and not re.search(_COND, sentence, re.I) and not re.search(_ACKNOWLEDGED, entry_text, re.I):
+        # An unqualified call that a branch can skip, with no word about a branch in the sentence.
+        for _pos, address in _actions(sentence, sheet):
+            if address not in sheet.calls or not _RELEASE.search(sheet.calls[address]["callee"] or ""):
+                continue
+            same = [m for m in re.finditer(HEX, sentence) if m.group(0) in sheet.calls
+                    and sheet.calls[m.group(0)]["callee"] == sheet.calls[address]["callee"]]
+            deciders = [a for a, _side in sheet.deciding(address)]
+            # one or two tests around a release is the shape of "free it unless it is null"; a dozen is an
+            # error-handling ladder the entry may be describing as a whole
+            if len(same) > 1 or len(deciders) > 2 or not sheet.guarded(address) or not sheet.optional(address):
+                continue
+            if any(d in entry_text for d in deciders):
+                continue
+            problems.append(("conditional-wording", "the entry states the call at %s with no condition, but a branch at %s "
+                             "can skip it" % (address, ", ".join(deciders) or "?"), sentence))
+    return problems
+
+
 # ---------------------------------------------------------------- the entry
 
 def check_entry(sentences, sheet):
@@ -366,6 +553,9 @@ def check_entry(sentences, sheet):
     problems = []
     for sentence in sentences:
         problems.extend(check_arguments(sentence, sheet))
+        problems.extend(check_branch_direction(sentence, sheet))
+        problems.extend(check_conditional_wording(sentence, entry_text, sheet))
+    problems.extend(check_order(sentences, sheet))
     seen, unique = set(), []
     for item in problems:
         if item[:2] not in seen:
