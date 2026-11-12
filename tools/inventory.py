@@ -550,6 +550,10 @@ def computes(text):
 # binary or the source: whatever else it says, it earns at most "located".
 UNVERIFIED = re.compile(r'\bunverified\.(\s*\|?\s*)$', re.I)
 
+# An entry whose role comes from the routine's name, not from its facts, says so with this label
+# (README-analysis.md, "Review cap"). A name is a guess about the role, so the entry earns at most located.
+FROM_NAME = re.compile(r'\bRole \(from name\):', re.I)
+
 # The marker a reviewer adds to an entry after checking it against its facts. A file that the config lists in
 # "review_required" credits an entry beyond located only when the entry carries this line.
 REVIEWED = re.compile(r'\bReviewed:\s*\d{4}-\d{2}-\d{2}\b')
@@ -563,8 +567,11 @@ def review_required(cfg, rel):
 def classify(text, subj=frozenset(), head=None):
     """The status of one entry (see classify_read). An entry that closes with the Unverified label is graded
     as if it closed with Inferred, so its content is read the same way and the hedge words do not read the
-    label, and then capped at located."""
+    label, and then capped at located. An entry with a "Role (from name):" sentence is capped the same way."""
     bare = bare_text(text)
+    if FROM_NAME.search(bare):
+        status, _ = classify_read(text, subj, head)
+        return ('located' if status == 'understood' else status), False
     if not UNVERIFIED.search(bare):
         return classify_read(text, subj, head)
     status, _ = classify_read(UNVERIFIED.sub(r'Inferred.\1', text), subj, head)
