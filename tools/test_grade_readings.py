@@ -791,5 +791,163 @@ class ApplyVerdicts(unittest.TestCase):
         self.assertEqual(levels, {"before.md": ["located"], "after.md": ["understood"]})
 
 
+class InventoryShapes(unittest.TestCase):
+    """The entry shapes the inventory credits (README-analysis.md, "Routine role entries") are packed,
+    fact-checked and verdict-applied like a bullet: a heading that gives the binary and address, with a
+    paragraph that opens with the routine, and a header-only bullet whose paragraph follows a blank line."""
+    ROLE = "**Inferred.** Calls f with a0 = 0x4 [call 1, @0x8 fall].\nRole (from facts): a wrapper for f [call 1, @0x8 fall]."
+    HEAD = "### lib.so at 0x10\n\n`r`, 52 bytes. " + ROLE + "\n\n"
+    NAMED_HEAD = "### `r` in `usr/lib/lib.so` at 0x10\n\n" + ROLE + "\n\n"
+    LIST = "- `r` in `lib.so` at 0x10\n\n  " + ROLE.replace("\n", "\n  ") + "\n\n"
+    SHAPES = (("head", HEAD), ("named head", NAMED_HEAD), ("list", LIST))
+
+    @classmethod
+    def shapes(cls, role):
+        return tuple((label, text.replace(cls.ROLE, role).replace(cls.ROLE.replace("\n", "\n  "), role.replace("\n", "\n  ")))
+                     for label, text in cls.SHAPES)
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.directory)
+        os.makedirs(os.path.join(self.directory, "root", "usr", "lib"))
+        for name in ("lib.so", os.path.join("usr", "lib", "lib.so")):
+            open(os.path.join(self.directory, "root", name), "w").close()
+        self.root = os.path.join(self.directory, "root")
+        self.doc = os.path.join(self.directory, "b.md")
+        self.out = os.path.join(self.directory, "pack.md")
+        self.verdicts = os.path.join(self.directory, "v.json")
+
+    def write(self, text):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + text + "## Tail\n\nProse.\n")
+
+    def read(self):
+        with open(self.doc, encoding="utf-8") as handle:
+            return handle.read()
+
+    def sheet(self):
+        return fact_check.FactSheet(
+            abi="n32", calls={"0x18": {"callee": "f", "target": "0x900", "args": {0: "0x4"}, "tail": False}},
+            branches={"0x8": {"mn": "beq", "target": "0x1c", "taken": "a0 == 0", "fall": "a0 != 0"}})
+
+    def apply(self, verdicts):
+        import json
+        with open(self.verdicts, "w", encoding="utf-8") as handle:
+            json.dump(verdicts, handle)
+        return grade.apply_verdicts(self.doc, self.verdicts, "2026-11-12", io.StringIO())
+
+    def test_parse_reads_the_binary_address_name_and_role_of_each_shape(self):
+        for label, text in self.SHAPES:
+            self.write(text)
+            (entry,) = grade.parse_entries(self.doc)
+            with self.subTest(label):
+                self.assertEqual((entry["name"], entry["address"], entry["install"]),
+                                 ("r", "0x10", "usr/lib/lib.so" if "named" in label else "lib.so"))
+                self.assertEqual(len(entry["sentences"]), 2)
+                self.assertTrue(entry["sentences"][-1].startswith("Role (from facts)"))
+                self.assertEqual(entry["shape"], "list" if label == "list" else "head")
+                self.assertEqual(self.read().splitlines()[entry["end"] - 1][:4], "Role" if label != "list" else "  Ro")
+
+    def test_a_heading_without_a_binary_or_a_routine_is_not_an_entry(self):
+        for heading in ("### Calls at 0x10\n\n`r` does things.\n", "### lib.so at 0x10\n\nIt calls f.\n"):
+            self.write(heading)
+            self.assertEqual(grade.parse_entries(self.doc), [])
+
+    def test_a_bullet_whose_header_has_text_still_ends_at_a_blank_line(self):
+        self.write("- `r` in `lib.so` at 0x10 (n32).\n  It occupies 8 bytes.\n\n  Not part of it.\n\n")
+        (entry,) = grade.parse_entries(self.doc)
+        self.assertEqual(entry["sentences"], ["It occupies 8 bytes."])
+
+    def test_a_listing_in_a_fence_is_not_an_entry(self):
+        self.write("```\n- `r` in `lib.so` at 0x10\n  Calls f.\n```\n")
+        self.assertEqual(grade.parse_entries(self.doc), [])
+
+    def test_the_pack_holds_each_shape_beside_its_facts(self):
+        for label, text in self.SHAPES:
+            self.write(text)
+            with mock.patch.object(fact_check, "sheet_for", return_value=self.sheet()):
+                count = grade.review_pack(self.doc, self.root, None, self.out)
+            with open(self.out, encoding="utf-8") as handle:
+                pack = handle.read()
+            with self.subTest(label):
+                self.assertEqual(count, 1)
+                self.assertIn("## r@0x10@", pack)
+                self.assertIn("call 1   @0x18  f [0x900]  a0=0x4", pack)
+                self.assertIn("0 findings", pack)
+
+    def test_the_fact_check_reads_each_shape(self):
+        wrong = "**Inferred.** Calls f (0x900) at 0x18 with the constant 0xb4 as its fifth argument (a4)."
+        sheet = fact_check.FactSheet(
+            abi="n32", calls={"0x18": {"callee": "f", "target": "0x900", "args": {3: "0xb4"}, "tail": False}})
+        for label, text in self.shapes(wrong):
+            self.write(text)
+            out = io.StringIO()
+            with mock.patch.object(fact_check, "sheet_for", return_value=sheet):
+                reported = grade.check_facts(self.doc, self.root, None, out)
+            with self.subTest(label):
+                self.assertEqual(reported, 1, out.getvalue())
+                self.assertIn("[arg-slot]", out.getvalue())
+                self.assertIn("checked=1", out.getvalue())
+
+    def test_ok_marks_each_shape_reviewed_and_keeps_its_shape(self):
+        for label, text in self.SHAPES:
+            self.write(text)
+            before = self.read()
+            key = "r@0x10@" + ("usr/lib/lib.so" if "named" in label else "lib.so")
+            self.assertEqual(self.apply({key: {"verdict": "ok", "reviewer": "x"}})["ok"], 1)
+            after = self.read()
+            with self.subTest(label):
+                marker = "  Reviewed: 2026-11-12 (x)\n" if label == "list" else "\nReviewed: 2026-11-12 (x)\n"
+                self.assertIn(marker, after)
+                self.assertEqual(after.replace(marker, "\n" if label != "list" else "", 1).count("Reviewed"), 0)
+                self.assertEqual(after.split("\n", 3)[2], before.split("\n", 3)[2])
+                (entry,) = grade.parse_entries(self.doc)
+                self.assertEqual(entry["shape"], "list" if label == "list" else "head")
+                self.assertIn("## Tail\n\nProse.\n", after)
+
+    def test_fixed_replaces_the_paragraphs_of_a_heading_and_keeps_the_heading(self):
+        self.write(self.HEAD)
+        self.apply({"r@0x10@lib.so": {"verdict": "fixed", "text": "`r`, 52 bytes. **Inferred.** A wrapper for f."}})
+        self.assertIn("### lib.so at 0x10\n\n`r`, 52 bytes. **Inferred.** A wrapper for f.\n\nReviewed: 2026-11-12\n\n## Tail",
+                      self.read())
+
+    def test_fixed_indents_the_paragraph_of_a_header_only_bullet(self):
+        self.write(self.LIST)
+        self.apply({"r@0x10@lib.so": {"verdict": "fixed", "text": "**Inferred.** A wrapper for f.\n\nSecond."}})
+        self.assertIn("- `r` in `lib.so` at 0x10\n  **Inferred.** A wrapper for f.\n\n  Second.\n  Reviewed: 2026-11-12\n\n## Tail",
+                      self.read())
+
+    def test_a_marked_entry_leaves_the_unreviewed_pack_and_applying_twice_keeps_one_marker(self):
+        for label, text in self.SHAPES:
+            self.write(text)
+            key = "r@0x10@" + ("usr/lib/lib.so" if "named" in label else "lib.so")
+            self.apply({key: {"verdict": "ok"}})
+            self.apply({key: {"verdict": "ok"}})
+            with mock.patch.object(fact_check, "sheet_for", return_value=self.sheet()):
+                count = grade.review_pack(self.doc, self.root, None, self.out, unreviewed=True)
+            with self.subTest(label):
+                self.assertEqual(self.read().count("Reviewed:"), 1)
+                self.assertEqual(count, 0)
+
+    def test_a_reviewed_heading_entry_is_understood_in_a_file_that_requires_review(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("inventory", os.path.join(os.path.dirname(grade.__file__), "inventory.py"))
+        inv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(inv)
+        role = ("It copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The return is "
+                "the constant 0xe or the mount result at 0x2084.")
+        self.write("### `swfio_mount` in `a/b/swfs.o` at 0x1f80\n\n**Inferred.** " + role + "\n\n")
+        self.apply({"swfio_mount@0x1f80@a/b/swfs.o": {"verdict": "ok"}})
+        os.makedirs(os.path.join(self.directory, "docs", "routines"))
+        os.replace(self.doc, os.path.join(self.directory, "docs", "routines", "b.md"))
+        saved, inv.REPO = inv.REPO, self.directory
+        try:
+            index = inv.DocIndex({"docs": {"prose": ["docs/routines/b.md"], "index": [], "skip": []},
+                                  "review_required": ["docs/routines/*.md"]})
+        finally:
+            inv.REPO = saved
+        self.assertIn("understood", [e.level for e in index.entries])
+
+
 if __name__ == "__main__":
     unittest.main()

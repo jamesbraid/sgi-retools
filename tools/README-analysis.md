@@ -76,6 +76,12 @@ paragraphs up to the next heading, list or table are its role; and a header-only
 indented paragraph after a blank line. A heading without an address and binary is a section title, and a
 paragraph under it is not an entry.
 
+`grade_readings.py` reads all three shapes with the inventory's own entry grouping (`--review-pack`,
+`--apply-verdicts` and `--check-facts` included). `--apply-verdicts` keeps an entry's shape: a bullet keeps its
+indented lines, a header-only bullet takes the corrected text as indented paragraphs, and a heading keeps its
+heading line and takes the corrected text as its paragraphs. The `Reviewed: DATE` line goes last, indented under
+a bullet and as a paragraph of its own under a heading.
+
     tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --check-doc
 
 lints one file the way the inventory reads it and exits 1 when it reports anything. For each entry that will

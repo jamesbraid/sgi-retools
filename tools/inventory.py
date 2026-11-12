@@ -756,6 +756,55 @@ def heading_subject(line):
     return cell_unit(t)
 
 
+def md_entries(lines):
+    """Group the lines of a document into entries. Returns (entries, entry_of, folded): entries is a list of
+    the line indexes of each, entry_of maps a line index to its entry, and folded maps an entry to 'head'
+    or 'list' when it is a routine header that blank lines do not close.
+    An entry is a table row, a list item with its continuation lines, or a paragraph. A routine reading
+    also takes the paragraphs after its header (reading_head, reading_list_head), so the binary and address
+    the header gives are part of the entry that says what the routine does."""
+    entry_of, entries, cur, efence = {}, [], None, False
+    folded = {}          # entry -> 'head' or 'list' for a routine header that blank lines do not close
+    fold = None
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if s.startswith('```'):
+            efence, cur, fold = not efence, None, None
+            continue
+        if efence:
+            continue
+        listed = re.match(r'([-*+]|\d+\.)\s', s)
+        if s.startswith('#'):
+            cur = fold = None
+            if reading_head(s):
+                entries.append([i])
+                entry_of[i] = fold = len(entries) - 1
+                folded[fold] = 'head'
+        elif not s:
+            cur = None
+        elif s.startswith('|'):
+            entries.append([i])
+            entry_of[i] = len(entries) - 1
+            cur = fold = None
+        else:
+            if listed:
+                fold = None
+            elif cur is None and fold is not None:
+                if folded[fold] == 'head' or ln[:1].isspace():
+                    cur = fold
+                else:
+                    fold = None
+            if cur is None or listed:
+                entries.append([])
+                cur = len(entries) - 1
+                if reading_list_head(s):
+                    fold = cur
+                    folded[fold] = 'list'
+            entries[cur].append(i)
+            entry_of[i] = cur
+    return entries, entry_of, folded
+
+
 class Entry:
     """One table row, list item, paragraph or header comment, with what it earns."""
     __slots__ = ('text', 'level', 'skel', 'capped', 'nsd_capped', 'keys', 'subj', 'sents', 'nsd_sents',
@@ -1185,48 +1234,7 @@ class DocIndex:
             ptext = ' '.join(lines[i] for i in p)
             if NSD_PHRASE.search(ptext) and NSD_ROUTES.search(ptext):
                 nsd_line.update(p)
-        # an entry is a table row, a list item with its continuation lines, or a paragraph. A routine
-        # reading also takes the paragraphs after its header (reading_head, reading_list_head), so the
-        # binary and address the header gives are part of the entry that says what the routine does
-        entry_of, entries, cur, efence = {}, [], None, False
-        folded = {}          # entry -> 'head' or 'list' for a routine header that blank lines do not close
-        fold = None
-        for i, ln in enumerate(lines):
-            s = ln.strip()
-            if s.startswith('```'):
-                efence, cur, fold = not efence, None, None
-                continue
-            if efence:
-                continue
-            listed = re.match(r'([-*+]|\d+\.)\s', s)
-            if s.startswith('#'):
-                cur = fold = None
-                if reading_head(s):
-                    entries.append([i])
-                    entry_of[i] = fold = len(entries) - 1
-                    folded[fold] = 'head'
-            elif not s:
-                cur = None
-            elif s.startswith('|'):
-                entries.append([i])
-                entry_of[i] = len(entries) - 1
-                cur = fold = None
-            else:
-                if listed:
-                    fold = None
-                elif cur is None and fold is not None:
-                    if folded[fold] == 'head' or ln[:1].isspace():
-                        cur = fold
-                    else:
-                        fold = None
-                if cur is None or listed:
-                    entries.append([])
-                    cur = len(entries) - 1
-                    if reading_list_head(s):
-                        fold = cur
-                        folded[fold] = 'list'
-                entries[cur].append(i)
-                entry_of[i] = cur
+        entries, entry_of, folded = md_entries(lines)
         needs_review = review_required(self.cfg, rel)
         entry_obj = {}
         head_unit = {}       # the routine a folded heading's paragraph names, written on the heading line

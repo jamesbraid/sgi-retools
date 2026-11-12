@@ -33,7 +33,11 @@ numbered as the citations count them) and the checker's findings: what a reviewe
 --apply-verdicts JSON reads a reviewer's verdicts, {entry key: {"verdict": "ok" | "fixed" | "reject",
 "text": corrected role lines, "reviewer": optional name}}, and rewrites DOC: ok keeps the entry, fixed
 replaces the lines under its header with text, and both add "Reviewed: DATE"; reject changes nothing. A key or
-verdict that does not fit stops the run before anything is written.
+verdict that does not fit stops the run before anything is written. --review-pack, --apply-verdicts and
+--check-facts take the entries the inventory reads: bullets, header-only bullets with indented paragraphs
+after blank lines, and headings that give the binary and address with their paragraphs. An entry written
+as a heading stays a heading: fixed text replaces its paragraphs and the Reviewed line follows as a
+paragraph of its own.
 """
 import argparse
 import collections
@@ -62,31 +66,71 @@ def parse_entries(doc):
         return parse_lines(source.read().splitlines())
 
 
+def _heading_site(line):
+    """(binary, address) written in a routine reading's heading, or (None, None). The binary is the path or
+    file name in it (a code span or a bare token) or the name before `:0xADDR`; the address is the first
+    exact one."""
+    import inventory as inv
+    text = re.sub(r"^#+\s*", "", line.strip()).replace("`", " ")
+    address = next((m.group(2) for m in inv.HEXLIT.finditer(text) if not m.group(1)), None)
+    if address is None:
+        return None, None
+    colon = re.search(r"([A-Za-z_][\w.+-]*):0[xX][0-9a-fA-F]", text)
+    if colon:
+        return colon.group(1), "0x" + address
+    for m in inv.PATHTOK.finditer(inv.HEXLIT.sub(" ", text)):
+        token = m.group(0).strip(".,;:")
+        if "/" in token or (inv.FILELIKE.fullmatch(token) and not token.rsplit(".", 1)[-1].isdigit()):
+            return token, "0x" + address
+    return None, None
+
+
 def parse_lines(lines):
-    """parse_entries over text already split into lines. Entries also carry `end` (the
-    exclusive index of their last line), `install` (the binary path as written, member
-    in parentheses included) and `grade` (the evidence grade line, if any)."""
-    starts = [i for i, line in enumerate(lines) if line.startswith("- ")]
+    """parse_entries over text already split into lines. The entries are the ones the inventory reads
+    (inventory.md_entries): a bullet whose header is `name` in `binary` at 0xADDR, with its indented lines
+    (and, for a header-only bullet, its indented paragraphs after blank lines), and a heading that gives the
+    binary and address, with its paragraphs. Entries also carry `end` (the exclusive index of their last
+    line), `shape` ('bullet', 'list' for a header-only bullet or 'head' for a heading), `install` (the
+    binary path as written, member in parentheses included) and `grade` (the evidence grade line, if any)."""
+    import inventory as inv
+    groups, _entry_of, folded = inv.md_entries(lines)
     entries = []
-    for start in starts:
-        end = start + 1
-        while end < len(lines) and lines[end][:1].isspace():
-            end += 1
-        block = lines[start:end]
-        header = HEADER.match(block[0])
-        if not header:
+    for index, group in enumerate(groups):
+        start = group[0]
+        shape = folded.get(index)
+        if shape == "head":
+            binary, address = _heading_site(lines[start])
+            end = group[-1] + 1
+            body = [lines[i] for i in group[1:]]
+            name = inv.heading_subject(lines[start]) or inv.leading_unit(" ".join(line.strip() for line in body))
+            if not (binary and address and name):
+                continue
+            header = None
+        elif lines[start].startswith("- "):
+            header = HEADER.match(lines[start])
+            if not header:
+                continue
+            if shape == "list":
+                end = group[-1] + 1
+            else:
+                end = start + 1
+                while end < len(lines) and lines[end][:1].isspace():
+                    end += 1
+            name, binary, address = header.group("name"), header.group("binary") or header.group("legacy"), \
+                header.group("address") or header.group("legacy_address")
+            shape = shape or "bullet"
+        else:
             continue
+        block = lines[start:end]
         meta = "\n".join(block)
-        name = header.group("name")
-        binary = header.group("binary") or header.group("legacy")
-        address = header.group("address") or header.group("legacy_address")
         exact = re.search(r"^\s*Exact binary: `([^`]+)`\s*$", meta, re.M)
         binary = exact.group(1) if exact else binary
         install = binary
         grade_line = re.search(r"^\s*Evidence grade: (\w+)\.", meta, re.M)
         span = re.search(r"^\s*Range: (" + HEX + r")-(" + HEX + r") \((\d+) bytes\)", meta, re.M)
         size_line = re.search(r"^\s*It occupies (\d+) bytes\.", meta, re.M)
-        size = int(header.group("legacy_size") or (span.group(3) if span else 0) or (size_line.group(1) if size_line else 0)) or None
+        legacy_size = header.group("legacy_size") if header else None
+        size = int(legacy_size or (span.group(3) if span else 0) or (size_line.group(1) if size_line else 0)) or None
         # Old entries put the binary and address in the title. Exact binary overrides it.
         if binary and "(" in binary and binary.endswith(")"):
             binary = re.sub(r"\(([^()]*)\)$", r":\1", binary)
@@ -96,7 +140,7 @@ def parse_lines(lines):
         sentences = [line.strip() for line in block[1:] if line.strip() and not re.match(
             r"(?:Evidence grade:|Exact binary:|Exact build:|Architecture:|Range:|Role:|Reviewed:)", line.strip())]
         entries.append({"name": name, "binary": binary, "address": address, "size": size,
-                        "sentences": sentences, "line": start + 1, "end": end,
+                        "sentences": sentences, "line": start + 1, "end": end, "shape": shape,
                         "install": install, "grade": grade_line.group(1) if grade_line else None,
                         "firmware": firmware})
     return entries
@@ -974,13 +1018,21 @@ def apply_verdicts(doc, verdicts_path, date, out=None):
             continue
         entry = entries[key]
         first, end = entry["line"] - 1, entry["end"]
+        head = entry["shape"] == "head"
         if item["verdict"] == "fixed":
-            body = [l if l[:1].isspace() else "  " + l for l in str(item["text"]).strip("\n").split("\n")]
+            text = str(item["text"]).strip("\n").split("\n")
+            # a heading keeps its shape: the text is its paragraphs, so it is not indented
+            body = text if head else [l if not l or l[:1].isspace() else "  " + l for l in text]
+            body = [""] + body if head and body[0] else body
         else:
             body = lines[first + 1:end]
         body = [l for l in body if not REVIEWED.match(l.strip())]
-        marker = "  Reviewed: %s%s" % (date, " (%s)" % item["reviewer"] if item.get("reviewer") else "")
-        lines[first:end] = [lines[first]] + body + [marker]
+        while body and not body[-1].strip():
+            body.pop()
+        note = "Reviewed: %s%s" % (date, " (%s)" % item["reviewer"] if item.get("reviewer") else "")
+        # under a heading the marker is a paragraph of its own, so it stays in the entry
+        marker = ["", note] if head else ["  " + note]
+        lines[first:end] = [lines[first]] + body + marker
     with open(doc, "w", encoding="utf-8") as handle:
         handle.write("\n".join(lines))
     print("verdicts: ok=%d fixed=%d reject=%d" % (counts["ok"], counts["fixed"], counts["reject"]), file=out)
