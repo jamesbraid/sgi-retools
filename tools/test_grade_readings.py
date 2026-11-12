@@ -442,6 +442,20 @@ class CheckDoc(unittest.TestCase):
         self.assertIn(":8:", out)
         self.assertIn("not an entry the parser reads", out)
 
+    def test_a_kona_style_header_is_reported(self):
+        text = "- `swfio_mount` (`%s` 0x1f80, 424 bytes):\n  %s\n" % (self.BINARY, self.ROLE)
+        problems, out = self.lint(text, table=False, routines=True)
+        self.assertEqual(problems, 1, out)
+        self.assertIn(":5:", out)
+        self.assertEqual(grade.parse_lines(text.split("\n")), [])   # --review-pack would see no entry
+        self.assertEqual([n for n, _ in grade.unread_entries(text.split("\n"))], [1])  # the line is the first
+
+    def test_a_prose_bullet_with_a_bare_name_and_address_is_not_a_header(self):
+        text = ("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s\n\n- swfio_umount, at 0x1fe0. A leaf.\n"
+                % (self.BINARY, self.ROLE))
+        problems, out = self.lint(text, table=False, routines=True)
+        self.assertEqual(problems, 0, out)
+
     def test_the_same_file_is_not_checked_unless_it_is_a_routines_file(self):
         problems, out = self.lint("- swfio_mount in `%s` at 0x1f80\n  %s\n" % (self.BINARY, self.ROLE), table=False)
         self.assertEqual(problems, 0, out)
