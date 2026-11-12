@@ -602,6 +602,25 @@ class CheckFacts(unittest.TestCase):
             reported = grade.check_facts(self.doc, self.root, path, out)
         return reported, out.getvalue(), patched
 
+    def test_a_missing_python_module_or_binutils_stops_the_run_instead_of_counting_no_facts(self):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + self.ENTRY)
+        for error in (ModuleNotFoundError("No module named 'capstone'"),
+                      grade.toolchain.MissingTool("no MIPS objdump found on PATH")):
+            with self.subTest(error=type(error).__name__):
+                with mock.patch.object(fact_check, "sheet_for", side_effect=error):
+                    with self.assertRaises(SystemExit) as caught:
+                        grade.check_facts(self.doc, self.root, None, io.StringIO())
+                self.assertIn("cannot render facts", str(caught.exception))
+
+    def test_an_address_the_facts_cannot_place_is_still_counted_as_no_facts(self):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + self.ENTRY)
+        out = io.StringIO()
+        with mock.patch.object(fact_check, "sheet_for", side_effect=SystemExit("facts: no member")):
+            grade.check_facts(self.doc, self.root, None, out)
+        self.assertIn("checked=0 not-mips=0 no-facts=1", out.getvalue())
+
     def test_a_contradicted_claim_is_reported_with_its_line_rule_and_reason(self):
         reported, out, _patched = self.run_facts(self.ENTRY)
         self.assertEqual(reported, 1)
