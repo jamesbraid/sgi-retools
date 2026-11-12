@@ -83,3 +83,35 @@ not credit its routine it prints the line and the reason: no routine named, a he
 binary, no citation, too few role words or items, a header that is not a row of `docs/inventory/functions.tsv`
 (`--inventory PATH` selects another table), or a bare file name that cannot pick between builds. Entries
 held at located by their own wording are listed as notes and do not change the exit status.
+
+### Checking an entry's claims against its facts
+
+    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --check-doc --check-facts
+
+adds a mechanical check of what each entry claims. It renders the routine's facts the way
+`reading_round.py` and `render_reading.py` do (once per binary and address), pulls the checkable claims out
+of the prose with fixed patterns, and reports every claim the facts contradict, with the rule and the
+reason. It reports a contradiction, never a missing detail, and it skips a claim it cannot place on one
+call, branch or access. It needs `root/`; the size of a routine the header does not give comes from
+`docs/inventory/functions.tsv`. Entries it cannot render (non-MIPS images, a binary not under `root/`) are
+counted and skipped. The check is opt-in: `--check-doc` alone does not run it, and `--check-facts` without
+`--check-doc` is an error. The rules are in `tools/fact_check.py`:
+
+| Rule | Claim | Reported when |
+|---|---|---|
+| `arg-slot` | "0xb4 as its fourth argument", "a1 of 1", "a0 = 0x2e" | the call named puts the value in another slot. The reason says the convention: n32 and n64 pass eight arguments in a0-a7, so the fifth is a4; o32 passes four in a0-a3 |
+| `arg-register` | "fifth argument (a3)" | the ordinal and the register disagree |
+| `branch-direction` | "calls X when the flag is clear", "unless", "only when ... is set", "skips X when ... is zero" | the branch that decides the call compares the word with zero the other way round. A condition on a call's result, a compound condition, or a word the branch does not compare is left alone |
+| `call-order` | "A, then B", "A after B", "A before B" between two named calls | every path runs B before A and none runs A before B. A panic call and a value named as `ret(callee)` are not calls |
+| `access-kind` | "reads ... +0xd8", "stores to +0x4", "reads q (0xADDR)" | the facts only show a store at that offset, or only a load, or the cited instruction is the other kind |
+| `return-value` | "returns the cursor address" | the facts merge that value with a call result at the return and the sentence names only one. Sentences that name a path or an alternative are left alone |
+| `conditional-wording` | "unconditionally", "otherwise ... at ADDR", a flat "frees X (ADDR)" | the cited call or store is skipped by a branch (or runs on every path, for "otherwise"). A flat release is reported only when one or two branches skip it, no other sentence cites them and it is the only site cited |
+| `enable-only` | "enables 0xb60 through f" | the same callee is also called with that constant and a1 of 0 |
+| `role-word` | "non-rational", "the float fields suggest a colour move" | the qualifier is a negation the facts never mention, or a role is pinned on the facts instead of the routine's name |
+
+The rules were written from an audit that found a quarter of forty round 4 entries wrong or overclaimed:
+reversed branch direction, an argument slot off by one, a read that is a store, an unconditional claim over a
+guard, call order, and roles taken from a routine's name. They are narrow on purpose. A report is a reason to
+look at the entry against its facts, and the role-word rule in particular flags wording a reviewer may accept.
+`tools/test_fact_check.py` pins each rule and the ten kona entries the audit corrected: the text before the
+correction fails, the text after it passes.
