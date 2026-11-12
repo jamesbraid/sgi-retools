@@ -42,7 +42,7 @@ def render(repo, profile=None):
         except GenError as e:
             errors.append(str(e))
     if repo.units:
-        files["gen/rust/Cargo.toml"] = gen_rust.gen_cargo(repo.project, "defs/")
+        files["gen/rust/Cargo.toml"] = gen_rust.gen_cargo(repo.settings.get("gen", {}).get("rust_crate"), "defs/")
         files["gen/rust/src/lib.rs"] = gen_rust.gen_lib(list(repo.units), "defs/")
     return files, errors
 

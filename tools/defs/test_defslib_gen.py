@@ -52,6 +52,11 @@ class GenTest(RepoTest):
         self.edit("defs/check.toml", "[project]", '[gen]\nprofile = "internal"\n\n[project]')
         self.assertIn("driver readings", self.render()[1]["gen/docs/uart.md"])
 
+    def test_crate_name_default_and_setting(self):
+        self.assertIn('name = "hwdefs"', self.render()[1]["gen/rust/Cargo.toml"])
+        self.edit("defs/check.toml", "[project]", '[gen]\nrust_crate = "uart-regs"\n\n[project]')
+        self.assertIn('name = "uart-regs"', self.render()[1]["gen/rust/Cargo.toml"])
+
     def test_helpers_file_is_included_when_present(self):
         self.write("defs/uart_helpers.h", "#define UART_GET(w, f) (((w) >> UART_##f##_SHIFT) & UART_##f##_MASK)\n")
         self.assertIn("../../defs/uart_helpers.h", self.render()[1]["gen/c/uart.h"])
