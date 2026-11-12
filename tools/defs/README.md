@@ -1,4 +1,329 @@
-# Decode headers: publish-safe check and Rust generator
+# Hardware definitions: sources, checks and generated outputs
+
+A repo describes its hardware once, in TOML, and everything else is generated from
+that: C headers, a Rust crate, Python decode helpers, flat JSON, an export in the
+Intel/Mesa genxml dialect and a reference page per unit. The tools here load the
+sources, check them, write the outputs and prove the outputs build.
+
+| Tool | Does |
+|---|---|
+| `defs-check [--build]` | loads `defs/`, runs every check, confirms `gen/` is fresh; `--build` also compiles and runs the outputs |
+| `defs-gen [--check]` | writes `gen/` and the forwarding headers; `--check` writes nothing and fails on a stale tree |
+| `defs-import` | converts a repo's annotated headers (`*_DECODE.h`, census headers) to `defs/` sources |
+| `defs-compare` | compares an old header with its replacement macro by macro with the C compiler |
+| `ci-check` | the one command CI runs: `defs-check --build` when `defs/` exists, the older decode-header path otherwise |
+| `forgejo-workflow.yml` | template for `.forgejo/workflows/re-check.yml` |
+| `test_defslib_*.py`, `test_defs.py` | tests (`python3 -m unittest discover -s retools/tools/defs -p 'test_*.py'`) |
+
+Needs Python 3.11 or newer (`tomllib`) and nothing else for loading, checking and
+generating. Building the outputs needs a C compiler; the Rust crate builds with
+`rustc` alone, with or without cargo. Run from the repo root:
+
+```sh
+retools/tools/defs/defs-check [--root DIR] [--unit U ...] [--no-fresh] [--build] [--verbose]
+retools/tools/defs/defs-gen   [--root DIR] [--check]
+```
+
+Exit status: 0 clean, 1 a check failed (each offending item printed), 2 a setup
+problem (a source file does not load, a prose document or plugin is missing).
+
+## Layout of a repo
+
+```
+defs/
+  <unit>.toml          one hardware block, word family or table of constants
+  <unit>.<rev>.toml    optional revision overlay on <unit>
+  <unit>_helpers.h     optional hand-written C helpers the generated header includes
+  check.toml           the repo's check settings
+  legacy-dropped.txt   during a migration: old macros dropped on purpose (NAME, tab, reason)
+gen/                   generated and committed; CI fails when it is stale
+  c/<unit>.h           gen/rust/ (Cargo.toml, src/)      py/<unit>.py
+  json/<unit>.json     genxml/<unit>.xml                 docs/<unit>.md
+<old header path>      a forwarding header, for each unit that names one
+```
+
+Generated files carry a banner naming their source and are never edited. Output is
+deterministic, so staleness is a byte comparison.
+
+## A unit file
+
+```toml
+unit = "uart"                       # matches the file name
+prefix = "UART"                     # macro prefix
+# block = "UART"                    # register block name when it differs from the prefix
+title = "made-up UART"
+doc = "One or two sentences."
+from = "vendor register guide"      # default source for every item in the file
+public_from = ["vendor register guide"]   # sources that may appear in public output
+
+[spaces.hq]                         # an address space; unit = "byte" (default) or "reg"
+unit = "reg"                        # offsets are register indexes, one per 32-bit register
+
+[enums.parity]                      # an enum several fields can share
+values = { none = { value = 0, grade = "established" }, odd = { value = 1, grade = "inferred" } }
+
+[registers.ctl]
+offset = 0x10
+access = "rw"                       # r, w or rw
+width = 32                          # 8, 16, 32 or 64
+reset = 0x0                         # or "unknown" (default)
+count = 1                           # array of registers; stride defaults to the register size
+space = "hq"                        # default: the unit's own default space
+grade = "established"
+from = "vendor register guide p.12" # only when it differs from the file's
+doc = "Prose for the reference page and the C comment."
+
+[registers.ctl.fields]
+enable  = { bits = [0, 0],   grade = "established" }
+parity  = { bits = [3, 1],   grade = "inferred", enum = "parity" }     # or enums = { ... } inline
+divisor = { bits = [31, 16], grade = "established" }
+
+[[registers.ctl.tests]]             # a vector: a value recorded from a source
+value = 0x00040003
+expect = { enable = 1, parity = 1, divisor = 4 }     # a value may be "@register" for that register's offset
+# kind = "example" shows a layout only; it is decoded for consistency and never asserted elsewhere
+
+[words.FRAME]                       # a non-register word: a command, descriptor or on-disk structure
+width = 32
+grade = "established"
+[words.FRAME.fields]
+payload = { bits = [8, 1], grade = "established" }
+
+[constants]                         # opcodes, sizes, table entries
+FIFO_DEPTH = { value = 16, grade = "established" }
+# macro = "OTHER_NAME" names the C macro in full when the prefix rule does not fit
+```
+
+Every register, word, field, enum value and constant needs a grade: `established`,
+`inferred` or `unknown`. A grade says how the item was derived from its source, not
+that it was measured on silicon. `from` is free text naming the source; it defaults
+from the file to the register or word, and an item sets its own only when it
+differs. The loader is strict: an unknown key, a wrong type, a missing grade or a
+misspelt grade is an error with the path of the key, and a duplicate key is a parse
+error.
+
+### Revision overlays
+
+`defs/<unit>.<rev>.toml` builds a second unit from the first without copying it.
+The result is named `<unit>_<rev>` with prefix `<PREFIX>_<REV>` unless `override`
+says otherwise, and it does not inherit the base's old header path or old names.
+
+```toml
+[override]                          # top-level keys: unit, prefix, block, title, doc, from, public_from, c
+title = "UART, revision 2"
+[patch."registers.ctl.fields.divisor"]   # change properties of an item
+grade = "inferred"
+[add.registers.irq_mask]            # add items (to change an existing one, patch it)
+offset = 0x18
+access = "rw"
+width = 32
+grade = "inferred"
+# remove = ["registers.status"]     # delete items
+# import = "other_unit"             # overlay a unit other than <unit> (a base from another file)
+```
+
+A base file stays untouched, so a layer of corrections (for example, what a driver
+shows about a register a vendor guide documents) lives in its own file.
+
+## defs/check.toml
+
+What `defs.toml` held, minus the header list. Everything is optional but `[project]`.
+
+```toml
+[project]
+name = "odsy"
+plugin = "scripts/odsy_checks.py"   # repo-specific checks, see Plugins
+
+[gen]
+profile = "public"                  # or "internal": see Profiles
+forwarding = "on"                   # "off" stops writing forwarding headers
+rust_crate = "hwdefs"               # crate name; never derived from the project name
+
+[checks]
+address_bits = 14                   # a register may not lie beyond this address space
+max_reg_offset = 0xffff
+
+[banned]                            # leak rules; see What the checks do
+allow_includes = ["stdint.h"]
+[[banned.extra]]
+label = "driver routine prefix"
+regex = '\b(?:gfP_|ody_)\w*'
+
+[allowlists]                        # NAME<TAB>REASON per line
+# source_names = "scripts/source-names-allow.txt"
+# copy = "scripts/copy-check-allow.txt"
+# leak = "scripts/leak-allow.txt"
+
+# [docs_scan]
+# paths = ["docs/*.md"]
+
+[units.display]                     # per-unit settings
+group = "display"                   # units sharing a group share a claims namespace (default: the unit name)
+notes_corpus = ["docs/display.md"]  # every vector value must appear as a hex literal here
+# no_addresses = true               # a descriptor that must carry no address value
+# size_limit_macro = "DMA_ENTRY_MAX_BYTES"
+# address_field_prefix = "addr"
+# prose_offsets = false             # skip the "no register offset spelled out in prose" rule
+# plugin_form = "legacy"            # give plugins vectors as the old {(value, word): {...}} dictionary
+
+[[claims]]                          # a regular expression over a prose document, bound to the model
+group = "display"
+label = "colour map channels"
+doc = "docs/display.md"
+regex = 'R in bits (\d+):(\d+), G in (\d+):(\d+)'
+binds = [["F", "DISPLAY.cmap.r", 1, 2], ["F", "DISPLAY.cmap.g", 3, 4]]
+```
+
+Claim binds are the ones in the older form below, over the same keys: a register is
+`BLOCK.name`, a register field `BLOCK.name.field`, a plain word's field `WORD.field`,
+an enum value `(field key, label)`, and a macro is a generated C macro name or an
+old name from `[c.aliases]`.
+
+## What the checks do
+
+`defs-check` runs, in order, and reports every failure it finds:
+
+1. Layout of each unit: field overlap and width, register overlap per address space
+   (an array occupies `count` elements at its stride; a `reg` space counts in
+   registers; a named space is shared by every unit that names it), enum values that
+   fit their field, vectors that decode as stated, a grade on every item, a `from`
+   that reaches every item, the `[checks]` address bounds.
+2. Leaks. The built-in rules of the older form below (vendor paths, file and routine
+   names, board tokens, binary offsets, tool names, ...) plus `[[banned.extra]]` are
+   run over the public rendering of every generated file and over every
+   `defs/<unit>_helpers.h`. Generated Rust must not name the project at all.
+3. Prose: `[[claims]]`, vectors against `notes_corpus`, `no_addresses`, and (for a
+   unit with registers) no register offset spelled out in `doc` text.
+4. Plugins.
+5. Freshness: `gen/` and the forwarding headers are what `defs-gen` would write, with
+   no file missing and none left over.
+
+`--build` then builds what is committed: every C header and forwarding header
+compiles with `-Wall -Wextra -Werror` and a generated program decodes each vector
+with the header's own macros; each Python module runs its self-test; every genxml
+export goes through the vendored upstream pack generator, and each vector unpacks and
+repacks through the C it writes; the Rust crate builds with warnings denied and its
+tests pass (skipped with a note when there is no `rustc`).
+
+### Plugins
+
+A repo plugin still works. It may define `CLAIMS`, `check_header(ctx, hdr)`,
+`check_group(ctx, group, hdrs)` and `check_final(ctx)` as in the older form. `ctx` and
+`hdr` have the old shapes, built from the model: `hdr.file` is the old header path
+(or `gen/c/<unit>.h`), `hdr.text` is the generated C, then the unit's helpers, then the unit
+regenerated in the old comment grammar (`/* REG: ... */`, `FIELD`, `ENUM`, `WORD`, and
+` * TESTVEC:` lines), so a plugin that reads those lines keeps working,
+`hdr.regs`, `hdr.fields`, `hdr.widths`, `hdr.enums`, `hdr.defs` (every generated
+macro and every alias that evaluates) and `hdr.vecs` are the dictionaries the old
+checker built, and `hdr.unit` is the loaded unit. A plugin that reads other annotations or the
+layout of the old comments (a command table, say) needs them to survive the migration: the
+importer keeps comment lines like ` * CALC: ...` verbatim in the helpers file, but it cannot
+carry free-form comments, so such a plugin is ported to read the model (`hdr.regs`,
+`hdr.fields`, `hdr.defs`, `hdr.vecs`) instead of the header text.
+
+## Profiles
+
+`[gen] profile` chooses what the committed outputs carry. `public` keeps a `from`
+only when it starts with one of the unit's `public_from` prefixes and drops notes.
+`internal` keeps every `from` and note, for a repo that is not published. The leak
+check always runs on the public rendering, so switching profiles needs no new fixes.
+
+## The generated outputs
+
+| Output | Contents |
+|---|---|
+| `gen/c/<unit>.h` | `<BLOCK>_<REG>_OFFSET`, `_COUNT`, `_STRIDE`; `<BLOCK>_<REG>_<FIELD>_SHIFT`, `_MASK`, `_INPLACE`; `<PREFIX>_<WORD>_WIDTH` and word fields the same way; `<field macro>_<LABEL>` for a field's own enum values and `<PREFIX>_<ENUM>_<LABEL>` for shared ones; `<PREFIX>_<NAME>` for constants. Every macro carries its grade. `[c] offset_macro = "bare"` drops `_OFFSET`. |
+| `gen/rust/` | a crate (`Cargo.toml`, `src/lib.rs`, a module per unit): typed field accessors, an enum with an `Other` variant per field that has values, constants, a test per vector |
+| `gen/py/<unit>.py` | the layout as tables plus `decode`, `encode`, `describe` and `selftest`, no imports |
+| `gen/json/<unit>.json` | one flat row per register, word, field, enum value and constant |
+| `gen/genxml/<unit>.xml` | the genxml dialect Asahi and Panfrost use: `<struct>` per word and register, `<field start size type>`, top-level `<enum>`; grade, source, offset, access, test vectors and constants ride in extra attributes and elements |
+| `gen/docs/<unit>.md` | a reference page: every register, word, field, enum value, constant and vector with its grade and source |
+
+The genxml export is proved by `tools/defs/vendor/genxml/gen_pack.py`, an unmodified
+copy of Mesa's Asahi pack generator (MIT; see `vendor/genxml/SOURCE` and `LICENSE`).
+It is never edited: if the dialect needs the export to change, the export changes.
+`genxml_prelude.h` stands in for Mesa's own prelude header.
+
+### Forwarding headers and helpers
+
+A unit that replaces an old header names it:
+
+```toml
+[c]
+legacy_header = "BUZZ_DECODE.h"
+legacy_guard = "BUZZ_DECODE_H"
+[c.aliases]                         # old macro name = a C expression over the new names
+BUZZ_HDR_W4_SIZEFLD_SHIFT = "BUZZ_HDR_W4_SIZE_FIELD_SHIFT"
+```
+
+`defs-gen` writes a header at that path that includes `gen/c/<unit>.h` and defines
+the aliases, so QEMU and iris keep building unchanged for one transition period.
+Remove `legacy_header` (and the file) when the consumers use the new path.
+
+Helper macros and any C that is code rather than data (a table, a `static inline`
+function) go in `defs/<unit>_helpers.h`; the generated header includes it last.
+Hand-written code may use the generated names but not the old aliases, which are
+defined after it.
+
+## Migrating a repo
+
+One repo at a time, in one change. From the repo root, with this repository checked
+out as `retools/`:
+
+```sh
+retools/tools/defs/defs-import                      # writes defs/, never edits a header; prints the report
+# read the report (also in defs/import-report.txt) and settle each item in defs/*.toml:
+#   constants with no grade   -> give each a grade, or list it in defs/legacy-dropped.txt
+#   old macros with no counterpart -> add a field or constant, alias it under [c.aliases], or drop it
+#   grades defaulted          -> confirm, or correct
+#   set the real source in `from` (the importer wrote a placeholder, dropped from public output)
+retools/tools/defs/defs-gen                         # writes gen/ and overwrites each old header with its forwarding header
+retools/tools/defs/defs-compare                     # old headers from git HEAD against the forwarding headers: must report 0 different, 0 missing
+retools/tools/defs/defs-check --build               # layout, leaks, claims, plugin, freshness, builds
+git rm defs.toml generated/ ...                     # the old config and Rust output, once defs/check.toml and gen/ replace them
+rm defs/import-report.txt
+```
+
+Commit `defs/`, `gen/`, the forwarding headers and the removals together, add the
+workflow (below), and switch QEMU and iris to `gen/c/` paths in their own changes.
+`defs-compare --old-rev REV` compares against another revision; `defs-compare --old
+FILE --new FILE` compares two files.
+
+What the importer reads: REG, WORD, FIELD, ENUM and TESTVEC lines; the older
+FIELD-only form with `macro_pairs` and `inplace`; census headers
+(`#define PFX_NAME 0xOFF /* [E] width N byte(s), access rw; ... */`, where the label is
+the grade and `through the <name> window` makes an address space); and tables of graded
+`#define` constants. A header that names several register blocks without configuring one
+becomes a block-less unit whose block-colliding registers get an address space each; a
+constant that the register layout already generates (`<REG>_COUNT`) is dropped as
+redundant, or reported when its value differs; a graded macro that does not start with the
+unit's prefix keeps its full name (`macro =`). It carries function-like macros, C code
+outside the `#define`s and unknown annotation comments to the helpers file. It never invents: a word's grade is
+the weakest of its fields, enum values without a grade inherit their field's and say
+so, and a bare numeric expression is never turned into an alias.
+
+What `defs-compare` does not see: C code in the old header that is not a macro (a
+table or inline function). The build step compiles the helpers that carry it, but
+nothing compares their contents with the old text.
+
+## Adopting it in CI
+
+Copy `forgejo-workflow.yml` to `.forgejo/workflows/re-check.yml`. The job runs on
+`ubuntu-latest` in a public Debian image, installs `python3`, `gcc` and `rustc` from
+Debian (rustc 1.63 builds the crate; cargo is not needed), and initialises only the
+retools submodule (`git submodule update --init --depth 1 retools`). Never use
+`--recursive`: some workspaces carry vendor-source submodules that must not be
+fetched. The workflow uses no secrets beyond the read-only retools token.
+
+`ci-check` runs `defs-check --build` when a `defs/` directory exists. With only a
+`defs.toml` it takes the older path below, so repos move one at a time. With neither
+it prints `no decode headers`.
+
+# Older form: decode headers and defs.toml
+
+Repos that have not migrated keep their `*_DECODE.h` headers, `defs.toml`,
+`check-publish-safe.py` and `gen_decode_rust.py`, described here. They go away when the
+last repo has moved.
 
 A decode header (`*_DECODE.h`) is a small C header that states a hardware
 contract in a form a public project can consume: register offsets, bit ranges,
@@ -25,7 +350,7 @@ python3 retools/tools/defs/test_defs.py
 Exit status: 0 clean, 1 a check failed (each offending line printed), 2 a setup
 problem (config, header or prose document missing).
 
-## Header grammar
+### Header grammar
 
 Annotations sit in C comments, one per line, and must not be reformatted. `<hi>:<lo>`
 is an inclusive bit range, `n:n` is one bit. A grade is `established`,
@@ -76,7 +401,7 @@ A second, older form (`form = "legacy"`) has `FIELD: WORD.name hi:lo grade` on
 32-bit words and a hand-listed macro table; use it only for a header that
 already has one. odsy's `BUZZ_DECODE.h` is the example.
 
-## What the check does
+### What the check does
 
 1. Publish safety. Built-in rules refuse a vendor source path, an install path,
    a source or object file name, an include of any header but the repo's own and
@@ -108,7 +433,7 @@ allowed only as a contiguous mask in a `*_MASK` macro or in the one
 `_BITS`; no vector may set bits in, or name, a field whose name starts with
 `address_field_prefix` (default `addr`).
 
-## defs.toml
+### defs.toml
 
 Paths are relative to `[project] root` (default: the directory holding the
 file). A minimal, working one is `testdata/mini/defs.toml`.
@@ -194,7 +519,7 @@ indexes; `re.S`, case-sensitive):
 
 A claim whose group matches no header is a setup error (exit 2).
 
-### Plugins
+#### Plugins
 
 Anything that does not fit a regular expression and a bind (odsy's texel format
 table, its C-compile check of the helpers, claims that evaluate arithmetic)
@@ -214,7 +539,7 @@ def check_final(ctx): ...
 has `file`, `name`, `text`, `regs`, `fields`, `defs`, `enums`, `vecs`, `cfg`.
 Keep plugin code to what the declarative form cannot say.
 
-## What the generator emits
+### What the generator emits
 
 Per header with a `module`: a typed accessor per FIELD (range and grade in the
 doc comment), an enum with an `Other` variant per ENUM target, a constant per
@@ -228,7 +553,7 @@ the commit is the last one that touched the header, `-dirty` if it has
 uncommitted edits (which the check refuses). `--check` compares everything but
 that commit, and also fails on a missing or extra `.rs` file.
 
-## Adopting it in a workspace
+### Adopting it in a workspace
 
 1. Write the decode headers (`*_DECODE.h`) at the workspace root following the
    grammar, with a derivation paragraph in each.
@@ -240,7 +565,7 @@ that commit, and also fails on a missing or extra `.rs` file.
 4. Wire the check into the workspace's pre-push or CI step beside its existing
    leak check (`retools/tools/defs/test_defs.py` covers the framework).
 
-## Running it in CI
+### Running it in CI
 
 `ci-check` runs from the workspace root with this repository checked out as
 `retools/`. With no `defs.toml` it prints `no decode headers` and exits 0.
