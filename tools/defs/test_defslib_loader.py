@@ -81,6 +81,10 @@ class LoaderTest(RepoTest):
         self.edit("defs/uart.toml", 'prefix = "UART"', 'prefix = "UART"\nprefix = "UART"')
         self.errors_with("TOML error")
 
+    def test_constant_macro_name_must_be_an_identifier(self):
+        self.edit("defs/uart.toml", "FIFO_DEPTH = { value = 16,", 'FIFO_DEPTH = { macro = "not valid", value = 16,')
+        self.errors_with("does not match")
+
     def test_wrong_type(self):
         self.edit("defs/uart.toml", "width = 8\n", 'width = "8"\n')
         self.errors_with("must be an integer")
