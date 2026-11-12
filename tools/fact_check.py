@@ -630,6 +630,14 @@ def check_access_kind(sentence, sheet):
                 or re.search(r"\b(no|not|never|without|nor)\b", lead + between)
                 or re.search(r"\bof the\b|\bthrough\b|\bat \+0x[0-9a-f]+ of\b", sentence[m.end():m.end() + 12])):
             continue
+        # "advances its pointer by 8 or to the word at +0x28": the word is where the new pointer comes
+        # from, so it is a load. "stores to the word at +N" is still a write claim.
+        if (re.fullmatch(r"advances?|resets?", sentence[verb[0]:verb[1]].lower())
+                and re.search(r"\bto the (?:\w+ )*?(?:word|halfword|byte|value|field|entry)\s+(?:at|in)\s+(?:\w+ )?$", between)):
+            if "load" not in kinds_at[offset]:
+                problems.append(("access-kind", "the entry says it reads +0x%x, but the facts only show it stored" % offset,
+                                 sentence))
+            continue
         if verb[2] not in kinds_at[offset]:
             claimed = "reads" if verb[2] == "load" else "writes"
             actual = "loaded" if "load" in kinds_at[offset] else "stored"
