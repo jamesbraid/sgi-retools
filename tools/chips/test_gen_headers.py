@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for define naming in gen_headers.py and for the address-space key in join.py.
+"""Tests for macro naming in gen_headers.py (through the defs/ source it writes) and for the address-space key in join.py.
 
 Run: python3 tools/chips/test_gen_headers.py
 A symbol-less PROM is cut into pseudo-functions named after their start address. Those names must never reach
@@ -21,6 +21,17 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gen_headers  # noqa: E402
+
+sys.path.insert(0, os.path.join(HERE, '..', 'defs'))
+from defslib import gen_c, loader  # noqa: E402
+from defslib.model import normalize  # noqa: E402
+
+
+def macros(chip):
+    """(macro -> value, alias -> target) of the C header the generated source produces."""
+    unit, _ = gen_headers.gen(chip, gen_headers.CHIPS[chip])
+    _, names = gen_c.gen_c(normalize(unit), 'x')
+    return names, unit['c'].get('aliases', {})
 
 ROW = ['variant', 'offset', 'idx', 'name', 'access_seen', 'widths', 'halves', 'sites', 'functions', 'images']
 SITE = ['image', 'function', 'addr', 'insn', 'rw', 'width', 'offset', 'idx', 'variant', 'basis']
@@ -58,22 +69,23 @@ class Naming(unittest.TestCase):
             site('ip35-kernel', 'hub_error_init', '0x800040', '1'),
         ])
         write(d + 'fields.tsv', ['variant', 'register', 'kind', 'bits_or_value', 'source', 'sites'], [])
-        self.text = gen_headers.gen('bedrock', gen_headers.CHIPS['bedrock'])
-        self.defs = {m.group(1): m.group(2) for m in re.finditer(r'^#define\s+(\w+)\s+(0x\w+)', self.text, re.M)}
+        self.defs, self.aliases = macros('bedrock')
+        self.text = ' '.join(self.defs)
 
     def test_pseudo_function_names_stay_out(self):
         self.assertNotIn('prom_', self.text)
         self.assertNotIn('PROM_C0', self.text)
 
     def test_named_register_keeps_its_name(self):
-        self.assertEqual(self.defs.get('BEDROCK_GET_SLICE'), '0x000020')
+        self.assertEqual(self.defs.get('BEDROCK_GET_SLICE'), 0x20)
 
     def test_prom_only_register_is_named_by_offset(self):
-        self.assertEqual(self.defs.get('BEDROCK_REG_000040'), '0x000040')
+        self.assertEqual(self.defs.get('BEDROCK_REG_000040'), 0x40)
 
     def test_prom_only_row_does_not_take_a_kernel_rows_name(self):
-        self.assertEqual(self.defs.get('BEDROCK_REG_800040'), '0x800040')
-        self.assertEqual(self.defs.get('BEDROCK_HUB_ERROR_INIT'), '0x800040')
+        self.assertEqual(self.defs.get('BEDROCK_REG_800040'), 0x800040)
+        self.assertEqual(self.defs.get('BEDROCK_HUB_ERROR_INIT'), None)
+        self.assertEqual(self.aliases.get('BEDROCK_HUB_ERROR_INIT'), 'BEDROCK_REG_800040')
 
 
 class SlotNaming(unittest.TestCase):
@@ -100,17 +112,16 @@ class SlotNaming(unittest.TestCase):
             site('byte_a', '0x20000', '1'), site('byte_b', '0x20001', '1'),
         ])
         write(d + 'fields.tsv', ['variant', 'register', 'kind', 'bits_or_value', 'source', 'sites'], [])
-        text = gen_headers.gen('ioc3', gen_headers.CHIPS['ioc3'])
-        self.defs = {m.group(1): m.group(2) for m in re.finditer(r'^#define\s+(\w+)\s+(0x\w+)', text, re.M)}
+        self.defs, _ = macros('ioc3')
 
     def test_four_byte_neighbours_keep_their_own_names(self):
-        self.assertEqual(self.defs.get('IOC3_FIRST_A'), '0x000000')
-        self.assertEqual(self.defs.get('IOC3_NEXT_B'), '0x000004')
-        self.assertEqual(self.defs.get('IOC3_ONLY_C'), '0x000008')
+        self.assertEqual(self.defs.get('IOC3_FIRST_A'), 0)
+        self.assertEqual(self.defs.get('IOC3_NEXT_B'), 4)
+        self.assertEqual(self.defs.get('IOC3_ONLY_C'), 8)
 
     def test_byte_registers_keep_their_own_names(self):
-        self.assertEqual(self.defs.get('IOC3_BYTE_A'), '0x020000')
-        self.assertEqual(self.defs.get('IOC3_BYTE_B'), '0x020001')
+        self.assertEqual(self.defs.get('IOC3_BYTE_A'), 0x20000)
+        self.assertEqual(self.defs.get('IOC3_BYTE_B'), 0x20001)
 
     def test_a_name_never_crosses_a_width(self):
         # a 4-byte site at the offset of an 8-byte row is not that row's accessor
@@ -121,6 +132,35 @@ class SlotNaming(unittest.TestCase):
         names.by_slot = {('', 0x10, '0'): list(names.exact)}
         got, _ = names.of_row({'space': '', 'offset': '0x10', 'idx': '0', 'widths': '8'})
         self.assertEqual(got, ['full_reader'])
+
+
+class Overlay(unittest.TestCase):
+    """A chip written as an overlay (XBridge on Bridge) loads to the unit the census gave it."""
+
+    def test_overlay_merges_to_the_full_unit(self):
+        import tomllib
+        old = os.getcwd()
+        self.addCleanup(os.chdir, old)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        os.chdir(tmp.name)
+        os.makedirs('chips/bridge/census')
+        row = lambda v, off, acc, sites: [v, off, '0', '', acc, '4', '4', sites, '1', 'ip27-kernel']
+        write('chips/bridge/census/census.tsv', ROW, [row('bridge', '0x0', 'r', '5'), row('xbridge', '0x0', 'r', '3'),
+                                                        row('xbridge', '0x170', 'r', '2')])
+        write('chips/bridge/census/census-sites.tsv', SITE, [])
+        write('chips/bridge/census/fields.tsv', ['variant', 'register', 'kind', 'bits_or_value', 'source', 'sites'], [])
+        base = tomllib.loads(gen_headers.toml_of('bridge', gen_headers.CHIPS['bridge']))
+        ov = tomllib.loads(gen_headers.overlay_of('xbridge', 'bridge'))
+        merged = loader.apply_overlay(base, ov, 'x', 'xbridge')
+        full, _ = gen_headers.gen('xbridge', gen_headers.CHIPS['xbridge'])
+        want = normalize(full)
+        got = normalize(merged)
+        self.assertEqual(got['registers'], want['registers'])
+        self.assertEqual(got['constants'], want['constants'])
+        self.assertEqual(got['prefix'], 'XBRIDGE')
+        self.assertEqual(got['c']['legacy_header'], 'include/xbridge.h')
+        self.assertEqual(list(ov['add']['registers']), ['170'])
 
 
 class BootSpace(unittest.TestCase):
@@ -178,13 +218,11 @@ class BootSpace(unittest.TestCase):
             os.replace('out-%s.tsv' % f, d + f + '.tsv')
         write(d + 'fields.tsv', ['variant', 'space', 'register', 'source', 'kind', 'bits_or_value', 'sites', 'functions', 'example'],
               [['bedrock', '', '0x78', 'load', 'mask', '0', '1', '1', 'x']])
-        text = gen_headers.gen('bedrock', gen_headers.CHIPS['bedrock'])
-        defs = {m.group(1): m.group(2) for m in re.finditer(r'^#define\s+(\w+)\s+(\S+)', text, re.M)}
-        self.assertEqual(defs.get('BEDROCK_REG_READER'), '0x000078')
-        self.assertEqual(defs.get('BEDROCK_BOOT_SPACE_BOOT_READER'), '0x000078')
-        self.assertEqual(defs.get('BEDROCK_BOOT_SPACE_BOOT_WORD'), '0x00009c')
-        self.assertEqual(defs.get('BEDROCK_OLD_NAME'), 'BEDROCK_BOOT_SPACE_BOOT_READER')
-        self.assertIn('deprecated: was a boot-space row', text)
+        defs, aliases = macros('bedrock')
+        self.assertEqual(defs.get('BEDROCK_REG_READER'), 0x78)
+        self.assertEqual(defs.get('BEDROCK_BOOT_SPACE_BOOT_READER'), 0x78)
+        self.assertEqual(defs.get('BEDROCK_BOOT_SPACE_BOOT_WORD'), 0x9c)
+        self.assertEqual(aliases.get('BEDROCK_OLD_NAME'), 'BEDROCK_BOOT_SPACE_BOOT_READER')
 
 
 if __name__ == '__main__':
