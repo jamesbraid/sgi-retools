@@ -1094,6 +1094,20 @@ class FirmwareFacts(unittest.TestCase):
         stores = [a for a in fs['accesses'] if a['kind'] == 'store' and not a['implicit']]
         self.assertEqual([a.get('absolute') for a in stores][-2:], ['0x10000004', '0x10000000'])
 
+    def test_m68k_unmodelled_instruction_writes_only_its_destination(self):
+        # movea.l #0x10000000,a0; movea.l #0x20000000,a1; swap d1; ext.l d1; neg.l (a1)+; move.l d0,(a0); move.l d0,(a1); rts
+        fs, _ = self.analyze('coldfire', '207c10000000' '227c20000000' '4841' '48c1' '4499' '2080' '2280' '4e75')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store' and not a['implicit']][-2:]
+        self.assertEqual(stores[0].get('absolute'), '0x10000000')
+        # the postincrement wrote a1 back, so its value is no longer known
+        self.assertNotIn('absolute', stores[1])
+
+    def test_m68k_unknown_instruction_still_invalidates_everything(self):
+        # movea.l #0x10000000,a0; abcd d0,d1; move.l d0,(a0); rts
+        fs, _ = self.analyze('m68k', '207c10000000' 'c300' '2080' '4e75')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store' and not a['implicit']]
+        self.assertNotIn('absolute', stores[-1])
+
     def test_m68k_tst_compares_value_with_zero(self):
         # moveq #1,d0; tst.l d0; beq +2; rts; rts
         fs, text = self.analyze('m68k', '70014a8067024e754e75')
