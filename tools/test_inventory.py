@@ -790,6 +790,7 @@ class GpLiterals(unittest.TestCase):
         self.assertEqual(u.touch, {('6.5.30/unix.IP99', 'f')})
 
 
+@unittest.skipIf(ELFFile is None, 'pyelftools is not installed')
 class PacketHeaders(unittest.TestCase):
     """A constant that fits a command-packet header form counts as a site of the register it names when it is
     stored through a buffer pointer, the data words follow it and the pointer is stepped past the packet."""
