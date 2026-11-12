@@ -550,6 +550,15 @@ def computes(text):
 # binary or the source: whatever else it says, it earns at most "located".
 UNVERIFIED = re.compile(r'\bunverified\.(\s*\|?\s*)$', re.I)
 
+# The marker a reviewer adds to an entry after checking it against its facts. A file that the config lists in
+# "review_required" credits an entry beyond located only when the entry carries this line.
+REVIEWED = re.compile(r'\bReviewed:\s*\d{4}-\d{2}-\d{2}\b')
+
+
+def review_required(cfg, rel):
+    """True when the config's review_required globs name the file at rel (a path under the repository)."""
+    return any(fnmatch.fnmatchcase(rel, g) for g in cfg.get('review_required', []))
+
 
 def classify(text, subj=frozenset(), head=None):
     """The status of one entry (see classify_read). An entry that closes with the Unverified label is graded
@@ -1018,6 +1027,7 @@ class DocIndex:
         self.order = 0
         self.entries = []                              # every prose entry, for the template cap
         self.entry_log = []                            # (file, first line, folded kind, subject, entry) of each, for lint
+        self.cfg = cfg
         d = cfg['docs']
         index = set()
         for p in d.get('index', []):
@@ -1210,6 +1220,7 @@ class DocIndex:
                         folded[fold] = 'list'
                 entries[cur].append(i)
                 entry_of[i] = cur
+        needs_review = review_required(self.cfg, rel)
         entry_obj = {}
         head_unit = {}       # the routine a folded heading's paragraph names, written on the heading line
         head = None
@@ -1251,6 +1262,9 @@ class DocIndex:
                     keys = frozenset(unit_keys(unit)) if unit else frozenset()
                     lvl, opn = (('named-only', False) if is_head
                                 else classify(etext, keys, head if is_table else None))
+                    if (needs_review and RANK[lvl] > RANK['located'] and not is_head
+                            and not REVIEWED.search(etext)):
+                        lvl, opn = 'located', False
                     dvals = data_row(etext, head, keys) if is_table and not is_head else None
                     entry_obj[e] = (Entry(etext, lvl, keys, opn, dvals is not None and len(dvals) >= MIN_DATA), keys)
                     head_unit[e] = unit if folded.get(e) == 'head' else ''

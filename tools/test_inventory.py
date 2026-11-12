@@ -515,6 +515,56 @@ class ReadingEntries(unittest.TestCase):
         self.assertFalse(any('Later prose' in t and '0x1f80' in t for t in texts))
 
 
+class ReviewCap(unittest.TestCase):
+    """A repository that lists files in review_required credits an entry in them beyond located only when the
+    entry carries a Reviewed line. Other files, and repositories with no such list, are not affected."""
+    ENTRY = ('- `swfio_mount` in `sw22_474-ip30-flame834/var/sysgen/boot/swfs.o` at 0x1f80\n'
+             '  **Inferred.** Copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The\n'
+             '  return is the constant 0xe or the mount result at 0x2084.\n')
+
+    def levels(self, files, review=None):
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root)
+        os.makedirs(os.path.join(root, 'docs', 'routines'))
+        for name, doc in files.items():
+            with open(os.path.join(root, 'docs', 'routines', name), 'w') as f:
+                f.write(doc)
+        cfg = {'docs': {'prose': ['docs/routines/*.md'], 'index': [], 'skip': []}}
+        if review is not None:
+            cfg['review_required'] = review
+        saved, inv.REPO = inv.REPO, root
+        try:
+            index = inv.DocIndex(cfg)
+        finally:
+            inv.REPO = saved
+        return [e.level for e in index.entries]
+
+    def test_the_default_list_is_empty_and_changes_nothing(self):
+        self.assertEqual(self.levels({'b.md': self.ENTRY}), ['understood'])
+        self.assertEqual(self.levels({'b.md': self.ENTRY}, review=[]), ['understood'])
+
+    def test_an_unreviewed_entry_in_a_listed_file_is_capped_at_located(self):
+        self.assertEqual(self.levels({'b.md': self.ENTRY}, review=['docs/routines/*.md']), ['located'])
+
+    def test_a_reviewed_line_in_the_entry_lifts_the_cap(self):
+        doc = self.ENTRY + '  Reviewed: 2026-11-12\n'
+        self.assertEqual(self.levels({'b.md': doc}, review=['docs/routines/*.md']), ['understood'])
+
+    def test_a_reviewed_line_needs_a_date(self):
+        doc = self.ENTRY + '  Reviewed: yes\n'
+        self.assertEqual(self.levels({'b.md': doc}, review=['docs/routines/*.md']), ['located'])
+
+    def test_the_cap_applies_per_entry_and_per_file(self):
+        two = self.ENTRY + '  Reviewed: 2026-11-12\n\n' + self.ENTRY.replace('swfio_mount', 'swfio_other')
+        got = self.levels({'t2-a.md': two, 'other.md': self.ENTRY}, review=['docs/routines/t2-*.md'])
+        self.assertEqual(sorted(got), ['located', 'understood', 'understood'])
+
+    def test_a_cap_does_not_raise_an_entry_that_is_already_below_located(self):
+        weak = '- `swfio_mount` in `sw22_474-ip30-flame834/var/sysgen/boot/swfs.o` at 0x1f80\n  It exists.\n'
+        self.assertEqual(self.levels({'b.md': weak}, review=['docs/routines/*.md']),
+                         self.levels({'b.md': weak}))
+
+
 @unittest.skipIf(ELFFile is None, 'pyelftools is not installed')
 class AddressZero(unittest.TestCase):
     """A relocatable object's first function is at address 0; that is an address, not a missing one."""

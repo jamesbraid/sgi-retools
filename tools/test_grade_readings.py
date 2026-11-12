@@ -383,7 +383,7 @@ class CheckDoc(unittest.TestCase):
     ROLE = ("Copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The return is the "
             "constant 0xe or the mount result at 0x2084.")
 
-    def lint(self, text, table=True, rows=None):
+    def lint(self, text, table=True, rows=None, review=False):
         directory = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, directory)
         doc = os.path.join(directory, "b000.md")
@@ -398,13 +398,38 @@ class CheckDoc(unittest.TestCase):
                 for binary, address, code in rows:
                     handle.write("%s\t%s\tswfio_mount\t%s\n" % (binary, address, code))
         out = io.StringIO()
-        problems = grade.check_doc(doc, path, out)
+        problems = grade.check_doc(doc, path, out, review=review)
         return problems, out.getvalue()
 
     def test_the_canonical_entry_has_no_problem(self):
         problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s\n" % (self.BINARY, self.ROLE))
         self.assertEqual(problems, 0, out)
         self.assertIn("understood=1", out)
+
+    def test_an_unreviewed_entry_is_a_note_when_the_file_requires_review(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s\n" % (self.BINARY, self.ROLE),
+                                  review=True)
+        self.assertEqual(problems, 0, out)
+        self.assertIn("located=1", out)
+        self.assertIn("no Reviewed line", out)
+
+    def test_a_reviewed_entry_is_understood_when_the_file_requires_review(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s\n  Reviewed: 2026-11-12\n"
+                                  % (self.BINARY, self.ROLE), review=True)
+        self.assertEqual(problems, 0, out)
+        self.assertIn("understood=1", out)
+
+    def test_review_is_read_from_the_workspace_config(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, directory)
+        os.makedirs(os.path.join(directory, "scripts"))
+        os.makedirs(os.path.join(directory, "docs", "routines"))
+        with open(os.path.join(directory, "scripts", "inventory-config.json"), "w") as handle:
+            handle.write('{"review_required": ["docs/routines/t2-*.md"]}')
+        self.assertTrue(grade.needs_review(os.path.join(directory, "docs", "routines", "t2-a.md"), directory))
+        self.assertFalse(grade.needs_review(os.path.join(directory, "docs", "routines", "r3.md"), directory))
+        self.assertFalse(grade.needs_review(os.path.join(directory, "docs", "routines", "t2-a.md"),
+                                            os.path.join(directory, "docs")))
 
     def test_a_heading_with_a_paragraph_has_no_problem(self):
         problems, out = self.lint("### `swfio_mount` in `%s` at 0x1f80\n\n%s\n\nGrade: inferred.\n"
