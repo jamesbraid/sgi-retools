@@ -34,3 +34,11 @@ class RepoTest(unittest.TestCase):
         text = self.read(rel)
         self.assertIn(old, text)
         self.write(rel, text.replace(old, new, 1))
+
+
+def which(*names):
+    for n in names:
+        p = shutil.which(n)
+        if p:
+            return p
+    return None

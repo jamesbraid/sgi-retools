@@ -151,6 +151,7 @@ WORD = Obj({
 }, required=("width", "grade"))
 CONSTANT = Obj({
     "value": UINT, "grade": GRADE, "from": SOURCE, "doc": TEXT, "count": Int(2), "stride": Int(1),
+    "macro": Str(r"^[A-Za-z_][A-Za-z0-9_]*$"),
 }, required=("value", "grade"))
 C_OPTIONS = Obj({
     "offset_macro": Choice("suffix", "bare"), "const_prefix": Str(RE_PREFIX.pattern),
