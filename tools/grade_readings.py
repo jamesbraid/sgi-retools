@@ -55,6 +55,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import hostfacts  # noqa: E402
 import render_reading  # noqa: E402
+import toolchain  # noqa: E402
 
 
 HEX = r"0x[0-9a-fA-F]+"
@@ -979,6 +980,11 @@ def check_facts(doc, root, inventory=None, out=None, strict=False):
             continue
         try:
             sheet = entry_sheet(root, entry, arch, size)
+        except ImportError as error:
+            # capstone or pyelftools missing from this python: every entry would come back as no facts
+            raise SystemExit("cannot render facts: %s (run this in the toolchain container: tools/re-run)" % error)
+        except toolchain.MissingTool as error:
+            raise SystemExit("cannot render facts: %s (run this in the toolchain container: tools/re-run)" % error)
         except (Exception, SystemExit):
             # facts refuses an address it cannot place with SystemExit; the rest of the document is still checked
             skipped["no facts"] += 1
