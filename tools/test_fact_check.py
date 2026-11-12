@@ -8,6 +8,8 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fact_check as fc
 
+FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fact_check_kona_fixture.json")
+
 
 def call(callee, target, args=None, tail=False):
     return {"callee": callee, "target": target, "args": args or {}, "tail": tail}
@@ -189,6 +191,93 @@ class ConditionalWording(unittest.TestCase):
         self.assertEqual(rules(["It then calls f (0x10) and resets the pointer."], guarded_call_sheet()), [])
 
 
+class AccessKind(unittest.TestCase):
+    def sheet(self):
+        return fc.FactSheet(accesses=[
+            {"address": "0x40", "kind": "store", "mn": "sw", "offset": 0xd8},
+            {"address": "0x44", "kind": "load", "mn": "lw", "offset": 0xba8},
+            {"address": "0x48", "kind": "load", "mn": "lw", "offset": 0xbb0}])
+
+    def test_a_read_of_an_offset_that_is_only_stored_is_reported(self):
+        found = fc.check_entry(["It reads the state at p +0xba8, +0xbb0 and +0xd8."], self.sheet())
+        self.assertEqual([rule for rule, _r, _s in found], ["access-kind"])
+        self.assertIn("+0xd8", found[0][1])
+
+    def test_a_read_and_a_store_each_at_their_own_offsets_are_accepted(self):
+        self.assertEqual(rules(["It reads the state at p +0xba8 and +0xbb0 and stores a word to +0xd8."], self.sheet()), [])
+
+    def test_a_store_to_an_offset_that_is_only_loaded_is_reported(self):
+        self.assertEqual(rules(["It stores two halfwords to the state at p +0xba8."], self.sheet()), ["access-kind"])
+
+    def test_a_cited_instruction_of_the_other_kind_is_reported(self):
+        self.assertEqual(rules(["It reads the flag word q (0x40)."], self.sheet()), ["access-kind"])
+        self.assertEqual(rules(["It reads q (0x44) and resets r (0x40)."], self.sheet()), [])
+
+    def test_a_list_of_addresses_that_mixes_kinds_is_not_reported(self):
+        self.assertEqual(rules(["It stores them into the client (0x40, 0x44)."], self.sheet()), [])
+
+    def test_address_arithmetic_and_negations_are_not_claims(self):
+        self.assertEqual(rules(["It writes through the pointer at a0+0xba8."], self.sheet()), [])
+        self.assertEqual(rules(["A read path with no stores: the word at +0xd8 is read."], self.sheet()), [])
+        self.assertEqual(rules(["It reads and writes the word at q (0x40, 0x44)."], self.sheet()), [])
+
+
+class Returns(unittest.TestCase):
+    def sheet(self, value="one of 0xecd6c4c, ret(gl_comm_flush)"):
+        return fc.FactSheet(returns={"0x50": value})
+
+    def test_one_value_where_the_facts_merge_a_value_and_a_call_result_is_reported(self):
+        self.assertEqual(rules(["The routine advances the pointer and returns the cursor address."], self.sheet()),
+                         ["return-value"])
+
+    def test_both_alternatives_are_accepted(self):
+        self.assertEqual(rules(["The return at 0x50 is either the pointer cell or the flush result."], self.sheet()), [])
+
+    def test_a_path_the_sentence_names_is_accepted(self):
+        self.assertEqual(rules(["It returns 5 on a failed lookup at 0x50."], self.sheet()), [])
+
+    def test_two_call_results_are_an_ordinary_tail(self):
+        self.assertEqual(rules(["It returns the cursor address."], self.sheet("one of ret(a), ret(b)")), [])
+
+    def test_a_return_that_is_a_noun_is_not_a_claim(self):
+        self.assertEqual(rules(["The beq at 0x8 checks the flag before the return at 0x50."], self.sheet()), [])
+
+
+class EnableAndDisable(unittest.TestCase):
+    def sheet(self):
+        return fc.FactSheet(calls={
+            "0x10": call("SetEnable", "0x900", {0: "0xb60", 1: "0x1"}),
+            "0x20": call("SetEnable", "0x900", {0: "0xb60", 1: "0x0"})})
+
+    def test_enables_a_value_that_is_also_disabled_is_reported(self):
+        self.assertEqual(rules(["It enables 0xb60 through SetEnable (0x900)."], self.sheet()), ["enable-only"])
+
+    def test_saying_it_also_disables_is_accepted(self):
+        self.assertEqual(rules(["It enables 0xb60 through SetEnable (0x900) and disables it elsewhere."], self.sheet()), [])
+
+    def test_the_noun_is_not_the_verb(self):
+        self.assertEqual(rules(["It drives SetEnable (0x900) with enable 0xb60."], self.sheet()), [])
+
+
+class RoleWords(unittest.TestCase):
+    sheet = fc.FactSheet(text="The `swc1` at 0x10 stores 4 bytes to ?.")
+
+    def test_a_negated_qualifier_the_facts_never_mention_is_reported(self):
+        self.assertEqual(rules(["Immediate-mode non-rational curve draw."], self.sheet), ["role-word"])
+
+    def test_ordinary_negations_are_accepted(self):
+        self.assertEqual(rules(["It returns the non-zero count of a non-maskable dump."], self.sheet), [])
+
+    def test_a_role_pinned_on_the_facts_is_reported(self):
+        self.assertEqual(rules(["The float fields suggest a colour-and-position move, which is an inference."],
+                               self.sheet), ["role-word"])
+
+    def test_a_guess_that_rests_on_the_name_or_says_so_is_accepted(self):
+        self.assertEqual(rules(["The name suggests a colour move, but the facts do not show the fields."], self.sheet), [])
+        self.assertEqual(rules(["The callee names suggest a router setup, but that rests on the names alone."],
+                               self.sheet), [])
+
+
 class Graph(unittest.TestCase):
     def test_a_call_in_the_entry_block_is_never_guarded(self):
         self.assertFalse(guarded_call_sheet().guarded("0x4"))
@@ -234,6 +323,45 @@ class RenderedFacts(unittest.TestCase):
         self.assertTrue(sheet.calls["0x30"]["tail"])
         self.assertEqual(sheet.branches["0x18"]["taken"], "a0 == 0")
         self.assertEqual(sheet.returns["0x34"], "ret(g)")
+
+
+class CorrectedKonaEntries(unittest.TestCase):
+    """The ten round 4 kona entries an audit found wrong or overclaimed, before and after they were corrected.
+    The sheets were rendered from the IGLOO32 libgl.so (fact_check.sheet_for); the text is the entries as
+    they stood before and after the correction."""
+    EXPECTED = {
+        "gl_comm_close": "conditional-wording",
+        "gl_i_rcrvn": "role-word",
+        "gl_n_patchprecision": "branch-direction",
+        "__iglooRestoreUsrMat": "access-kind",
+        "gl_depthcue": "enable-only",
+        "gl_c_depthcue": "call-order",
+        "gl_d_cmov": "role-word",
+        "gl_d_defrasterfont": "arg-slot",
+        "gl_d_gconfig": "conditional-wording",
+        "gl_d_RGBmode": "return-value",
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        with open(FIXTURE, encoding="utf-8") as handle:
+            cls.fixture = json.load(handle)
+
+    def test_the_fixture_holds_the_ten_entries(self):
+        self.assertEqual(sorted(self.fixture), sorted(self.EXPECTED))
+
+    def test_each_entry_fails_before_its_correction_for_the_reason_it_was_wrong(self):
+        for name, rule in self.EXPECTED.items():
+            with self.subTest(name):
+                sheet = fc.FactSheet.from_dict(self.fixture[name]["sheet"])
+                found = fc.check_entry(fc.sentences_of(self.fixture[name]["before"]), sheet)
+                self.assertIn(rule, [r for r, _reason, _s in found], found)
+
+    def test_each_entry_passes_after_its_correction(self):
+        for name in self.EXPECTED:
+            with self.subTest(name):
+                sheet = fc.FactSheet.from_dict(self.fixture[name]["sheet"])
+                self.assertEqual(fc.check_entry(fc.sentences_of(self.fixture[name]["after"]), sheet), [])
 
 
 if __name__ == "__main__":

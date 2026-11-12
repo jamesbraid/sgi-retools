@@ -1,0 +1,2693 @@
+{
+ "__iglooRestoreUsrMat": {
+  "address": "0xec439e0",
+  "after": [
+   "**Inferred.** Restores the saved user matrix. It reads the state at gl_wstatep +0xba8 and +0xbb0 and stores a word to +0xd8 at 0xec43b44, saves the current matrix mode through __iglooGetMatrixMode (0xecb8680), sets mode 0x1700 with __iglooMatrixMode (0xecb85d0), and reloads the matrix with __iglooGetMatrix (0xecb8e70), __iglooLoadIdentity (0xecb88c0), __iglooTranslate (0xecb8c60) and __iglooMultMatrix (0xecb8ba0). It then sets mode 0x1701 at 0xec43b00. Four floating-point compares at 0xec43a14, 0xec43a24, 0xec43a4c and 0xec43a60 choose the branches."
+  ],
+  "before": [
+   "**Inferred.** Restores the saved user matrix. It reads the state at gl_wstatep +0xba8, +0xbb0 and +0xd8, saves the current matrix mode through __iglooGetMatrixMode (0xecb8680), sets mode 0x1700 with __iglooMatrixMode (0xecb85d0), and reloads the matrix with __iglooGetMatrix (0xecb8e70), __iglooLoadIdentity (0xecb88c0), __iglooTranslate (0xecb8c60) and __iglooMultMatrix (0xecb8ba0). It then sets mode 0x1701 at 0xec43b00. Four floating-point compares at 0xec43a14, 0xec43a24, 0xec43a4c and 0xec43a60 choose the branches."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec439fc",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43a08",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": 2984
+    },
+    {
+     "address": "0xec43a18",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": 2992
+    },
+    {
+     "address": "0xec43a40",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": 2992
+    },
+    {
+     "address": "0xec43a54",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": 2984
+    },
+    {
+     "address": "0xec43a74",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0xec43ac8",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": null
+    },
+    {
+     "address": "0xec43af8",
+     "kind": "store",
+     "mn": "sdc1",
+     "offset": null
+    },
+    {
+     "address": "0xec43b0c",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": null
+    },
+    {
+     "address": "0xec43b30",
+     "kind": "store",
+     "mn": "sdc1",
+     "offset": null
+    },
+    {
+     "address": "0xec43b40",
+     "kind": "store",
+     "mn": "sw",
+     "offset": null
+    },
+    {
+     "address": "0xec43b44",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 216
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec43a14",
+     "first": 247740896,
+     "last": 247740952,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "branch": "0xec43a24",
+     "first": 247740956,
+     "last": 247740968,
+     "reached": true,
+     "succ": [
+      6,
+      2
+     ]
+    },
+    {
+     "branch": "0xec43a4c",
+     "first": 247740972,
+     "last": 247741008,
+     "reached": true,
+     "succ": [
+      7,
+      3
+     ]
+    },
+    {
+     "branch": "0xec43a60",
+     "first": 247741012,
+     "last": 247741028,
+     "reached": true,
+     "succ": [
+      8,
+      4
+     ]
+    },
+    {
+     "branch": "0xec43a7c",
+     "first": 247741032,
+     "last": 247741056,
+     "reached": true,
+     "succ": [
+      9,
+      5
+     ]
+    },
+    {
+     "first": 247741060,
+     "last": 247741060,
+     "reached": true,
+     "succ": [
+      6
+     ]
+    },
+    {
+     "first": 247741064,
+     "last": 247741080,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247741084,
+     "last": 247741176,
+     "reached": true,
+     "succ": [
+      3
+     ]
+    },
+    {
+     "first": 247741180,
+     "last": 247741232,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247741236,
+     "last": 247741264,
+     "reached": true,
+     "succ": []
+    }
+   ],
+   "branches": {
+    "0xec43a14": {
+     "fall": "f0(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a0c)",
+     "mn": "bc1f",
+     "taken": "not (f0(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a0c))",
+     "target": "0xec43a2c"
+    },
+    "0xec43a24": {
+     "fall": "not (f1(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a1c))",
+     "mn": "bc1t",
+     "taken": "f1(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a1c)",
+     "target": "0xec43a88"
+    },
+    "0xec43a4c": {
+     "fall": "f2(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a44)",
+     "mn": "bc1f",
+     "taken": "not (f2(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a44))",
+     "target": "0xec43a9c"
+    },
+    "0xec43a60": {
+     "fall": "f3(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a58)",
+     "mn": "bc1f",
+     "taken": "not (f3(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a58))",
+     "target": "0xec43afc"
+    },
+    "0xec43a7c": {
+     "fall": "at(?) != a0(=0x1)",
+     "mn": "beq",
+     "taken": "at(?) == a0(=0x1)",
+     "target": "0xec43b34"
+    }
+   },
+   "calls": {
+    "0xec43a38": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "__iglooGetMatrixMode",
+     "tail": false,
+     "target": "0xecb8680"
+    },
+    "0xec43a68": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooMatrixMode",
+     "tail": false,
+     "target": "0xecb85d0"
+    },
+    "0xec43aa4": {
+     "args": {
+      "0": "0xba6",
+      "1": "sp-112",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooGetMatrix",
+     "tail": false,
+     "target": "0xecb8e70"
+    },
+    "0xec43ab0": {
+     "args": {
+      "0": "0x1700",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooMatrixMode",
+     "tail": false,
+     "target": "0xecb85d0"
+    },
+    "0xec43abc": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooLoadIdentity",
+     "tail": false,
+     "target": "0xecb88c0"
+    },
+    "0xec43adc": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooTranslate",
+     "tail": false,
+     "target": "0xecb8c60"
+    },
+    "0xec43ae8": {
+     "args": {
+      "0": "sp-112",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooMultMatrix",
+     "tail": false,
+     "target": "0xecb8ba0"
+    },
+    "0xec43b00": {
+     "args": {
+      "0": "0x1701",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooMatrixMode",
+     "tail": false,
+     "target": "0xecb85d0"
+    },
+    "0xec43b20": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooTranslate",
+     "tail": false,
+     "target": "0xecb8c60"
+    }
+   },
+   "name": "__iglooRestoreUsrMat",
+   "returns": {
+    "0xec43a94": "?",
+    "0xec43b4c": "?"
+   },
+   "text": "- `__iglooRestoreUsrMat` in `libgl.so` at 0xec439e0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec439e0-0xec43b54 (372 bytes).\n  It occupies 372 bytes.\n  The `lw` at 0xec439fc loads 4 bytes from sym(gl_wstatep) +0x0.\n  2 such `ldc1` accesses load 8 bytes from [sym(gl_wstatep)] +0xba8, including `ldc1` at 0xec43a08, `ldc1` at 0xec43a54.\n  2 such `ldc1` accesses load 8 bytes from [sym(gl_wstatep)] +0xbb0, including `ldc1` at 0xec43a18, `ldc1` at 0xec43a40.\n  The `lw` at 0xec43a74 loads 4 bytes from ?.\n  2 such `ldc1` accesses load 8 bytes from ?, including `ldc1` at 0xec43ac8, `ldc1` at 0xec43b0c.\n  2 such `sdc1` accesses store 8 bytes to ?, including `sdc1` at 0xec43af8, `sdc1` at 0xec43b30.\n  The `sw` at 0xec43b40 stores 4 bytes to ?.\n  The `sw` at 0xec43b44 stores 4 bytes to [sym(gl_wstatep)] +0xd8.\n  The `jalr` at 0xec43a38 calls __iglooGetMatrixMode [0xecb8680] with a0=a0 at entry (arg0), a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `jalr` at 0xec43a68 calls __iglooMatrixMode [0xecb85d0] with a0=?, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43aa4 calls __iglooGetMatrix [0xecb8e70] with a0=0xba6, a1=sp-112, a2=?, a3=?.\n  The `jalr` at 0xec43ab0 calls __iglooMatrixMode [0xecb85d0] with a0=0x1700, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43abc calls __iglooLoadIdentity [0xecb88c0] with a0=?, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43adc calls __iglooTranslate [0xecb8c60] with a0=?, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43ae8 calls __iglooMultMatrix [0xecb8ba0] with a0=sp-112, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43b00 calls __iglooMatrixMode [0xecb85d0] with a0=0x1701, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43b20 calls __iglooTranslate [0xecb8c60] with a0=?, a1=?, a2=?, a3=?.\n  The `bc1f` branch at 0xec43a14 targets 0xec43a2c, is taken when not (f0(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a0c)), and falls through when f0(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a0c).\n  The `bc1t` branch at 0xec43a24 targets 0xec43a88, is taken when f1(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a1c), and falls through when not (f1(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a1c)).\n  The `bc1f` branch at 0xec43a4c targets 0xec43a9c, is taken when not (f2(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a44)), and falls through when f2(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a44).\n  The `bc1f` branch at 0xec43a60 targets 0xec43afc, is taken when not (f3(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a58)), and falls through when f3(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a58).\n  The `beq` branch at 0xec43a7c targets 0xec43b34, is taken when at(?) == a0(=0x1), and falls through when at(?) != a0(=0x1).\n  The `beq` branch at 0xec43af4 targets 0xec43a54 and is always taken.\n  The `beq` branch at 0xec43b2c targets 0xec43a64 and is always taken.\n  The return at 0xec43a94 has v0 = ?.\n  The return at 0xec43b4c has v0 = ?.\n"
+  }
+ },
+ "gl_c_depthcue": {
+  "address": "0xec43df0",
+  "after": [
+   "**Inferred.** Compile-time form with the same shape as gl_c_patchbasis at 0xec42f70, but with opcode 0x4 in place of 0x6. The beq at 0xec43e10 tests the global at 0xecdda34. When it is zero, the routine first calls gl_intrptab_insert (0xec5f9f0) at 0xec43e50 with a0 = 0xecd72c0 and its own arguments, then falls into the gl_compile call (0xecb5010) at 0xec43e2c with a stack buffer at sp-48. When it is nonzero it makes the gl_compile call alone. It returns ret(gl_compile) at 0xec43e40."
+  ],
+  "before": [
+   "**Inferred.** Compile-time form with the same shape as gl_c_patchbasis at 0xec42f70, but with opcode 0x4 in place of 0x6. It calls gl_compile (0xecb5010) with a stack buffer at sp-48, then gl_intrptab_insert (0xec5f9f0) with a0 = 0xecd72c0, gated by the global at 0xecdda34 (the beq at 0xec43e10). It returns ret(gl_compile) at 0xec43e40."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec43e10",
+     "first": 247741936,
+     "last": 247741972,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247741976,
+     "last": 247742020,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247742024,
+     "last": 247742048,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec43e10": {
+     "fall": "at(=[0xecdda34]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdda34]) == 0",
+     "target": "0xec43e48"
+    }
+   },
+   "calls": {
+    "0xec43e2c": {
+     "args": {
+      "0": "0x4",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec43e50": {
+     "args": {
+      "0": "0xecd72c0",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_depthcue",
+   "returns": {
+    "0xec43e40": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_depthcue` in `libgl.so` at 0xec43df0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec43df0-0xec43e64 (116 bytes).\n  It occupies 116 bytes.\n  The `jalr` at 0xec43e2c calls gl_compile [0xecb5010] with a0=0x4, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec43e50 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd72c0, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec43e10 targets 0xec43e48, is taken when at(=[0xecdda34]) == 0, and falls through when at(=[0xecdda34]) != 0.\n  The `beq` branch at 0xec43e5c targets 0xec43e18 and is always taken.\n  The return at 0xec43e40 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_comm_close": {
+  "address": "0xec40090",
+  "after": [
+   "**Inferred.** Closes each gfile through gl_comm_close_gfile (0xec404b0) and releases the comm buffer. It reads the error count dgl_errors (0xec40128) and, on the reporting path, prints a block of counters through gl_dgl_info (0xec4012c, 0xec40140, 0xec40150), gl_util_timer (0xec40160), __GLgl_dgl_printf and sprintf. It then calls free on comm_buffer (0xec40458) unless it is null or equals comm_staticbuff (the branches at 0xec40448 and 0xec40450), resets comm_curbufpos (0xec4047c) and comm_buffer (0xec4048c), and sets comm_endbuffer (0xec404ac) from comm_stdsize (0xec40490)."
+  ],
+  "before": [
+   "**Inferred.** Closes the comm connection and frees its buffer. It reads the error count dgl_errors (0xec40128) and, on the reporting path, prints a block of counters through gl_dgl_info (0xec4012c, 0xec40140, 0xec40150), gl_util_timer (0xec40160), __GLgl_dgl_printf and sprintf. It then frees comm_buffer (0xec40458), resets comm_curbufpos (0xec4047c) and comm_buffer (0xec4048c), and sets comm_endbuffer (0xec404ac) from comm_stdsize (0xec40490)."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec400f8",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0xec40104",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0xec40128",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec4043c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec4047c",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec4048c",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec40490",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec404ac",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "first": 247726224,
+     "last": 247726292,
+     "reached": true,
+     "succ": [
+      5
+     ]
+    },
+    {
+     "first": 247726296,
+     "last": 247726300,
+     "reached": false,
+     "succ": []
+    },
+    {
+     "first": 247726304,
+     "last": 247726312,
+     "reached": true,
+     "succ": [
+      3
+     ]
+    },
+    {
+     "first": 247726316,
+     "last": 247726316,
+     "reached": true,
+     "succ": [
+      4
+     ]
+    },
+    {
+     "branch": "0xec400f0",
+     "first": 247726320,
+     "last": 247726324,
+     "reached": true,
+     "succ": [
+      8,
+      5
+     ]
+    },
+    {
+     "branch": "0xec400fc",
+     "first": 247726328,
+     "last": 247726336,
+     "reached": true,
+     "succ": [
+      3,
+      6
+     ]
+    },
+    {
+     "branch": "0xec40108",
+     "first": 247726340,
+     "last": 247726348,
+     "reached": true,
+     "succ": [
+      2,
+      7
+     ]
+    },
+    {
+     "first": 247726352,
+     "last": 247726356,
+     "reached": true,
+     "succ": [
+      4
+     ]
+    },
+    {
+     "branch": "0xec40158",
+     "first": 247726360,
+     "last": 247726428,
+     "reached": true,
+     "succ": [
+      10,
+      9
+     ]
+    },
+    {
+     "first": 247726432,
+     "last": 247727148,
+     "reached": true,
+     "succ": [
+      10
+     ]
+    },
+    {
+     "branch": "0xec40448",
+     "first": 247727152,
+     "last": 247727180,
+     "reached": true,
+     "succ": [
+      13,
+      11
+     ]
+    },
+    {
+     "branch": "0xec40450",
+     "first": 247727184,
+     "last": 247727188,
+     "reached": true,
+     "succ": [
+      13,
+      12
+     ]
+    },
+    {
+     "first": 247727192,
+     "last": 247727196,
+     "reached": true,
+     "succ": [
+      13
+     ]
+    },
+    {
+     "first": 247727200,
+     "last": 247727276,
+     "reached": true,
+     "succ": []
+    }
+   ],
+   "branches": {
+    "0xec400f0": {
+     "fall": "s0(?) != s2(=sym(comm_gfiles)+1028)",
+     "mn": "beq",
+     "taken": "s0(?) == s2(=sym(comm_gfiles)+1028)",
+     "target": "0xec40118"
+    },
+    "0xec400fc": {
+     "fall": "a0(?) != 0",
+     "mn": "beq",
+     "taken": "a0(?) == 0",
+     "target": "0xec400ec"
+    },
+    "0xec40108": {
+     "fall": "t8(?) == s3(=0x1)",
+     "mn": "bne",
+     "taken": "t8(?) != s3(=0x1)",
+     "target": "0xec400e0"
+    },
+    "0xec40158": {
+     "fall": "v0(=ret(gl_dgl_info)) != 0",
+     "mn": "beq",
+     "taken": "v0(=ret(gl_dgl_info)) == 0",
+     "target": "0xec40430"
+    },
+    "0xec40448": {
+     "fall": "a0(=[0xecd6c44]) != a5(=sym(comm_staticbuff))",
+     "mn": "beq",
+     "taken": "a0(=[0xecd6c44]) == a5(=sym(comm_staticbuff))",
+     "target": "0xec40460"
+    },
+    "0xec40450": {
+     "fall": "a0(=[0xecd6c44]) != 0",
+     "mn": "beq",
+     "taken": "a0(=[0xecd6c44]) == 0",
+     "target": "0xec40460"
+    }
+   },
+   "calls": {
+    "0xec400e0": {
+     "args": {
+      "0": "?",
+      "1": "a0 at entry (arg0)",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_comm_close_gfile",
+     "tail": false,
+     "target": "0xec404b0"
+    },
+    "0xec4012c": {
+     "args": {
+      "0": "0x1",
+      "1": "0xecd6ed8",
+      "2": "[0xecdf604]",
+      "3": "?"
+     },
+     "callee": "gl_dgl_info",
+     "tail": false,
+     "target": "0xec83550"
+    },
+    "0xec40140": {
+     "args": {
+      "0": "0x1",
+      "1": "0xecd6ef8",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_dgl_info",
+     "tail": false,
+     "target": "0xec83550"
+    },
+    "0xec40150": {
+     "args": {
+      "0": "0x1",
+      "1": "0xecdee05",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_dgl_info",
+     "tail": false,
+     "target": "0xec83550"
+    },
+    "0xec40160": {
+     "args": {
+      "0": "0x1",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_util_timer",
+     "tail": false,
+     "target": "0xecc4790"
+    },
+    "0xec40170": {
+     "args": {
+      "0": "0xecd6f18",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec4017c": {
+     "args": {
+      "0": "0xecd6f38",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec4018c": {
+     "args": {
+      "0": "0xecd6f58",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec401bc": {
+     "args": {
+      "0": "sp-288",
+      "1": "0xecdee06",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec401e8": {
+     "args": {
+      "0": "sp-184",
+      "1": "0xecdee0b",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40204": {
+     "args": {
+      "0": "0xecd6f78",
+      "1": "[0xecdda04]",
+      "2": "sp-288",
+      "3": "[0xecdda00]",
+      "4": "sp-184"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40230": {
+     "args": {
+      "0": "sp-288",
+      "1": "0xecdee10",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec4025c": {
+     "args": {
+      "0": "sp-184",
+      "1": "0xecdee15",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40278": {
+     "args": {
+      "0": "0xecd6fa0",
+      "1": "[0xecdd9e4]",
+      "2": "sp-288",
+      "3": "[0xecdd9e0]",
+      "4": "sp-184"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec402a4": {
+     "args": {
+      "0": "sp-288",
+      "1": "0xecdee1a",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec402d0": {
+     "args": {
+      "0": "sp-184",
+      "1": "0xecdee1f",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec402ec": {
+     "args": {
+      "0": "0xecd6fc8",
+      "1": "[0xecdd9ec]",
+      "2": "sp-288",
+      "3": "[0xecdd9e8]",
+      "4": "sp-184"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40318": {
+     "args": {
+      "0": "sp-288",
+      "1": "0xecdee24",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40344": {
+     "args": {
+      "0": "sp-184",
+      "1": "0xecdee29",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40360": {
+     "args": {
+      "0": "0xecd6ff0",
+      "1": "[0xecdd9fc]",
+      "2": "sp-288",
+      "3": "[0xecdd9f8]",
+      "4": "sp-184"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec4038c": {
+     "args": {
+      "0": "sp-288",
+      "1": "0xecdee2e",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec403b8": {
+     "args": {
+      "0": "sp-184",
+      "1": "0xecdee33",
+      "2": "?",
+      "3": "[0xecdd9f0]"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec403d4": {
+     "args": {
+      "0": "0xecd7018",
+      "1": "[0xecdd9f4]",
+      "2": "sp-288",
+      "3": "[0xecdd9f0]",
+      "4": "sp-184"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40400": {
+     "args": {
+      "0": "sp-288",
+      "1": "0xecdee38",
+      "2": "?",
+      "3": "?",
+      "4": "[0xecdda08]"
+     },
+     "callee": "sprintf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40418": {
+     "args": {
+      "0": "0xecd7040",
+      "1": "[0xecdda08]",
+      "2": "sp-288",
+      "3": "?"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40428": {
+     "args": {
+      "0": "0xecd7060",
+      "1": "[0xecdda0c]",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__GLgl_dgl_printf",
+     "tail": false,
+     "target": null
+    },
+    "0xec40458": {
+     "args": {
+      "0": "[0xecd6c44]",
+      "1": "?",
+      "2": "?",
+      "3": "?",
+      "5": "sym(comm_staticbuff)"
+     },
+     "callee": "free",
+     "tail": false,
+     "target": null
+    }
+   },
+   "name": "gl_comm_close",
+   "returns": {
+    "0xec404a8": "?"
+   },
+   "text": "- `gl_comm_close` in `libgl.so` at 0xec40090 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec40090-0xec404b0 (1056 bytes).\n  It occupies 1056 bytes.\n  2 such `lw` accesses load 4 bytes from ?, including `lw` at 0xec400f8, `lw` at 0xec40104.\n  The `lw` at 0xec40128 loads 4 bytes from abs 0xecdf604 (dgl_errors).\n  The `lw` at 0xec4043c loads 4 bytes from abs 0xecd6c44 (comm_buffer).\n  The `sw` at 0xec4047c stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `sw` at 0xec4048c stores 4 bytes to abs 0xecd6c44 (comm_buffer).\n  The `lw` at 0xec40490 loads 4 bytes from abs 0xecd6c40 (comm_stdsize).\n  The `sw` at 0xec404ac stores 4 bytes to abs 0xecd6c48 (comm_endbuffer).\n  The `bgezall` at 0xec400e0 calls gl_comm_close_gfile [0xec404b0] with a0=?, a1=a0 at entry (arg0), a2=?, a3=?.\n  The `jalr` at 0xec4012c calls gl_dgl_info [0xec83550] with a0=0x1, a1=0xecd6ed8, a2=[0xecdf604], a3=?.\n  The `jalr` at 0xec40140 calls gl_dgl_info [0xec83550] with a0=0x1, a1=0xecd6ef8, a2=?, a3=?.\n  The `jalr` at 0xec40150 calls gl_dgl_info [0xec83550] with a0=0x1, a1=0xecdee05, a2=?, a3=?.\n  The `jalr` at 0xec40160 calls gl_util_timer [0xecc4790] with a0=0x1, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec40170 calls __GLgl_dgl_printf with a0=0xecd6f18, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec4017c calls __GLgl_dgl_printf with a0=0xecd6f38, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec4018c calls __GLgl_dgl_printf with a0=0xecd6f58, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec401bc calls sprintf with a0=sp-288, a1=0xecdee06, a2=?, a3=?.\n  The `jalr` at 0xec401e8 calls sprintf with a0=sp-184, a1=0xecdee0b, a2=?, a3=?.\n  The `jalr` at 0xec40204 calls __GLgl_dgl_printf with a0=0xecd6f78, a1=[0xecdda04], a2=sp-288, a3=[0xecdda00], a4=sp-184.\n  The `jalr` at 0xec40230 calls sprintf with a0=sp-288, a1=0xecdee10, a2=?, a3=?.\n  The `jalr` at 0xec4025c calls sprintf with a0=sp-184, a1=0xecdee15, a2=?, a3=?.\n  The `jalr` at 0xec40278 calls __GLgl_dgl_printf with a0=0xecd6fa0, a1=[0xecdd9e4], a2=sp-288, a3=[0xecdd9e0], a4=sp-184.\n  The `jalr` at 0xec402a4 calls sprintf with a0=sp-288, a1=0xecdee1a, a2=?, a3=?.\n  The `jalr` at 0xec402d0 calls sprintf with a0=sp-184, a1=0xecdee1f, a2=?, a3=?.\n  The `jalr` at 0xec402ec calls __GLgl_dgl_printf with a0=0xecd6fc8, a1=[0xecdd9ec], a2=sp-288, a3=[0xecdd9e8], a4=sp-184.\n  The `jalr` at 0xec40318 calls sprintf with a0=sp-288, a1=0xecdee24, a2=?, a3=?.\n  The `jalr` at 0xec40344 calls sprintf with a0=sp-184, a1=0xecdee29, a2=?, a3=?.\n  The `jalr` at 0xec40360 calls __GLgl_dgl_printf with a0=0xecd6ff0, a1=[0xecdd9fc], a2=sp-288, a3=[0xecdd9f8], a4=sp-184.\n  The `jalr` at 0xec4038c calls sprintf with a0=sp-288, a1=0xecdee2e, a2=?, a3=?.\n  The `jalr` at 0xec403b8 calls sprintf with a0=sp-184, a1=0xecdee33, a2=?, a3=[0xecdd9f0].\n  The `jalr` at 0xec403d4 calls __GLgl_dgl_printf with a0=0xecd7018, a1=[0xecdd9f4], a2=sp-288, a3=[0xecdd9f0], a4=sp-184.\n  The `jalr` at 0xec40400 calls sprintf with a0=sp-288, a1=0xecdee38, a2=?, a3=?, a4=[0xecdda08].\n  The `jalr` at 0xec40418 calls __GLgl_dgl_printf with a0=0xecd7040, a1=[0xecdda08], a2=sp-288, a3=?.\n  The `jalr` at 0xec40428 calls __GLgl_dgl_printf with a0=0xecd7060, a1=[0xecdda0c], a2=?, a3=?.\n  The `jalr` at 0xec40458 calls free with a0=[0xecd6c44], a1=?, a2=?, a3=?, a5=sym(comm_staticbuff).\n  The `beq` branch at 0xec400d0 targets 0xec400f8 and is always taken.\n  The `beq` branch at 0xec400f0 targets 0xec40118, is taken when s0(?) == s2(=sym(comm_gfiles)+1028), and falls through when s0(?) != s2(=sym(comm_gfiles)+1028).\n  The `beq` branch at 0xec400fc targets 0xec400ec, is taken when a0(?) == 0, and falls through when a0(?) != 0.\n  The `bne` branch at 0xec40108 targets 0xec400e0, is taken when t8(?) != s3(=0x1), and falls through when t8(?) == s3(=0x1).\n  The `beq` branch at 0xec40110 targets 0xec400f0 and is always taken.\n  The `beq` branch at 0xec40158 targets 0xec40430, is taken when v0(=ret(gl_dgl_info)) == 0, and falls through when v0(=ret(gl_dgl_info)) != 0.\n  The `beq` branch at 0xec40448 targets 0xec40460, is taken when a0(=[0xecd6c44]) == a5(=sym(comm_staticbuff)), and falls through when a0(=[0xecd6c44]) != a5(=sym(comm_staticbuff)).\n  The `beq` branch at 0xec40450 targets 0xec40460, is taken when a0(=[0xecd6c44]) == 0, and falls through when a0(=[0xecd6c44]) != 0.\n  The return at 0xec404a8 has v0 = ?.\n  The instructions from 0xec400d8 to 0xec400dc are not reached by any path from the entry, and their branches are not listed.\n"
+  }
+ },
+ "gl_d_RGBmode": {
+  "address": "0xec49130",
+  "after": [
+   "**Inferred.** Appends a 4-byte record: a single word stored at the cursor. The room test at 0xec49164 compares comm_endbuffer with cursor+4, and the short-room path calls gl_comm_flush at 0xec40750 with the constant 0x84 as a0. The routine advances comm_curbufpos at 0xec49168. The return at 0xec49170 is either 0xecd6c4c, the address of the comm_curbufpos variable, or the gl_comm_flush result, depending on the room test."
+  ],
+  "before": [
+   "**Inferred.** Appends a 4-byte record: a single word stored at the cursor. The room test at 0xec49164 compares comm_endbuffer with cursor+4, and the short-room path calls gl_comm_flush at 0xec40750 with the constant 0x84 as a0. The routine advances comm_curbufpos and returns the cursor address."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec49148",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec49154",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec49158",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec49168",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec49164",
+     "first": 247763248,
+     "last": 247763304,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247763308,
+     "last": 247763316,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247763320,
+     "last": 247763340,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec49164": {
+     "fall": "v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+4) (unsigned)",
+     "mn": "bne",
+     "taken": "v1(=[0xecd6c48]) < at(=[0xecd6c4c]+4) (unsigned)",
+     "target": "0xec49178"
+    }
+   },
+   "calls": {
+    "0xec49180": {
+     "args": {
+      "0": "0x84",
+      "1": "0x99a40",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    }
+   },
+   "name": "gl_d_RGBmode",
+   "returns": {
+    "0xec49170": "one of 0xecd6c4c, ret(gl_comm_flush)"
+   },
+   "text": "- `gl_d_RGBmode` in `libgl.so` at 0xec49130 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec49130-0xec49190 (96 bytes).\n  It occupies 96 bytes.\n  The `lw` at 0xec49148 loads 4 bytes from abs 0xecd6c4c (comm_curbufpos).\n  The `sw` at 0xec49154 stores 4 bytes to [0xecd6c4c] +0x0.\n  The `lw` at 0xec49158 loads 4 bytes from abs 0xecd6c48 (comm_endbuffer).\n  The `sw` at 0xec49168 stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `jalr` at 0xec49180 calls gl_comm_flush [0xec40750] with a0=0x84, a1=0x99a40, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `bne` branch at 0xec49164 targets 0xec49178, is taken when v1(=[0xecd6c48]) < at(=[0xecd6c4c]+4) (unsigned), and falls through when v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+4) (unsigned).\n  The `beq` branch at 0xec49188 targets 0xec4916c and is always taken.\n  The return at 0xec49170 has v0 = one of 0xecd6c4c, ret(gl_comm_flush).\n"
+  }
+ },
+ "gl_d_cmov": {
+  "address": "0xec45660",
+  "after": [
+   "**Inferred.** Builds a 16-byte record at `comm_curbufpos`: three single-precision stores (`swc1`) at +0x4, +0x8 and +0xc and one integer store at +0x0 (0xec45680 to 0xec45690). It advances the pointer by 16 and tests it against `comm_endbuffer` at 0xec456a0; the full-buffer path calls `gl_comm_flush` at 0xec456bc with the constant 0x17. The facts show three float fields but not what they mean."
+  ],
+  "before": [
+   "**Inferred.** Builds a 16-byte record at `comm_curbufpos`: three single-precision stores (`swc1`) at +0x4, +0x8 and +0xc and one integer store at +0x0 (0xec45680 to 0xec45690). It advances the pointer by 16 and tests it against `comm_endbuffer` at 0xec456a0; the full-buffer path calls `gl_comm_flush` at 0xec456bc with the constant 0x17. The float fields suggest a colour-and-position move, which is an inference from the `swc1` stores."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec45678",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45680",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": 12
+    },
+    {
+     "address": "0xec45684",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": 8
+    },
+    {
+     "address": "0xec45688",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": 4
+    },
+    {
+     "address": "0xec45690",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45694",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec456a4",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec456a0",
+     "first": 247748192,
+     "last": 247748260,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247748264,
+     "last": 247748272,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247748276,
+     "last": 247748296,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec456a0": {
+     "fall": "v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+16) (unsigned)",
+     "mn": "bne",
+     "taken": "v1(=[0xecd6c48]) < at(=[0xecd6c4c]+16) (unsigned)",
+     "target": "0xec456b4"
+    }
+   },
+   "calls": {
+    "0xec456bc": {
+     "args": {
+      "0": "0x17",
+      "1": "0x9d510",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    }
+   },
+   "name": "gl_d_cmov",
+   "returns": {
+    "0xec456ac": "one of 0xecd6c4c, ret(gl_comm_flush)"
+   },
+   "text": "- `gl_d_cmov` in `libgl.so` at 0xec45660 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec45660-0xec456cc (108 bytes).\n  It occupies 108 bytes.\n  The `lw` at 0xec45678 loads 4 bytes from abs 0xecd6c4c (comm_curbufpos).\n  The `swc1` at 0xec45680 stores 4 bytes to [0xecd6c4c] +0xc.\n  The `swc1` at 0xec45684 stores 4 bytes to [0xecd6c4c] +0x8.\n  The `swc1` at 0xec45688 stores 4 bytes to [0xecd6c4c] +0x4.\n  The `sw` at 0xec45690 stores 4 bytes to [0xecd6c4c] +0x0.\n  The `lw` at 0xec45694 loads 4 bytes from abs 0xecd6c48 (comm_endbuffer).\n  The `sw` at 0xec456a4 stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `bgezall` at 0xec456bc calls gl_comm_flush [0xec40750] with a0=0x17, a1=0x9d510, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `bne` branch at 0xec456a0 targets 0xec456b4, is taken when v1(=[0xecd6c48]) < at(=[0xecd6c4c]+16) (unsigned), and falls through when v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+16) (unsigned).\n  The `beq` branch at 0xec456c4 targets 0xec456a8 and is always taken.\n  The return at 0xec456ac has v0 = one of 0xecd6c4c, ret(gl_comm_flush).\n"
+  }
+ },
+ "gl_d_defrasterfont": {
+  "address": "0xec45b50",
+  "after": [
+   "**Inferred.** Writes a 16-byte header at `comm_curbufpos`: a word at +0x0 and +0xc and halfwords at +0x4, +0x6 and +0x8 (0xec45bb0 to 0xec45bd4). It then packs two blocks with `gl_mem_pack_array`, at 0xec45c60 (element table 0xec7ef90) and 0xec45c90 (element table 0xec7e410), each with the constant 0xb4 as its fifth argument (a4) and an entry argument register (a3 and a5 respectively) as its second. The facts do not show what that second argument is. The full-buffer test is at 0xec45ba8 against 180 bytes past the pointer, and the final flush at 0xec45cb4 passes the table 0x9d020. The layout looks like a font header followed by two glyph tables, which is an inference."
+  ],
+  "before": [
+   "**Inferred.** Writes a 16-byte header at `comm_curbufpos`: a word at +0x0 and +0xc and halfwords at +0x4, +0x6 and +0x8 (0xec45bb0 to 0xec45bd4). It then packs two blocks with `gl_mem_pack_array`, at 0xec45c60 (element table 0xec7ef90) and 0xec45c90 (element table 0xec7e410), each with the constant 0xb4 as its fourth argument and a count taken from an entry argument register. The full-buffer test is at 0xec45ba8 against 180 bytes past the pointer, and the final flush at 0xec45cb4 passes the table 0x9d020. The layout looks like a font header followed by two glyph tables, which is an inference."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec45b78",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45b7c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45bb0",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 6
+    },
+    {
+     "address": "0xec45bb8",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45bc0",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 4
+    },
+    {
+     "address": "0xec45bcc",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 8
+    },
+    {
+     "address": "0xec45bd4",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 12
+    },
+    {
+     "address": "0xec45bf4",
+     "kind": "store",
+     "mn": "sh",
+     "offset": null
+    },
+    {
+     "address": "0xec45c04",
+     "kind": "store",
+     "mn": "sw",
+     "offset": null
+    },
+    {
+     "address": "0xec45c1c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45c20",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45c30",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45c38",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45cd0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec45ba8",
+     "first": 247749456,
+     "last": 247749548,
+     "reached": true,
+     "succ": [
+      10,
+      1
+     ]
+    },
+    {
+     "branch": "0xec45bd8",
+     "first": 247749552,
+     "last": 247749596,
+     "reached": true,
+     "succ": [
+      8,
+      2
+     ]
+    },
+    {
+     "first": 247749600,
+     "last": 247749608,
+     "reached": true,
+     "succ": [
+      3
+     ]
+    },
+    {
+     "branch": "0xec45c00",
+     "first": 247749612,
+     "last": 247749636,
+     "reached": true,
+     "succ": [
+      9,
+      4
+     ]
+    },
+    {
+     "first": 247749640,
+     "last": 247749648,
+     "reached": true,
+     "succ": [
+      5
+     ]
+    },
+    {
+     "branch": "0xec45c34",
+     "first": 247749652,
+     "last": 247749688,
+     "reached": true,
+     "succ": [
+      11,
+      6
+     ]
+    },
+    {
+     "first": 247749692,
+     "last": 247749692,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    },
+    {
+     "first": 247749696,
+     "last": 247749704,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247749708,
+     "last": 247749756,
+     "reached": true,
+     "succ": [
+      3
+     ]
+    },
+    {
+     "first": 247749760,
+     "last": 247749800,
+     "reached": true,
+     "succ": [
+      5
+     ]
+    },
+    {
+     "first": 247749804,
+     "last": 247749840,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    },
+    {
+     "first": 247749844,
+     "last": 247749860,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    }
+   ],
+   "branches": {
+    "0xec45ba8": {
+     "fall": "at(=[0xecd6c48]) >= v0(=[0xecd6c4c]+180) (unsigned)",
+     "mn": "bne",
+     "taken": "at(=[0xecd6c48]) < v0(=[0xecd6c4c]+180) (unsigned)",
+     "target": "0xec45cac"
+    },
+    "0xec45bd8": {
+     "fall": "s1(=a3) == 0",
+     "mn": "bne",
+     "taken": "s1(=a3) != 0",
+     "target": "0xec45c4c"
+    },
+    "0xec45c00": {
+     "fall": "s0(=a5) == 0",
+     "mn": "bne",
+     "taken": "s0(=a5) != 0",
+     "target": "0xec45c80"
+    },
+    "0xec45c34": {
+     "fall": "t0(=([0xecd6c40] + [0xecd6c44])-24) >= a7(?) (unsigned)",
+     "mn": "bne",
+     "taken": "t0(=([0xecd6c40] + [0xecd6c44])-24) < a7(?) (unsigned)",
+     "target": "0xec45cd4"
+    }
+   },
+   "calls": {
+    "0xec45c60": {
+     "args": {
+      "0": "[0xecd6c4c]+16",
+      "1": "a3 at entry (arg3)",
+      "2": "?",
+      "3": "0xec7ef90",
+      "4": "0xb4"
+     },
+     "callee": "gl_mem_pack_array",
+     "tail": false,
+     "target": "0xec7d9b0"
+    },
+    "0xec45c90": {
+     "args": {
+      "0": "?",
+      "1": "a5 at entry (arg5)",
+      "2": "?",
+      "3": "0xec7e410",
+      "4": "0xb4"
+     },
+     "callee": "gl_mem_pack_array",
+     "tail": false,
+     "target": "0xec7d9b0"
+    },
+    "0xec45cb4": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)",
+      "6": "0x9d020"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    },
+    "0xec45cd8": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    }
+   },
+   "name": "gl_d_defrasterfont",
+   "returns": {
+    "0xec45c44": "one of ?, ret(gl_comm_flush)"
+   },
+   "text": "- `gl_d_defrasterfont` in `libgl.so` at 0xec45b50 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec45b50-0xec45ce8 (408 bytes).\n  It occupies 408 bytes.\n  2 such `lw` accesses load 4 bytes from abs 0xecd6c4c (comm_curbufpos), including `lw` at 0xec45b78, `lw` at 0xec45cd0.\n  The `lw` at 0xec45b7c loads 4 bytes from abs 0xecd6c48 (comm_endbuffer).\n  The `sh` at 0xec45bb0 stores 2 bytes to [0xecd6c4c] +0x6.\n  The `sw` at 0xec45bb8 stores 4 bytes to [0xecd6c4c] +0x0.\n  The `sh` at 0xec45bc0 stores 2 bytes to [0xecd6c4c] +0x4.\n  The `sh` at 0xec45bcc stores 2 bytes to [0xecd6c4c] +0x8.\n  The `sw` at 0xec45bd4 stores 4 bytes to [0xecd6c4c] +0xc.\n  The `sh` at 0xec45bf4 stores 2 bytes to ?.\n  The `sw` at 0xec45c04 stores 4 bytes to ?.\n  The `lw` at 0xec45c1c loads 4 bytes from abs 0xecd6c44 (comm_buffer).\n  The `lw` at 0xec45c20 loads 4 bytes from abs 0xecd6c40 (comm_stdsize).\n  The `sw` at 0xec45c30 stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `sw` at 0xec45c38 stores 4 bytes to abs 0xecd6c48 (comm_endbuffer).\n  The `jalr` at 0xec45c60 calls gl_mem_pack_array [0xec7d9b0] with a0=[0xecd6c4c]+16, a1=a3 at entry (arg3), a2=?, a3=0xec7ef90, a4=0xb4.\n  The `jalr` at 0xec45c90 calls gl_mem_pack_array [0xec7d9b0] with a0=?, a1=a5 at entry (arg5), a2=?, a3=0xec7e410, a4=0xb4.\n  The `bgezall` at 0xec45cb4 calls gl_comm_flush [0xec40750] with a0=a0 at entry (arg0), a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3), a6=0x9d020.\n  The `bgezall` at 0xec45cd8 calls gl_comm_flush [0xec40750] with a0=?, a1=?, a2=?, a3=?.\n  The `bne` branch at 0xec45ba8 targets 0xec45cac, is taken when at(=[0xecd6c48]) < v0(=[0xecd6c4c]+180) (unsigned), and falls through when at(=[0xecd6c48]) >= v0(=[0xecd6c4c]+180) (unsigned).\n  The `bne` branch at 0xec45bd8 targets 0xec45c4c, is taken when s1(=a3) != 0, and falls through when s1(=a3) == 0.\n  The `bne` branch at 0xec45c00 targets 0xec45c80, is taken when s0(=a5) != 0, and falls through when s0(=a5) == 0.\n  The `bne` branch at 0xec45c34 targets 0xec45cd4, is taken when t0(=([0xecd6c40] + [0xecd6c44])-24) < a7(?) (unsigned), and falls through when t0(=([0xecd6c40] + [0xecd6c44])-24) >= a7(?) (unsigned).\n  The `beq` branch at 0xec45c78 targets 0xec45bec and is always taken.\n  The `beq` branch at 0xec45ca4 targets 0xec45c14 and is always taken.\n  The `beq` branch at 0xec45ccc targets 0xec45bb0 and is always taken.\n  The `beq` branch at 0xec45ce0 targets 0xec45c40 and is always taken.\n  The return at 0xec45c44 has v0 = one of ?, ret(gl_comm_flush).\n"
+  }
+ },
+ "gl_d_gconfig": {
+  "address": "0xec46260",
+  "after": [
+   "**Inferred.** Writes a record into the comm buffer, using the write pointer comm_curbufpos (0xecd6c4c) and the end pointer comm_endbuffer (0xecd6c48). It stores one word through the write pointer at 0xec46284 and advances the pointer at 0xec46298 before the room test, so both happen on every path. The bne at 0xec46294 is taken when comm_endbuffer is below the advanced pointer, and that path calls gl_comm_flush at 0xec40750 with a0=0x2e and a1=0x9c910. The name suggests a configuration query, and the 0x2e code is inferred from the flush call shape."
+  ],
+  "before": [
+   "**Inferred.** Writes a record into the comm buffer, using the write pointer comm_curbufpos (0xecd6c4c) and the end pointer comm_endbuffer (0xecd6c48). When fewer than four bytes remain (the bne at 0xec46294), it calls gl_comm_flush at 0xec40750 with a0=0x2e and a1=0x9c910; otherwise it stores through the write pointer and advances it at 0xec46298. The name suggests a configuration query, and the 0x2e code is inferred from the flush call shape."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec46278",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46284",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46288",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46298",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec46294",
+     "first": 247751264,
+     "last": 247751320,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247751324,
+     "last": 247751332,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247751336,
+     "last": 247751356,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec46294": {
+     "fall": "v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+4) (unsigned)",
+     "mn": "bne",
+     "taken": "v1(=[0xecd6c48]) < at(=[0xecd6c4c]+4) (unsigned)",
+     "target": "0xec462a8"
+    }
+   },
+   "calls": {
+    "0xec462b0": {
+     "args": {
+      "0": "0x2e",
+      "1": "0x9c910",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    }
+   },
+   "name": "gl_d_gconfig",
+   "returns": {
+    "0xec462a0": "one of 0xecd6c4c, ret(gl_comm_flush)"
+   },
+   "text": "- `gl_d_gconfig` in `libgl.so` at 0xec46260 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec46260-0xec462c0 (96 bytes).\n  It occupies 96 bytes.\n  The `lw` at 0xec46278 loads 4 bytes from abs 0xecd6c4c (comm_curbufpos).\n  The `sw` at 0xec46284 stores 4 bytes to [0xecd6c4c] +0x0.\n  The `lw` at 0xec46288 loads 4 bytes from abs 0xecd6c48 (comm_endbuffer).\n  The `sw` at 0xec46298 stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `bgezall` at 0xec462b0 calls gl_comm_flush [0xec40750] with a0=0x2e, a1=0x9c910, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `bne` branch at 0xec46294 targets 0xec462a8, is taken when v1(=[0xecd6c48]) < at(=[0xecd6c4c]+4) (unsigned), and falls through when v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+4) (unsigned).\n  The `beq` branch at 0xec462b8 targets 0xec4629c and is always taken.\n  The return at 0xec462a0 has v0 = one of 0xecd6c4c, ret(gl_comm_flush).\n"
+  }
+ },
+ "gl_depthcue": {
+  "address": "0xec43b60",
+  "after": [
+   "**Inferred.** Switches between depth-cue fog and a normal state, going by the callees. It calls __iglooSetEnable (0xec5cb70) with 0xb60 and a1 of 1 at 0xec43bc4 and of 0 at 0xec43c58, and calls glFogi with 0xb65 and 0x2601, glFogfv with 0xb66, and glFogf with 0xb61. It sets the color-index path with glIndexf and selects the depth-cue color procedures through __iglooSetColorProcsToDepthCue (0xec3e6d0). The branches on gl_wstatep +2904 (0xec43b88) and on the flag at 0xece8bf8 (gl_iglooGouraudCIDepthCue) select the variant."
+  ],
+  "before": [
+   "**Inferred.** Sets up depth-cue fog. It enables 0xb60 through __iglooSetEnable (0xec5cb70) and calls glFogi with 0xb65 and 0x2601, glFogfv with 0xb66, and glFogf with 0xb61. It sets the color-index path with glIndexf and selects the depth-cue color procedures through __iglooSetColorProcsToDepthCue (0xec3e6d0). The branches on gl_wstatep +2904 (0xec43b88) and on the flag at 0xece8bf8 (gl_iglooGouraudCIDepthCue) select the variant."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec43b80",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43b84",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 2904
+    },
+    {
+     "address": "0xec43bb0",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 2904
+    },
+    {
+     "address": "0xec43be0",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 2908
+    },
+    {
+     "address": "0xec43be8",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 216
+    },
+    {
+     "address": "0xec43bec",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43bf0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 20
+    },
+    {
+     "address": "0xec43bf4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 16
+    },
+    {
+     "address": "0xec43c2c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 3076
+    },
+    {
+     "address": "0xec43c78",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 2908
+    },
+    {
+     "address": "0xec43c88",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": 3000
+    },
+    {
+     "address": "0xec43c94",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12112
+    },
+    {
+     "address": "0xec43cb4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43cc0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43cc4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 20
+    },
+    {
+     "address": "0xec43cc8",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 16
+    },
+    {
+     "address": "0xec43cd4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 3076
+    },
+    {
+     "address": "0xec43cfc",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": 3000
+    },
+    {
+     "address": "0xec43d08",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12112
+    },
+    {
+     "address": "0xec43d20",
+     "kind": "load",
+     "mn": "lhu",
+     "offset": 2944
+    },
+    {
+     "address": "0xec43d24",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": 3000
+    },
+    {
+     "address": "0xec43d28",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12112
+    },
+    {
+     "address": "0xec43d40",
+     "kind": "load",
+     "mn": "lhu",
+     "offset": 2946
+    },
+    {
+     "address": "0xec43d5c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43d78",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 276
+    },
+    {
+     "address": "0xec43d7c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 20
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec43b88",
+     "first": 247741280,
+     "last": 247741324,
+     "reached": true,
+     "succ": [
+      4,
+      1
+     ]
+    },
+    {
+     "branch": "0xec43b94",
+     "first": 247741328,
+     "last": 247741336,
+     "reached": true,
+     "succ": [
+      4,
+      2
+     ]
+    },
+    {
+     "first": 247741340,
+     "last": 247741340,
+     "reached": true,
+     "succ": [
+      3
+     ]
+    },
+    {
+     "first": 247741344,
+     "last": 247741356,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "branch": "0xec43bb4",
+     "first": 247741360,
+     "last": 247741368,
+     "reached": true,
+     "succ": [
+      10,
+      5
+     ]
+    },
+    {
+     "branch": "0xec43bf8",
+     "first": 247741372,
+     "last": 247741436,
+     "reached": true,
+     "succ": [
+      14,
+      6
+     ]
+    },
+    {
+     "first": 247741440,
+     "last": 247741464,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    },
+    {
+     "first": 247741468,
+     "last": 247741468,
+     "reached": true,
+     "succ": [
+      8
+     ]
+    },
+    {
+     "branch": "0xec43c30",
+     "first": 247741472,
+     "last": 247741492,
+     "reached": true,
+     "succ": [
+      3,
+      9
+     ]
+    },
+    {
+     "first": 247741496,
+     "last": 247741516,
+     "reached": true,
+     "succ": [
+      2
+     ]
+    },
+    {
+     "branch": "0xec43cb8",
+     "first": 247741520,
+     "last": 247741628,
+     "reached": true,
+     "succ": [
+      12,
+      11
+     ]
+    },
+    {
+     "branch": "0xec43ccc",
+     "first": 247741632,
+     "last": 247741648,
+     "reached": true,
+     "succ": [
+      16,
+      12
+     ]
+    },
+    {
+     "branch": "0xec43cd8",
+     "first": 247741652,
+     "last": 247741660,
+     "reached": true,
+     "succ": [
+      2,
+      13
+     ]
+    },
+    {
+     "first": 247741664,
+     "last": 247741676,
+     "reached": true,
+     "succ": [
+      2
+     ]
+    },
+    {
+     "branch": "0xec43d60",
+     "first": 247741680,
+     "last": 247741796,
+     "reached": true,
+     "succ": [
+      7,
+      15
+     ]
+    },
+    {
+     "first": 247741800,
+     "last": 247741812,
+     "reached": true,
+     "succ": [
+      8
+     ]
+    },
+    {
+     "branch": "0xec43d80",
+     "first": 247741816,
+     "last": 247741828,
+     "reached": true,
+     "succ": [
+      12,
+      17
+     ]
+    },
+    {
+     "first": 247741832,
+     "last": 247741844,
+     "reached": true,
+     "succ": [
+      12
+     ]
+    }
+   ],
+   "branches": {
+    "0xec43b88": {
+     "fall": "at(=[[sym(gl_wstatep)]+2904]) == a0",
+     "mn": "bne",
+     "taken": "at(=[[sym(gl_wstatep)]+2904]) != a0",
+     "target": "0xec43bb0"
+    },
+    "0xec43b94": {
+     "fall": "a1 != t8(=0x1)",
+     "mn": "beq",
+     "taken": "a1 == t8(=0x1)",
+     "target": "0xec43bb0"
+    },
+    "0xec43bb4": {
+     "fall": "a0 != 0",
+     "mn": "beq",
+     "taken": "a0 == 0",
+     "target": "0xec43c50"
+    },
+    "0xec43bf8": {
+     "fall": "t9(=[[[0x1004]+20]+16]) != 0",
+     "mn": "beq",
+     "taken": "t9(=[[[0x1004]+20]+16]) == 0",
+     "target": "0xec43cf0"
+    },
+    "0xec43c30": {
+     "fall": "v0(=[[sym(gl_wstatep)]+3076]) != 0",
+     "mn": "beq",
+     "taken": "v0(=[[sym(gl_wstatep)]+3076]) == 0",
+     "target": "0xec43ba0"
+    },
+    "0xec43cb8": {
+     "fall": "a0(=[0xece8bf8]) != 0",
+     "mn": "beq",
+     "taken": "a0(=[0xece8bf8]) == 0",
+     "target": "0xec43cd4"
+    },
+    "0xec43ccc": {
+     "fall": "a1(=[[[0x1004]+20]+16]) != 0",
+     "mn": "beq",
+     "taken": "a1(=[[[0x1004]+20]+16]) == 0",
+     "target": "0xec43d78"
+    },
+    "0xec43cd8": {
+     "fall": "a2(=[[sym(gl_wstatep)]+3076]) != 0",
+     "mn": "beq",
+     "taken": "a2(=[[sym(gl_wstatep)]+3076]) == 0",
+     "target": "0xec43b9c"
+    },
+    "0xec43d60": {
+     "fall": "a7(=[0xece8bf8]) != 0",
+     "mn": "beq",
+     "taken": "a7(=[0xece8bf8]) == 0",
+     "target": "0xec43c1c"
+    },
+    "0xec43d80": {
+     "fall": "t0(=[[[sym(gl_wstatep)]+276]+20]) == 0",
+     "mn": "bne",
+     "taken": "t0(=[[[sym(gl_wstatep)]+276]+20]) != 0",
+     "target": "0xec43cd4"
+    }
+   },
+   "calls": {
+    "0xec43bc4": {
+     "args": {
+      "0": "0xb60",
+      "1": "0x1",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec43bd4": {
+     "args": {
+      "0": "0xb65",
+      "1": "0x2601",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glFogi",
+     "tail": false,
+     "target": null
+    },
+    "0xec43c04": {
+     "args": {
+      "0": "[sym(gl_wstatep)]+2912",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glColor4fv",
+     "tail": false,
+     "target": null
+    },
+    "0xec43c14": {
+     "args": {
+      "0": "0xb66",
+      "1": "[sym(gl_wstatep)]+2928",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glFogfv",
+     "tail": false,
+     "target": null
+    },
+    "0xec43c20": {
+     "args": {
+      "0": "[sym(gl_wstatep)]",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSetColorProcsToDepthCue",
+     "tail": false,
+     "target": "0xec3e6d0"
+    },
+    "0xec43c40": {
+     "args": {
+      "0": "0xb50",
+      "1": "0x0",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec43c58": {
+     "args": {
+      "0": "0xb60",
+      "1": "0x0",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec43c64": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooRestoreUsrMat",
+     "tail": false,
+     "target": "0xec439e0"
+    },
+    "0xec43c74": {
+     "args": {
+      "0": "[sym(gl_wstatep)]",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSyncLmcolor",
+     "tail": false,
+     "target": "0xec3f130"
+    },
+    "0xec43c80": {
+     "args": {
+      "0": "[sym(gl_wstatep)]+3120",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glColor4fv",
+     "tail": false,
+     "target": null
+    },
+    "0xec43ca8": {
+     "args": {
+      "0": "[[sym(gl_wstatep)]+12112]",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glIndexf",
+     "tail": false,
+     "target": null
+    },
+    "0xec43ce0": {
+     "args": {
+      "0": "[sym(gl_wstatep)]",
+      "1": "?",
+      "2": "[[sym(gl_wstatep)]+3076]",
+      "3": "?"
+     },
+     "callee": "__iglooOglLightingOn",
+     "tail": false,
+     "target": "0xec7b830"
+    },
+    "0xec43cf4": {
+     "args": {
+      "0": "0xb01",
+      "1": "[sym(gl_wstatep)]+3000",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooGetFloatv",
+     "tail": false,
+     "target": "0xecb7ff0"
+    },
+    "0xec43d38": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?",
+      "4": "[[sym(gl_wstatep)]+12112]",
+      "6": "[[sym(gl_wstatep)]+12112]"
+     },
+     "callee": "glIndexf",
+     "tail": false,
+     "target": null
+    },
+    "0xec43d50": {
+     "args": {
+      "0": "0xb61",
+      "1": "?",
+      "2": "?",
+      "3": "?",
+      "6": "[[sym(gl_wstatep)]+2946]:2"
+     },
+     "callee": "glFogf",
+     "tail": false,
+     "target": null
+    },
+    "0xec43d68": {
+     "args": {
+      "0": "0x1d01",
+      "1": "?",
+      "2": "?",
+      "3": "?",
+      "7": "[0xece8bf8]"
+     },
+     "callee": "__iglooShadeModel",
+     "tail": false,
+     "target": "0xecb7a10"
+    },
+    "0xec43d88": {
+     "args": {
+      "0": "0x1d00",
+      "1": "[[[0x1004]+20]+16]",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooShadeModel",
+     "tail": false,
+     "target": "0xecb7a10"
+    }
+   },
+   "name": "gl_depthcue",
+   "returns": {
+    "0xec43ba8": "one of ?, [[sym(gl_wstatep)]+3076]"
+   },
+   "text": "- `gl_depthcue` in `libgl.so` at 0xec43b60 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec43b60-0xec43d98 (568 bytes).\n  It occupies 568 bytes.\n  The `lw` at 0xec43b80 loads 4 bytes from sym(gl_wstatep) +0x0.\n  The `lw` at 0xec43b84 loads 4 bytes from [sym(gl_wstatep)] +0xb58.\n  The `sw` at 0xec43bb0 stores 4 bytes to [sym(gl_wstatep)] +0xb58.\n  2 such `sw` accesses store 4 bytes to [sym(gl_wstatep)] +0xb5c, including `sw` at 0xec43be0, `sw` at 0xec43c78.\n  The `sw` at 0xec43be8 stores 4 bytes to [sym(gl_wstatep)] +0xd8.\n  2 such `lw` accesses load 4 bytes from abs 0x1004, including `lw` at 0xec43bec, `lw` at 0xec43cc0.\n  2 such `lw` accesses load 4 bytes from [0x1004] +0x14, including `lw` at 0xec43bf0, `lw` at 0xec43cc4.\n  2 such `lw` accesses load 4 bytes from [[0x1004]+20] +0x10, including `lw` at 0xec43bf4, `lw` at 0xec43cc8.\n  2 such `lw` accesses load 4 bytes from [sym(gl_wstatep)] +0xc04, including `lw` at 0xec43c2c, `lw` at 0xec43cd4.\n  2 such `lwc1` accesses load 4 bytes from [sym(gl_wstatep)] +0xbb8, including `lwc1` at 0xec43c88, `lwc1` at 0xec43cfc.\n  3 such `lw` accesses load 4 bytes from [sym(gl_wstatep)] +0x2f50, including `lw` at 0xec43c94, `lw` at 0xec43d08, `lw` at 0xec43d28.\n  2 such `lw` accesses load 4 bytes from abs 0xece8bf8 (gl_iglooGouraudCIDepthCue), including `lw` at 0xec43cb4, `lw` at 0xec43d5c.\n  The `lhu` at 0xec43d20 loads 2 bytes from [sym(gl_wstatep)] +0xb80.\n  The `swc1` at 0xec43d24 stores 4 bytes to [sym(gl_wstatep)] +0xbb8.\n  The `lhu` at 0xec43d40 loads 2 bytes from [sym(gl_wstatep)] +0xb82.\n  The `lw` at 0xec43d78 loads 4 bytes from [sym(gl_wstatep)] +0x114.\n  The `lw` at 0xec43d7c loads 4 bytes from [[sym(gl_wstatep)]+276] +0x14.\n  The `jalr` at 0xec43bc4 calls __iglooSetEnable [0xec5cb70] with a0=0xb60, a1=0x1, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `jalr` at 0xec43bd4 calls glFogi with a0=0xb65, a1=0x2601, a2=?, a3=?.\n  The `jalr` at 0xec43c04 calls glColor4fv with a0=[sym(gl_wstatep)]+2912, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43c14 calls glFogfv with a0=0xb66, a1=[sym(gl_wstatep)]+2928, a2=?, a3=?.\n  The `bgezall` at 0xec43c20 calls __iglooSetColorProcsToDepthCue [0xec3e6d0] with a0=[sym(gl_wstatep)], a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43c40 calls __iglooSetEnable [0xec5cb70] with a0=0xb50, a1=0x0, a2=?, a3=?.\n  The `jalr` at 0xec43c58 calls __iglooSetEnable [0xec5cb70] with a0=0xb60, a1=0x0, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `bgezall` at 0xec43c64 calls __iglooRestoreUsrMat [0xec439e0] with a0=?, a1=?, a2=?, a3=?.\n  The `bgezall` at 0xec43c74 calls __iglooSyncLmcolor [0xec3f130] with a0=[sym(gl_wstatep)], a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43c80 calls glColor4fv with a0=[sym(gl_wstatep)]+3120, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43ca8 calls glIndexf with a0=[[sym(gl_wstatep)]+12112], a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43ce0 calls __iglooOglLightingOn [0xec7b830] with a0=[sym(gl_wstatep)], a1=?, a2=[[sym(gl_wstatep)]+3076], a3=?.\n  The `jalr` at 0xec43cf4 calls __iglooGetFloatv [0xecb7ff0] with a0=0xb01, a1=[sym(gl_wstatep)]+3000, a2=?, a3=?.\n  The `jalr` at 0xec43d38 calls glIndexf with a0=?, a1=?, a2=?, a3=?, a4=[[sym(gl_wstatep)]+12112], a6=[[sym(gl_wstatep)]+12112].\n  The `jalr` at 0xec43d50 calls glFogf with a0=0xb61, a1=?, a2=?, a3=?, a6=[[sym(gl_wstatep)]+2946]:2.\n  The `jalr` at 0xec43d68 calls __iglooShadeModel [0xecb7a10] with a0=0x1d01, a1=?, a2=?, a3=?, a7=[0xece8bf8].\n  The `jalr` at 0xec43d88 calls __iglooShadeModel [0xecb7a10] with a0=0x1d00, a1=[[[0x1004]+20]+16], a2=?, a3=?.\n  The `bne` branch at 0xec43b88 targets 0xec43bb0, is taken when at(=[[sym(gl_wstatep)]+2904]) != a0, and falls through when at(=[[sym(gl_wstatep)]+2904]) == a0.\n  The `beq` branch at 0xec43b94 targets 0xec43bb0, is taken when a1 == t8(=0x1), and falls through when a1 != t8(=0x1).\n  The `beq` branch at 0xec43bb4 targets 0xec43c50, is taken when a0 == 0, and falls through when a0 != 0.\n  The `beq` branch at 0xec43bf8 targets 0xec43cf0, is taken when t9(=[[[0x1004]+20]+16]) == 0, and falls through when t9(=[[[0x1004]+20]+16]) != 0.\n  The `beq` branch at 0xec43c30 targets 0xec43ba0, is taken when v0(=[[sym(gl_wstatep)]+3076]) == 0, and falls through when v0(=[[sym(gl_wstatep)]+3076]) != 0.\n  The `beq` branch at 0xec43c48 targets 0xec43b9c and is always taken.\n  The `beq` branch at 0xec43cb8 targets 0xec43cd4, is taken when a0(=[0xece8bf8]) == 0, and falls through when a0(=[0xece8bf8]) != 0.\n  The `beq` branch at 0xec43ccc targets 0xec43d78, is taken when a1(=[[[0x1004]+20]+16]) == 0, and falls through when a1(=[[[0x1004]+20]+16]) != 0.\n  The `beq` branch at 0xec43cd8 targets 0xec43b9c, is taken when a2(=[[sym(gl_wstatep)]+3076]) == 0, and falls through when a2(=[[sym(gl_wstatep)]+3076]) != 0.\n  The `beq` branch at 0xec43ce8 targets 0xec43b9c and is always taken.\n  The `beq` branch at 0xec43d60 targets 0xec43c1c, is taken when a7(=[0xece8bf8]) == 0, and falls through when a7(=[0xece8bf8]) != 0.\n  The `beq` branch at 0xec43d70 targets 0xec43c20 and is always taken.\n  The `bne` branch at 0xec43d80 targets 0xec43cd4, is taken when t0(=[[[sym(gl_wstatep)]+276]+20]) != 0, and falls through when t0(=[[[sym(gl_wstatep)]+276]+20]) == 0.\n  The `beq` branch at 0xec43d90 targets 0xec43cd4 and is always taken.\n  The return at 0xec43ba8 has v0 = one of ?, [[sym(gl_wstatep)]+3076].\n"
+  }
+ },
+ "gl_i_rcrvn": {
+  "address": "0xec424d0",
+  "after": [
+   "**Inferred.** Immediate-mode curve draw. It rejects a0 below 4 at 0xec42524 by calling gl_ErrorHandler (0xec5d440) with code 0x3f at 0xec42718. Otherwise it runs a loop of a0-3 segments, calls gl_findbasis (0xec428d0) at 0xec42538, and drives __iglooSetEnable (0xec5cb70) with enable 0xd98, glMap1f, glMapGrid1f, glEvalMesh1 and glFlush the way gl_i_rcrv does. The two unnamed callees at 0xec42548 and 0xec42554 are not identified."
+  ],
+  "before": [
+   "**Inferred.** Immediate-mode non-rational curve draw. It rejects a0 below 4 at 0xec42524 by calling gl_ErrorHandler (0xec5d440) with code 0x3f at 0xec42718. Otherwise it runs a loop of a0-3 segments, calls gl_findbasis (0xec428d0) at 0xec42538, and drives __iglooSetEnable (0xec5cb70) with enable 0xd98, glMap1f, glMapGrid1f, glEvalMesh1 and glFlush the way gl_i_rcrv does. The two unnamed callees at 0xec42548 and 0xec42554 are not identified."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec42528",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42534",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 11712
+    },
+    {
+     "address": "0xec42540",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 216
+    },
+    {
+     "address": "0xec42550",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 220
+    },
+    {
+     "address": "0xec425c8",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425cc",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425d4",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425d8",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425dc",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425e8",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425ec",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425f0",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425fc",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": null
+    },
+    {
+     "address": "0xec42600",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec42604",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec4261c",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": null
+    },
+    {
+     "address": "0xec42660",
+     "kind": "load",
+     "mn": "lh",
+     "offset": 11716
+    },
+    {
+     "address": "0xec4266c",
+     "kind": "load",
+     "mn": "lh",
+     "offset": 11716
+    },
+    {
+     "address": "0xec42678",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42684",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 48
+    },
+    {
+     "address": "0xec4271c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec42524",
+     "first": 247735504,
+     "last": 247735592,
+     "reached": true,
+     "succ": [
+      19,
+      1
+     ]
+    },
+    {
+     "branch": "0xec42574",
+     "first": 247735596,
+     "last": 247735672,
+     "reached": true,
+     "succ": [
+      17,
+      2
+     ]
+    },
+    {
+     "first": 247735676,
+     "last": 247735704,
+     "reached": true,
+     "succ": [
+      6
+     ]
+    },
+    {
+     "first": 247735708,
+     "last": 247735708,
+     "reached": false,
+     "succ": []
+    },
+    {
+     "first": 247735712,
+     "last": 247735712,
+     "reached": true,
+     "succ": [
+      5
+     ]
+    },
+    {
+     "branch": "0xec425a8",
+     "first": 247735716,
+     "last": 247735724,
+     "reached": true,
+     "succ": [
+      16,
+      6
+     ]
+    },
+    {
+     "first": 247735728,
+     "last": 247735740,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    },
+    {
+     "first": 247735744,
+     "last": 247735748,
+     "reached": true,
+     "succ": [
+      8
+     ]
+    },
+    {
+     "branch": "0xec42618",
+     "first": 247735752,
+     "last": 247735836,
+     "reached": true,
+     "succ": [
+      8,
+      9
+     ]
+    },
+    {
+     "branch": "0xec42628",
+     "first": 247735840,
+     "last": 247735852,
+     "reached": true,
+     "succ": [
+      7,
+      10
+     ]
+    },
+    {
+     "branch": "0xec4267c",
+     "first": 247735856,
+     "last": 247735936,
+     "reached": true,
+     "succ": [
+      4,
+      11
+     ]
+    },
+    {
+     "branch": "0xec42688",
+     "first": 247735940,
+     "last": 247735948,
+     "reached": true,
+     "succ": [
+      15,
+      12
+     ]
+    },
+    {
+     "branch": "0xec42690",
+     "first": 247735952,
+     "last": 247735956,
+     "reached": true,
+     "succ": [
+      15,
+      13
+     ]
+    },
+    {
+     "branch": "0xec42698",
+     "first": 247735960,
+     "last": 247735964,
+     "reached": true,
+     "succ": [
+      15,
+      14
+     ]
+    },
+    {
+     "branch": "0xec426a4",
+     "first": 247735968,
+     "last": 247735976,
+     "reached": true,
+     "succ": [
+      4,
+      15
+     ]
+    },
+    {
+     "first": 247735980,
+     "last": 247735992,
+     "reached": true,
+     "succ": [
+      5
+     ]
+    },
+    {
+     "first": 247735996,
+     "last": 247735996,
+     "reached": true,
+     "succ": [
+      17
+     ]
+    },
+    {
+     "first": 247736000,
+     "last": 247736012,
+     "reached": true,
+     "succ": [
+      18
+     ]
+    },
+    {
+     "first": 247736016,
+     "last": 247736068,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247736072,
+     "last": 247736100,
+     "reached": true,
+     "succ": [
+      18
+     ]
+    }
+   ],
+   "branches": {
+    "0xec42524": {
+     "fall": "a0 >= 0x4 (signed)",
+     "mn": "bne",
+     "taken": "a0 < 0x4 (signed)",
+     "target": "0xec42708"
+    },
+    "0xec42574": {
+     "fall": "s4(=a0-3) > 0 (signed)",
+     "mn": "blez",
+     "taken": "s4(=a0-3) <= 0 (signed)",
+     "target": "0xec426c0"
+    },
+    "0xec425a8": {
+     "fall": "s4(?) != 0",
+     "mn": "beq",
+     "taken": "s4(?) == 0",
+     "target": "0xec426bc"
+    },
+    "0xec42618": {
+     "fall": "a0(?) == s0(?)",
+     "mn": "bne",
+     "taken": "a0(?) != s0(?)",
+     "target": "0xec425c8"
+    },
+    "0xec42628": {
+     "fall": "a7(?) == s2(=0x4)",
+     "mn": "bne",
+     "taken": "a7(?) != s2(=0x4)",
+     "target": "0xec425c0"
+    },
+    "0xec4267c": {
+     "fall": "a1(=[0x1004]) != 0",
+     "mn": "beq",
+     "taken": "a1(=[0x1004]) == 0",
+     "target": "0xec425a0"
+    },
+    "0xec42688": {
+     "fall": "s6(=0x404) != a0(=[[0x1004]+48])",
+     "mn": "beq",
+     "taken": "s6(=0x404) == a0(=[[0x1004]+48])",
+     "target": "0xec426ac"
+    },
+    "0xec42690": {
+     "fall": "s7(=0x400) != a0(=[[0x1004]+48])",
+     "mn": "beq",
+     "taken": "s7(=0x400) == a0(=[[0x1004]+48])",
+     "target": "0xec426ac"
+    },
+    "0xec42698": {
+     "fall": "s8(=0x401) != a0(=[[0x1004]+48])",
+     "mn": "beq",
+     "taken": "s8(=0x401) == a0(=[[0x1004]+48])",
+     "target": "0xec426ac"
+    },
+    "0xec426a4": {
+     "fall": "t8(=0x408) == a0(=[[0x1004]+48])",
+     "mn": "bne",
+     "taken": "t8(=0x408) != a0(=[[0x1004]+48])",
+     "target": "0xec425a0"
+    }
+   },
+   "calls": {
+    "0xec42538": {
+     "args": {
+      "0": "[[sym(gl_wstatep)]+11712]",
+      "1": "0x1",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_findbasis",
+     "tail": false,
+     "target": "0xec428d0"
+    },
+    "0xec42548": {
+     "args": {
+      "0": "0x1",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "(unknown callee)",
+     "tail": false,
+     "target": null
+    },
+    "0xec42554": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "(unknown callee)",
+     "tail": false,
+     "target": null
+    },
+    "0xec42564": {
+     "args": {
+      "0": "0xd98",
+      "1": "0x1",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec42648": {
+     "args": {
+      "0": "0xd98",
+      "1": "?",
+      "2": "?",
+      "3": "0x4",
+      "4": "0x4",
+      "5": "sp-176"
+     },
+     "callee": "glMap1f",
+     "tail": false,
+     "target": null
+    },
+    "0xec4265c": {
+     "args": {
+      "0": "[[sym(gl_wstatep)]+11716]:2",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glMapGrid1f",
+     "tail": false,
+     "target": null
+    },
+    "0xec42670": {
+     "args": {
+      "0": "0x1b01",
+      "1": "0x0",
+      "2": "[[sym(gl_wstatep)]+11716]:2",
+      "3": "?"
+     },
+     "callee": "glEvalMesh1",
+     "tail": false,
+     "target": null
+    },
+    "0xec426ac": {
+     "args": {
+      "0": "[[0x1004]+48]",
+      "1": "[0x1004]",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glFlush",
+     "tail": false,
+     "target": null
+    },
+    "0xec426c4": {
+     "args": {
+      "0": "0xd98",
+      "1": "0x0",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec42718": {
+     "args": {
+      "0": "0x3f",
+      "1": "0x2",
+      "2": "[0xecd7164]",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_ErrorHandler",
+     "tail": false,
+     "target": "0xec5d440"
+    }
+   },
+   "name": "gl_i_rcrvn",
+   "returns": {
+    "0xec42700": "one of ret(__iglooSetEnable), ret(gl_ErrorHandler)"
+   },
+   "text": "- `gl_i_rcrvn` in `libgl.so` at 0xec424d0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec424d0-0xec42728 (600 bytes).\n  It occupies 600 bytes.\n  The `lw` at 0xec42528 loads 4 bytes from sym(gl_wstatep) +0x0.\n  The `lw` at 0xec42534 loads 4 bytes from [sym(gl_wstatep)] +0x2dc0.\n  The `lw` at 0xec42540 loads 4 bytes from [sym(gl_wstatep)] +0xd8.\n  The `lw` at 0xec42550 loads 4 bytes from [sym(gl_wstatep)] +0xdc.\n  8 such `lwc1` accesses load 4 bytes from ?, including `lwc1` at 0xec425c8, `lwc1` at 0xec425cc, `lwc1` at 0xec425d8.\n  4 such `swc1` accesses store 4 bytes to ?, including `swc1` at 0xec425d4, `swc1` at 0xec425e8, `swc1` at 0xec425fc.\n  2 such `lh` accesses load 2 bytes from [sym(gl_wstatep)] +0x2dc4, including `lh` at 0xec42660, `lh` at 0xec4266c.\n  The `lw` at 0xec42678 loads 4 bytes from abs 0x1004.\n  The `lw` at 0xec42684 loads 4 bytes from [0x1004] +0x30.\n  The `lw` at 0xec4271c loads 4 bytes from abs 0xecd7164.\n  The `bgezall` at 0xec42538 calls gl_findbasis [0xec428d0] with a0=[[sym(gl_wstatep)]+11712], a1=0x1, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `jalr` at 0xec42548 calls (unknown callee) with a0=0x1, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec42554 calls (unknown callee) with a0=?, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec42564 calls __iglooSetEnable [0xec5cb70] with a0=0xd98, a1=0x1, a2=?, a3=?.\n  The `jalr` at 0xec42648 calls glMap1f with a0=0xd98, a1=?, a2=?, a3=0x4, a4=0x4, a5=sp-176; fp f13=f20, f14=0x3f800000.\n  The `jalr` at 0xec4265c calls glMapGrid1f with a0=[[sym(gl_wstatep)]+11716]:2, a1=?, a2=?, a3=?; fp f13=f20, f14=0x3f800000.\n  The `jalr` at 0xec42670 calls glEvalMesh1 with a0=0x1b01, a1=0x0, a2=[[sym(gl_wstatep)]+11716]:2, a3=?.\n  The `jalr` at 0xec426ac calls glFlush with a0=[[0x1004]+48], a1=[0x1004], a2=?, a3=?.\n  The `jalr` at 0xec426c4 calls __iglooSetEnable [0xec5cb70] with a0=0xd98, a1=0x0, a2=?, a3=?.\n  The `jalr` at 0xec42718 calls gl_ErrorHandler [0xec5d440] with a0=0x3f, a1=0x2, a2=[0xecd7164], a3=a3 at entry (arg3).\n  The `bne` branch at 0xec42524 targets 0xec42708, is taken when a0 < 0x4 (signed), and falls through when a0 >= 0x4 (signed).\n  The `blez` branch at 0xec42574 targets 0xec426c0, is taken when s4(=a0-3) <= 0 (signed), and falls through when s4(=a0-3) > 0 (signed).\n  The `beq` branch at 0xec42594 targets 0xec425b0 and is always taken.\n  The `beq` branch at 0xec425a8 targets 0xec426bc, is taken when s4(?) == 0, and falls through when s4(?) != 0.\n  The `bne` branch at 0xec42618 targets 0xec425c8, is taken when a0(?) != s0(?), and falls through when a0(?) == s0(?).\n  The `bne` branch at 0xec42628 targets 0xec425c0, is taken when a7(?) != s2(=0x4), and falls through when a7(?) == s2(=0x4).\n  The `beq` branch at 0xec4267c targets 0xec425a0, is taken when a1(=[0x1004]) == 0, and falls through when a1(=[0x1004]) != 0.\n  The `beq` branch at 0xec42688 targets 0xec426ac, is taken when s6(=0x404) == a0(=[[0x1004]+48]), and falls through when s6(=0x404) != a0(=[[0x1004]+48]).\n  The `beq` branch at 0xec42690 targets 0xec426ac, is taken when s7(=0x400) == a0(=[[0x1004]+48]), and falls through when s7(=0x400) != a0(=[[0x1004]+48]).\n  The `beq` branch at 0xec42698 targets 0xec426ac, is taken when s8(=0x401) == a0(=[[0x1004]+48]), and falls through when s8(=0x401) != a0(=[[0x1004]+48]).\n  The `bne` branch at 0xec426a4 targets 0xec425a0, is taken when t8(=0x408) != a0(=[[0x1004]+48]), and falls through when t8(=0x408) == a0(=[[0x1004]+48]).\n  The `beq` branch at 0xec426b4 targets 0xec425a4 and is always taken.\n  The `beq` branch at 0xec42720 targets 0xec426d0 and is always taken.\n  The return at 0xec42700 has v0 = one of ret(__iglooSetEnable), ret(gl_ErrorHandler).\n  The instructions from 0xec4259c to 0xec4259c are not reached by any path from the entry, and their branches are not listed.\n"
+  }
+ },
+ "gl_n_patchprecision": {
+  "address": "0xec42e70",
+  "after": [
+   "**Inferred.** Checks the flag at 0xece8bf0 and, when it is set, calls __iglooNCloseMoveDraw (0xec92d80) first; a clear flag skips that call. It then stores two halfwords into the state at gl_wstatep +0x2dd0 and +0x2dd2, using the words loaded from the argument at +0x0 and +0x4. It returns a0+8 at 0xec42ecc. The facts do not show what the two stored halfwords mean."
+  ],
+  "before": [
+   "**Inferred.** Checks the flag at 0xece8bf0 and, when it is clear, calls __iglooNCloseMoveDraw (0xec92d80) first. It then stores two halfwords into the state at gl_wstatep +0x2dd0 and +0x2dd2, using the words loaded from the argument at +0x0 and +0x4. It returns a0+8 at 0xec42ecc, which fits a patch-state setter in the normal-vector family."
+  ],
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec42e88",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42eb0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42eb4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42eb8",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 11728
+    },
+    {
+     "address": "0xec42ebc",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42ec4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 4
+    },
+    {
+     "address": "0xec42ed0",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 11730
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec42e8c",
+     "first": 247737968,
+     "last": 247738000,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247738004,
+     "last": 247738016,
+     "reached": true,
+     "succ": [
+      2
+     ]
+    },
+    {
+     "first": 247738020,
+     "last": 247738064,
+     "reached": true,
+     "succ": []
+    }
+   ],
+   "branches": {
+    "0xec42e8c": {
+     "fall": "at(=[0xece8bf0]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xece8bf0]) == 0",
+     "target": "0xec42ea4"
+    }
+   },
+   "calls": {
+    "0xec42e98": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "__iglooNCloseMoveDraw",
+     "tail": false,
+     "target": "0xec92d80"
+    }
+   },
+   "name": "gl_n_patchprecision",
+   "returns": {
+    "0xec42ecc": "a0+8"
+   },
+   "text": "- `gl_n_patchprecision` in `libgl.so` at 0xec42e70 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec42e70-0xec42ed4 (100 bytes).\n  It occupies 100 bytes.\n  The `lw` at 0xec42e88 loads 4 bytes from abs 0xece8bf0 (gl_inMoveDraw).\n  2 such `lw` accesses load 4 bytes from sym(gl_wstatep) +0x0, including `lw` at 0xec42eb0, `lw` at 0xec42ebc.\n  The `lw` at 0xec42eb4 loads 4 bytes from a0 (arg0 at entry) +0x0.\n  The `sh` at 0xec42eb8 stores 2 bytes to [sym(gl_wstatep)] +0x2dd0.\n  The `lw` at 0xec42ec4 loads 4 bytes from a0 (arg0 at entry) +0x4.\n  The `sh` at 0xec42ed0 stores 2 bytes to [sym(gl_wstatep)] +0x2dd2.\n  The `jalr` at 0xec42e98 calls __iglooNCloseMoveDraw [0xec92d80] with a0=a0 at entry (arg0), a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec42e8c targets 0xec42ea4, is taken when at(=[0xece8bf0]) == 0, and falls through when at(=[0xece8bf0]) != 0.\n  The return at 0xec42ecc has v0 = a0+8.\n"
+  }
+ }
+}
