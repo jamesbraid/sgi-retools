@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Compare each old header with its replacement; fail on any difference.
+
+    defs-compare [--root DIR] [--old-rev REV] [--unit U ...] [--dropped FILE]
+    defs-compare --old FILE --new FILE [--dropped FILE] [-I DIR ...]
+
+The first form is for a migration. Every unit that names the header it replaces
+([c] legacy_header) is compared: the old text comes from git at REV (default HEAD,
+read with git show, so it still works after defs-gen has overwritten the file with
+the forwarding header) and the new text is the file now at that path. Macros the
+migration drops on purpose are listed in defs/legacy-dropped.txt (NAME, a tab, a
+reason); a name there that is not missing is reported.
+
+Exit 0 when every old macro is present with the same value, 1 on any difference or
+missing macro, 2 on a setup problem.
+"""
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from defslib import compare, loader  # noqa: E402
+
+
+def report(out, quiet=False):
+    print(out.summary())
+    for msg in out.broken:
+        print("  BROKEN %s" % msg)
+    for name, old, new in out.different:
+        print("  DIFFERENT %s: old %s, new %s" % (name, old, new))
+    for name in out.missing:
+        print("  MISSING %s" % name)
+    for name in out.unused_drops:
+        print("  note: %s is in the dropped file but is not missing from the new header" % name, file=sys.stderr)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--root", default=".", help="repo root holding defs/ (default: current directory)")
+    ap.add_argument("--old-rev", default="HEAD", help="git revision holding the old headers (default HEAD)")
+    ap.add_argument("--unit", action="append", help="compare only this unit (repeatable)")
+    ap.add_argument("--dropped", help="file of macros dropped on purpose (default defs/legacy-dropped.txt under the root)")
+    ap.add_argument("--old", help="an old header file (with --new)")
+    ap.add_argument("--new", help="its replacement (with --old)")
+    ap.add_argument("-I", dest="includes", action="append", default=[], help="include directory for the compiler")
+    args = ap.parse_args(argv)
+    dropped = compare.load_dropped(args.dropped or os.path.join(args.root, "defs", "legacy-dropped.txt"))
+    try:
+        if args.old or args.new:
+            if not (args.old and args.new):
+                print("error: --old and --new go together", file=sys.stderr)
+                return 2
+            out = compare.compare_headers(args.old, args.new, os.path.basename(args.new), dropped, args.includes)
+            report(out)
+            return 0 if out.ok else 1
+        if not loader.has_defs(args.root):
+            print("error: %s has no defs/ directory" % args.root, file=sys.stderr)
+            return 2
+        repo = loader.load_repo(args.root)
+        if repo.errors:
+            for e in repo.errors:
+                print("error: %s" % e, file=sys.stderr)
+            return 2
+        status, seen = 0, 0
+        for name, unit in sorted(repo.units.items()):
+            legacy = unit.model["c"].get("legacy_header")
+            if not legacy or (args.unit and name not in args.unit):
+                continue
+            git = subprocess.run(["git", "-C", repo.root, "show", "%s:%s" % (args.old_rev, legacy)], capture_output=True)
+            if git.returncode:
+                print("error: %s is not in %s: %s" % (legacy, args.old_rev, git.stderr.decode().strip()), file=sys.stderr)
+                return 2
+            with tempfile.TemporaryDirectory() as td:
+                old = os.path.join(td, os.path.basename(legacy))
+                with open(old, "wb") as f:
+                    f.write(git.stdout)
+                new = os.path.join(repo.root, legacy)
+                if not os.path.isfile(new):
+                    print("error: %s does not exist; run defs-gen" % legacy, file=sys.stderr)
+                    return 2
+                out = compare.compare_headers(old, new, "%s (%s)" % (name, legacy), dropped, [repo.root] + args.includes)
+            report(out)
+            seen += 1
+            if not out.ok:
+                status = 1
+        if not seen:
+            print("note: no unit names a legacy header; nothing to compare", file=sys.stderr)
+        return status
+    except RuntimeError as e:
+        print("error: %s" % e, file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
