@@ -6,6 +6,7 @@
     grade_readings.py DOC --check-doc --check-facts [--root ROOT]         also test each entry's claims against its facts
     grade_readings.py DOC --check-doc --check-facts --strict-citations    require and test a citation for every claim
     grade_readings.py DOC --review-pack OUT [--root ROOT]                 entries beside their facts, for a reviewer
+    grade_readings.py DOC --apply-verdicts VERDICTS.json                   rewrite entries from a review, add Reviewed lines
 
 --check-doc reads DOC the way tools/inventory.py does and reports every routine entry that will not
 reach located or understood, with the reason, plus every heading that looks like a routine header and
@@ -28,6 +29,11 @@ name) sentence.
 --review-pack OUT writes, for each entry, its text beside the facts rendered for its routine (calls
 numbered as the citations count them) and the checker's findings: what a reviewer reads. --routine,
 --unreviewed and --batch K/M choose the entries.
+
+--apply-verdicts JSON reads a reviewer's verdicts, {entry key: {"verdict": "ok" | "fixed" | "reject",
+"text": corrected role lines, "reviewer": optional name}}, and rewrites DOC: ok keeps the entry, fixed
+replaces the lines under its header with text, and both add "Reviewed: DATE"; reject changes nothing. A key or
+verdict that does not fit stops the run before anything is written.
 """
 import argparse
 import collections
@@ -867,6 +873,7 @@ def check_facts(doc, root, inventory=None, out=None, strict=False):
 
 
 REVIEWED = re.compile(r"\bReviewed:\s*\d{4}-\d{2}-\d{2}")
+VERDICTS = ("ok", "fixed", "reject")
 
 
 def entry_key(entry):
@@ -935,6 +942,51 @@ def review_pack(doc, root, inventory=None, out_path=None, routines=None, unrevie
     return len(entries)
 
 
+def apply_verdicts(doc, verdicts_path, date, out=None):
+    """Rewrite the entries of a routine-role document from a reviewer's verdicts and add the review marker.
+    The verdicts file is JSON, {entry key: {"verdict": "ok" | "fixed" | "reject", "text": "...",
+    "reviewer": "..."}}. ok keeps the entry and marks it reviewed, fixed replaces the lines under the header with
+    text and marks it, reject changes nothing and leaves the entry unreviewed. Nothing is written when a key or a
+    verdict is wrong. Returns {verdict: count}."""
+    import json
+    out = out or sys.stdout
+    with open(verdicts_path, encoding="utf-8") as handle:
+        verdicts = json.load(handle)
+    with open(doc, encoding="utf-8") as source:
+        lines = source.read().split("\n")
+    entries = {entry_key(e): e for e in parse_lines(lines)}
+    errors = []
+    for key, item in verdicts.items():
+        if key not in entries:
+            errors.append("%s: no such entry in %s" % (key, doc))
+        elif item.get("verdict") not in VERDICTS:
+            errors.append("%s: verdict must be one of %s" % (key, ", ".join(VERDICTS)))
+        elif item["verdict"] == "fixed" and not str(item.get("text", "")).strip():
+            errors.append("%s: a fixed verdict needs the corrected text" % key)
+    if errors:
+        for error in errors:
+            print(error, file=out)
+        raise SystemExit(1)
+    counts = collections.Counter()
+    for key, item in sorted(verdicts.items(), key=lambda kv: -entries[kv[0]]["line"]):
+        counts[item["verdict"]] += 1
+        if item["verdict"] == "reject":
+            continue
+        entry = entries[key]
+        first, end = entry["line"] - 1, entry["end"]
+        if item["verdict"] == "fixed":
+            body = [l if l[:1].isspace() else "  " + l for l in str(item["text"]).strip("\n").split("\n")]
+        else:
+            body = lines[first + 1:end]
+        body = [l for l in body if not REVIEWED.match(l.strip())]
+        marker = "  Reviewed: %s%s" % (date, " (%s)" % item["reviewer"] if item.get("reviewer") else "")
+        lines[first:end] = [lines[first]] + body + [marker]
+    with open(doc, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines))
+    print("verdicts: ok=%d fixed=%d reject=%d" % (counts["ok"], counts["fixed"], counts["reject"]), file=out)
+    return counts
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("doc")
@@ -948,6 +1000,10 @@ def main(argv=None):
     parser.add_argument("--review-pack", metavar="OUT",
                         help="write, for each entry of DOC, the entry beside its rendered facts and the checker's findings "
                              "to OUT; --routine, --unreviewed and --batch K/M choose the entries")
+    parser.add_argument("--apply-verdicts", metavar="JSON",
+                        help="rewrite the entries of DOC from a reviewer's verdicts (JSON of entry key -> verdict, corrected "
+                             "text) and add each reviewed entry's Reviewed line")
+    parser.add_argument("--review-date", metavar="YYYY-MM-DD", help="the date of the Reviewed lines (default: today)")
     parser.add_argument("--unreviewed", action="store_true", help="with --review-pack, only entries with no Reviewed line")
     parser.add_argument("--batch", metavar="K/M",
                         help="with --review-pack, the Kth of M equal slices of the chosen entries (K from 1)")
@@ -963,6 +1019,10 @@ def main(argv=None):
         parser.error("--check-facts goes with --check-doc")
     if args.strict_citations and not args.check_facts:
         parser.error("--strict-citations goes with --check-doc --check-facts")
+    if args.apply_verdicts:
+        import datetime
+        apply_verdicts(args.doc, args.apply_verdicts, args.review_date or datetime.date.today().isoformat())
+        return 0
     if args.review_pack:
         from _workspace import find_workspace
         workspace = find_workspace()

@@ -696,5 +696,100 @@ class ReviewPack(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.out))
 
 
+class ApplyVerdicts(unittest.TestCase):
+    """--apply-verdicts: a reviewer's verdicts written back into the routine-role file."""
+    DOC = ("# Readings\n\nIntro.\n\n"
+           "- `a` in `lib.so` at 0x10\n  **Inferred.** Calls f [call 1].\n  Role (from facts): a wrapper [call 1].\n\n"
+           "- `b` in `lib.so` at 0x20\n  **Inferred.** Calls g [call 1].\n  Role (from facts): a wrapper [call 1].\n\n"
+           "- `c` in `lib.so` at 0x30\n  **Inferred.** Calls h [call 1].\n  Reviewed: 2026-01-01\n\nTail text.\n")
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.directory)
+        self.doc = os.path.join(self.directory, "b.md")
+        self.verdicts = os.path.join(self.directory, "v.json")
+
+    def apply(self, verdicts, doc=None):
+        import json
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write(doc or self.DOC)
+        with open(self.verdicts, "w", encoding="utf-8") as handle:
+            json.dump(verdicts, handle)
+        out = io.StringIO()
+        try:
+            counts = grade.apply_verdicts(self.doc, self.verdicts, "2026-11-12", out)
+        except SystemExit:
+            counts = None
+        with open(self.doc, encoding="utf-8") as handle:
+            return counts, handle.read(), out.getvalue()
+
+    def test_ok_keeps_the_entry_and_adds_the_marker(self):
+        counts, text, _out = self.apply({"a@0x10@lib.so": {"verdict": "ok"}})
+        self.assertEqual(counts["ok"], 1)
+        self.assertIn("  Role (from facts): a wrapper [call 1].\n  Reviewed: 2026-11-12\n\n- `b`", text)
+
+    def test_fixed_replaces_the_lines_under_the_header_and_adds_the_marker(self):
+        _c, text, _out = self.apply({"b@0x20@lib.so": {
+            "verdict": "fixed", "reviewer": "sonnet",
+            "text": "**Inferred.** Calls g [call 1].\nRole (from name): a wrapper."}})
+        self.assertIn("- `b` in `lib.so` at 0x20\n  **Inferred.** Calls g [call 1].\n  Role (from name): a wrapper.\n"
+                      "  Reviewed: 2026-11-12 (sonnet)\n\n- `c`", text)
+        self.assertNotIn("Role (from facts): a wrapper [call 1].\n  Reviewed: 2026-11-12 (sonnet)", text)
+
+    def test_reject_changes_nothing(self):
+        counts, text, _out = self.apply({"a@0x10@lib.so": {"verdict": "reject"}})
+        self.assertEqual(counts["reject"], 1)
+        self.assertEqual(text, self.DOC)
+
+    def test_an_older_marker_is_replaced_not_repeated(self):
+        _c, text, _out = self.apply({"c@0x30@lib.so": {"verdict": "ok"}})
+        self.assertEqual(text.count("Reviewed:"), 1)
+        self.assertIn("Reviewed: 2026-11-12\n\nTail text.", text)
+
+    def test_several_verdicts_apply_without_disturbing_each_other_or_the_text_around_them(self):
+        counts, text, out = self.apply({"a@0x10@lib.so": {"verdict": "ok"}, "b@0x20@lib.so": {
+            "verdict": "fixed", "text": "  **Inferred.** Calls g [call 1]."}, "c@0x30@lib.so": {"verdict": "ok"}})
+        self.assertEqual(dict(counts), {"ok": 2, "fixed": 1})
+        self.assertEqual(text.count("Reviewed: 2026-11-12"), 3)
+        self.assertTrue(text.startswith("# Readings\n\nIntro.\n\n- `a`") and text.endswith("Tail text.\n"))
+        self.assertIn("verdicts: ok=2 fixed=1 reject=0", out)
+
+    def test_a_wrong_key_verdict_or_empty_fix_stops_the_run_before_anything_is_written(self):
+        for verdicts in ({"nope@0x1@lib.so": {"verdict": "ok"}}, {"a@0x10@lib.so": {"verdict": "maybe"}},
+                         {"a@0x10@lib.so": {"verdict": "fixed", "text": " "}},
+                         {"a@0x10@lib.so": {"verdict": "ok"}, "zz@0x1@lib.so": {"verdict": "ok"}}):
+            counts, text, out = self.apply(verdicts)
+            self.assertIsNone(counts)
+            self.assertEqual(text, self.DOC)
+            self.assertTrue(out)
+
+    def test_a_reviewed_entry_then_counts_as_understood_in_a_file_that_requires_review(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("inventory", os.path.join(os.path.dirname(grade.__file__), "inventory.py"))
+        inv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(inv)
+        doc = ("- `swfio_mount` in `sw22_474-ip30-flame834/var/sysgen/boot/swfs.o` at 0x1f80\n"
+               "  **Inferred.** Copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The\n"
+               "  return is the constant 0xe or the mount result at 0x2084.\n")
+        key = "swfio_mount@0x1f80@sw22_474-ip30-flame834/var/sysgen/boot/swfs.o"
+        _c, text, _o = self.apply({key: {"verdict": "ok"}}, doc=doc)
+        root = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, root)
+        os.makedirs(os.path.join(root, "docs", "routines"))
+        for name, body in (("before.md", doc), ("after.md", text)):
+            with open(os.path.join(root, "docs", "routines", name), "w") as handle:
+                handle.write(body)
+        levels = {}
+        for name in ("before.md", "after.md"):
+            saved, inv.REPO = inv.REPO, root
+            try:
+                index = inv.DocIndex({"docs": {"prose": ["docs/routines/%s" % name], "index": [], "skip": []},
+                                      "review_required": ["docs/routines/*.md"]})
+            finally:
+                inv.REPO = saved
+            levels[name] = [e.level for e in index.entries]
+        self.assertEqual(levels, {"before.md": ["located"], "after.md": ["understood"]})
+
+
 if __name__ == "__main__":
     unittest.main()
