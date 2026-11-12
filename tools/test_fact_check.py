@@ -226,6 +226,18 @@ class AccessKind(unittest.TestCase):
     def test_a_store_to_an_offset_that_is_only_loaded_is_reported(self):
         self.assertEqual(rules(["It stores two halfwords to the state at p +0xba8."], self.sheet()), ["access-kind"])
 
+    def test_a_pointer_advanced_to_the_word_at_an_offset_is_a_read_of_it(self):
+        sentence = "It advances its pointer by 8 or to the word at +0xba8."
+        self.assertEqual(rules([sentence], self.sheet()), [])
+        # the claim is still checked, as a read
+        found = fc.check_entry(["It resets the pointer to the word at +0xd8."], self.sheet())
+        self.assertEqual([rule for rule, _r, _s in found], ["access-kind"])
+        self.assertIn("reads +0xd8", found[0][1])
+
+    def test_a_real_write_claim_on_a_word_at_an_offset_is_still_reported(self):
+        self.assertEqual(rules(["It stores to the word at +0xba8."], self.sheet()), ["access-kind"])
+        self.assertEqual(rules(["It writes +0xba8."], self.sheet()), ["access-kind"])
+
     def test_a_cited_instruction_of_the_other_kind_is_reported(self):
         self.assertEqual(rules(["It reads the flag word q (0x40)."], self.sheet()), ["access-kind"])
         self.assertEqual(rules(["It reads q (0x44) and resets r (0x40)."], self.sheet()), [])
