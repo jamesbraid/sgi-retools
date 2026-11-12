@@ -195,7 +195,8 @@ OVERLAY = Obj({
 # defs/check.toml
 CHECK = Obj({
     "project": Obj({"name": Str(minlen=1), "plugin": Str(minlen=1), "regenerate": TEXT}, required=("name",)),
-    "gen": Obj({"profile": Choice("public", "internal"), "forwarding": Choice("on", "off")}),
+    "gen": Obj({"profile": Choice("public", "internal"), "forwarding": Choice("on", "off"),
+                "rust_crate": Str(r"^[a-z][a-z0-9_-]*$")}),
     "checks": Obj({"address_bits": Int(1), "max_reg_offset": UINT}),
     "banned": Obj({
         "skip": Arr(Str()), "allow_includes": Arr(Str()),

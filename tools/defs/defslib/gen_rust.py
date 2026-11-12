@@ -132,13 +132,17 @@ def gen_rust(u, src):
     return "\n".join(out) + "\n"
 
 
-def crate_name(project):
-    return re.sub(r"[^a-z0-9_-]", "-", project.lower()) + "-defs"
+DEFAULT_CRATE = "hwdefs"
 
 
-def gen_cargo(project, label):
+def crate_name(name=None):
+    """The crate is named neutrally by default: a generated crate must not name its project."""
+    return re.sub(r"[^a-z0-9_-]", "-", (name or DEFAULT_CRATE).lower())
+
+
+def gen_cargo(name, label):
     return ("# " + banner(label, "", "").strip() + "\n[package]\nname = \"%s\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
-            "publish = false\n\n[lib]\npath = \"src/lib.rs\"\n" % crate_name(project))
+            "publish = false\n\n[lib]\npath = \"src/lib.rs\"\n" % crate_name(name))
 
 
 def gen_lib(unit_names, label):

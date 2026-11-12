@@ -47,8 +47,10 @@ class GenRustTest(RepoTest):
         self.assertIn("Self_,", text)
 
     def test_crate_files(self):
-        self.assertEqual(gen_rust.crate_name("My_Repo"), "my_repo-defs")
-        self.assertIn('name = "mini-defs"', gen_rust.gen_cargo("mini", "defs/"))
+        self.assertEqual(gen_rust.crate_name(), "hwdefs")
+        self.assertEqual(gen_rust.crate_name("My_Repo"), "my_repo")
+        self.assertIn('name = "hwdefs"', gen_rust.gen_cargo(None, "defs/"))
+        self.assertIn('name = "regs"', gen_rust.gen_cargo("regs", "defs/"))
         lib = gen_rust.gen_lib(["b", "a"], "defs/")
         self.assertIn("pub mod a;\npub mod b;\n", lib)
 

@@ -175,10 +175,17 @@ def load_plugin(repo):
     return mod
 
 
-def check_leaks(ctx, texts):
-    """Banned content over the public-profile rendering of every generated file."""
+def check_leaks(ctx, texts, project):
+    """Banned content over the public-profile rendering of every generated file.
+    Generated Rust must not name the project at all, as the old Rust check required."""
+    named = re.compile(r"(?i)\b%s\b" % re.escape(project))
     for rel, text in sorted(texts.items()):
         pc.check_banned(ctx, rel, text)
+        if rel.startswith("gen/rust/"):
+            for n, line in enumerate(text.splitlines(), 1):
+                if named.search(line):
+                    ctx.rep.fail("%s:%d" % (rel, n), "banned content (project name in generated Rust) %r in: %s"
+                                 % (project, line.strip()))
 
 
 def prose_literals(run, ctx, unit, allregs):
@@ -328,7 +335,7 @@ def run_checks(repo, verbose=False, fresh=True, only=None):
     selected = {rel: text for rel, text in pub.items()
                 if not only or any(rel.endswith("/%s.%s" % (n, e)) for n in only for e in ("h", "rs", "py", "json", "xml", "md"))
                 or rel in legacy_paths}
-    check_leaks(ctx, selected)
+    check_leaks(ctx, selected, repo.project)
     for rel in helper_paths:
         if not only or os.path.basename(rel)[:-len("_helpers.h")] in only:
             pc.check_banned(ctx, rel, ctx.read(rel))
