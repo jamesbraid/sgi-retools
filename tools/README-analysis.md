@@ -135,3 +135,57 @@ guard, call order, and roles taken from a routine's name. They are narrow on pur
 look at the entry against its facts, and the role-word rule in particular flags wording a reviewer may accept.
 `tools/test_fact_check.py` pins each rule and the ten kona entries the audit corrected: the text before the
 correction fails, the text after it passes.
+
+### Cited entries
+
+The patterns above find about one wrong claim in thirty, because most of what is wrong in an entry (which side
+of a branch a call is on, whether an argument is the fifth, what a routine's role is) cannot be pulled out of
+free prose. A cited entry puts a citation after each claim, so `fact_check.check_cited` tests the claim against
+the one fact it names instead of guessing which fact the prose means.
+
+    - `gl_c_depthcue` in `usr/gfx/arch/IGLOO32/libgl.so` at 0xec43df0
+      **Inferred.** Tests the word at 0xecdda34 [@0xec43e10]. When it is zero [@0xec43e10 taken zero] it calls
+      gl_intrptab_insert with a0 = 0xecd72c0 [call 2, @0xec43e10 taken], then calls gl_compile with a0 = 0x4
+      [call 1]. When it is nonzero [@0xec43e10 fall nonzero] it makes the gl_compile call alone [call 1]. It
+      returns the result of gl_compile [@0xec43e40].
+      Role (from facts): registers a record before compiling on the zero path [call 2, @0xec43e10 taken].
+
+Citations:
+
+| Form | Names | Checked |
+|---|---|---|
+| `[@0x10a4]` | the instruction at that address | it is a call, branch, return or load or store the facts list. The verb before it must fit: calls a call, stores or writes a store, loads or reads a load, returns a return |
+| `[call 3]` | the third call of the facts, counting from 1 in address order | the callee the sentence names (by name or target) is that call's; argument claims written before the citation (`a0 = 0x4`, `0xb4 as its fifth argument`, `a1 at entry`) match that call's argument registers; a value in a slot the facts leave as `?` is reported |
+| `[@0x10a0 taken]`, `[@0x10a0 fall]` | one side of a branch | the branch exists. `zero` or `nonzero` after the side (`[@0x10a0 fall nonzero]`) must match that side's condition, and the condition must compare with zero |
+| `[call 4, @0x10a0 fall]` | a group in one bracket | the call (or store) runs on that side of that branch and the branch decides it. A call that runs on both sides is accepted under either unless the sentence says only, alone or unless |
+
+Rules, each reported with the sentence it came from:
+
+- `uncited`: a sentence that states a fact (a hex address, a named callee, or a verb such as calls, stores,
+  returns, tests) and carries no citation. A sentence that says the facts do not show something is not a claim
+  and needs none.
+- `cite-address`: a citation to an address or call number the facts do not list, or one that does not parse.
+- `cite-callee`, `cite-arg`, `access-kind`, `cite-kind`, `cite-return`, `cite-value`: the call, argument, load
+  or store, instruction kind, return value or stored value does not match. The facts list that a store
+  happened, not what it stored, so a claim of the stored value (`stores zero`, `clears`) is reported.
+  `passes its arguments through` is reported too; name each register (`a1 at entry`).
+- `cite-branch`: the side or the zero/nonzero sense of a branch does not match its condition, or the branch does
+  not decide the call grouped with it.
+- `condition-missing`: a call that a branch skips on some path is stated with no branch citation, and
+  `condition-uncited`: a sentence says when or unless and cites no branch. `cite-conditional`: a sentence says
+  unconditionally, always or on every path about a call that a branch skips.
+- `cite-loop`: a sentence describes a loop and cites no branch whose taken side goes back to an earlier address.
+- `cite-count`: `three calls` against the facts' number of calls, and any `about` or `up to` count.
+- `cite-order`: `A, then B`, `A before B` or `A after B` between two cited calls that the facts reach in the
+  other order.
+- `role-missing`, `role-uncited`, `role-unmarked`, `role-from-name`: see below.
+
+The rules of the previous section also run, on the prose with its citations removed, except the two argument
+rules, which the citation check replaces.
+
+The role is the claim the most errors turned up in, so it is the one sentence that must be labelled. An entry
+has a sentence that starts `Role (from facts):` and cites the facts it rests on, or one that starts
+`Role (from name):`. The second admits that the role is a guess from the routine's name or its neighbours; it is
+reported as the note `role-from-name` and the inventory holds the entry at located. A role taken from the name
+anywhere else (the name suggests, by its name, looks like) is `role-unmarked`. An entry with neither sentence is
+`role-missing`. A line that starts `Reviewed:` is not a sentence of the entry.

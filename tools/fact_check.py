@@ -249,7 +249,8 @@ def sentences_of(lines):
     text = " ".join(lines).replace("`", "")
     text = re.sub(r"\*\*\w+\.\*\*", "", text)
     text = re.sub(r"\s+", " ", text).strip()
-    return [s for s in re.split(r"(?<=\.)\s+(?=[A-Z])", text) if s]
+    # a sentence can start with a lowercase routine name, as in "... later. gl_compile is then called"
+    return [s for s in re.split(r"(?<=\.)\s+(?=[A-Z]|[a-z]+_\w+)", text) if s]
 
 
 def _token(value):
@@ -690,3 +691,381 @@ def check_entry(sentences, sheet):
             seen.add(item[:2])
             unique.append(item)
     return unique
+
+
+# ---------------------------------------------------------------- cited claims
+
+# A cited entry (README-analysis.md, "Cited entries") puts a citation after every claim: [@0x10a4] names the
+# instruction at an address, [call 3] the third call of the facts in address order, and a citation can take a
+# side, [@0x10a0 fall]. Several citations in one bracket belong together: [call 4, @0x10a0 fall] says the
+# call runs on the fall-through side of the branch. check_cited tests each citation against the fact it names
+# and flags every sentence that states a fact and cites none, so a wrong claim has no place to hide.
+
+_CITE = re.compile(r"\[(?P<body>(?:@|call\s)[^\]]*)\]")
+_PART = re.compile(r"^(?:@(?P<addr>" + HEX + r")(?:\s+(?P<side>taken|fall)(?:\s+(?P<pol>zero|nonzero))?)?"
+                   r"|call\s+(?P<call>\d+))$")
+
+# Rules that describe how the entry is labelled, not a claim the facts contradict.
+NOTE_RULES = {"role-from-name"}
+
+_FROM_FACTS = re.compile(r"^Role \(from facts\):", re.I)
+_FROM_NAME = re.compile(r"^Role \(from name\):", re.I)
+_HEDGE = re.compile(r"\b(?:facts|render|rendered facts|listing|disassembly)\b[^.]*\b(?:do(?:es)? not|don't|cannot|never|"
+                    r"leave|leaves|no)\b|\b(?:not (?:shown|established|derived|resolved|identified|settled)|"
+                    r"unknown|unresolved|open)\b", re.I)
+_FACT_VERB = re.compile(r"\b(?:calls?|stores?|writes?|loads?|reads?|returns?|tests?|compares?|branch(?:es)?|passes|"
+                        r"saves|sets|clears|copies|allocates|frees|jumps?|loops?|skips?|zeroe?s|advances|masks|"
+                        r"checks)\b", re.I)
+_NAMED_ROLE = re.compile(r"\b(?:the name (?:suggests|implies|says|fits|reads)|by its name|from the name|"
+                         r"name suggests|looks like|reads as|fits a|is probably)\b", re.I)
+_CALL_VERB = re.compile(r"\b(?:calls?|invokes?|jumps? to|tail-calls?)\b", re.I)
+_STORE_VERB = re.compile(r"\b(?:stores?|stored|writes?|writing|written)\b", re.I)
+_LOAD_VERB = re.compile(r"\b(?:loads?|loaded|reads?|reading)\b", re.I)
+_BRANCH_VERB = re.compile(r"\b(?:tests?|compares?|branch(?:es)?|skips?)\b", re.I)
+_CONDITION = re.compile(r"\b(?:when|whenever|if|unless|only|otherwise|else|skips?|skipped|depending)\b", re.I)
+_UNCOND = re.compile(r"\b(?:unconditionally|always|on every path|every path|on all paths|both paths|either way|both ways|in either case|"
+                     r"regardless of)\b", re.I)
+_LOOP = re.compile(r"\b(?:loops?|repeats?|until|while)\b", re.I)
+_VALUE_CLAIM = re.compile(r"\b(?:stores?|writes?|clears?|zeroe?s|zeros)\s+(?:the\s+)?(?:value\s+)?"
+                          r"(?:(?:zero|0x[0-9a-fA-F]+|\d+|a[0-7])\b(?!-byte|-bit|\s+bytes?)|its arguments?|"
+                          r"the arguments?|arguments)|\bclears?\b", re.I)
+_PASS_THROUGH = re.compile(r"\b(?:passes|forwards|passing|forwarding)\s+(?:its|the|all|every)\s+(?:own\s+)?"
+                           r"(?:argument|arguments|argument registers)\b|\bunchanged\b|\bstraight into\b", re.I)
+_COUNT = re.compile(r"\b(?P<approx>about|around|roughly|up to|at most|some)?\s*(?P<n>\d+|one|two|three|four|five|six|"
+                    r"seven|eight|nine|ten|eleven|twelve)\s+(?P<kind>indirect |direct )?(?:calls|call sites)\b", re.I)
+_WORD_NUMBER = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+                "ten": 10, "eleven": 11, "twelve": 12}
+
+
+def _hex(text):
+    value = _int(text)
+    return None if value is None else "0x%x" % value
+
+
+def _call_sites(sheet):
+    """The sites of the facts' calls in address order: [call N] is the Nth of them, counting from 1."""
+    return sorted(sheet.calls, key=lambda site: _int(site))
+
+
+def _known_addresses(sheet):
+    known = {}
+    for site in sheet.calls:
+        known[_hex(site)] = "call"
+    for address in sheet.branches:
+        known[_hex(address)] = "branch"
+    for address in sheet.returns:
+        known[_hex(address)] = "return"
+    for access in sheet.accesses:
+        known[_hex(access["address"])] = access["kind"]
+    return known
+
+
+def citations_of(sentence, sheet):
+    """[(start, end, group)] for each bracket of the sentence, where a group is a list of parts
+    {"addr", "side", "pol", "call" (the site a [call N] names), "n"}. A part that does not parse, or a
+    [call N] past the last call, has "bad" set."""
+    sites = _call_sites(sheet)
+    found = []
+    for m in _CITE.finditer(sentence):
+        group = []
+        for text in re.split(r"\s*,\s*", m.group("body").strip()):
+            part = _PART.match(text)
+            if not part:
+                group.append({"bad": text})
+            elif part.group("call"):
+                n = int(part.group("call"))
+                group.append({"n": n, "addr": sites[n - 1] if 1 <= n <= len(sites) else None, "call": True,
+                              "bad": None if 1 <= n <= len(sites) else "call %d" % n})
+            else:
+                group.append({"addr": _hex(part.group("addr")), "side": part.group("side"),
+                              "pol": part.group("pol"), "call": False, "bad": None})
+        found.append((m.start(), m.end(), group))
+    return found
+
+
+def _numbers(text):
+    return re.findall(NUMBER, text)
+
+
+def _check_call_args(segment, site, sheet):
+    """Argument claims written before a call's citation, tested on that call."""
+    problems = []
+    args = sheet.calls[site]["args"]
+    note = CONVENTION_NOTE.get(sheet.abi, "")
+    for m in re.finditer(r"\b(?P<o>" + ORD + r") argument\s*\(a(?P<r>[0-7])\)", segment):
+        if ORDINALS[m.group("o")] != int(m.group("r")):
+            problems.append(("cite-arg", "%r names a%s as the %s argument; the %s argument is a%d%s" % (
+                m.group(0), m.group("r"), m.group("o"), m.group("o"), ORDINALS[m.group("o")],
+                " (%s)" % note if note else "")))
+    for _pos, slot, value, text in _arg_claims(segment):
+        if value is None:
+            continue
+        got = args.get(slot)
+        if got is not None and _int(got) == value:
+            continue
+        elsewhere = sorted(k for k, v in args.items() if k != slot and _int(v) == value and value > 0xf)
+        if elsewhere:
+            problems.append(("cite-arg", "%r puts the value in a%d, but %s passes it in a%d, the %s argument%s" % (
+                text, slot, _label(sheet, site), elsewhere[0], ORDINAL_NAMES[elsewhere[0]],
+                " (%s)" % note if note else "")))
+        elif got is None or _int(got) is None:
+            problems.append(("cite-arg", "%r, but the facts give a%d=%s at %s, so no value can be stated there" % (
+                text, slot, got if got is not None else "(not set)", _label(sheet, site))))
+        else:
+            problems.append(("cite-arg", "%r, but %s passes %s in a%d" % (text, _label(sheet, site), got, slot)))
+    # "a1 = a2 at entry": slot a1 holds the caller's a2, and "a2 at entry as its fourth argument" says the same
+    # of the slot the ordinal names
+    for m in re.finditer(r"\ba(?P<slot>[0-7])\s*=\s*(?P<reg>a[0-7]) at entry", segment):
+        _check_entry_register(problems, m.group(0), int(m.group("slot")), m.group("reg"), site, sheet)
+    for m in re.finditer(r"\b(?P<reg>a[0-7]) at entry (?:as|in) (?:its |the )?(?P<o>" + ORD + r") argument", segment):
+        _check_entry_register(problems, m.group(0), ORDINALS[m.group("o")], m.group("reg"), site, sheet)
+    rest = re.sub(r"\ba[0-7]\s*=\s*a[0-7] at entry|\ba[0-7] at entry (?:as|in) (?:its |the )?(?:" + ORD +
+                  r") argument", " ", segment)
+    for m in re.finditer(r"\b(?P<reg>a[0-7])\s+(?:unchanged|as received|at entry|passed through)", rest):
+        _check_entry_register(problems, m.group(0), int(m.group("reg")[1]), m.group("reg"), site, sheet)
+    return problems
+
+
+def _check_entry_register(problems, text, slot, reg, site, sheet):
+    got = sheet.calls[site]["args"].get(slot, "")
+    if not str(got).startswith("%s at entry" % reg):
+        problems.append(("cite-arg", "%r, but %s passes %s in a%d" % (
+            text, _label(sheet, site), got or "(not set)", slot)))
+
+
+def _check_return_claim(segment, address, sheet):
+    value = sheet.returns.get(address, "")
+    m = re.search(r"\breturns?\s+(?:the\s+)?(?:result|value) of (?P<n>[\w.$@]+)", segment, re.I)
+    if m:
+        if "ret(%s" % m.group("n") not in value:
+            return [("cite-return", "the entry says the return at %s is the result of %s, but v0 there is %s" % (
+                address, m.group("n"), value or "(not shown)"))]
+        return []
+    m = re.search(r"\breturns?\s+(?P<v>-?0x[0-9a-fA-F]+|-?\d+)\b", segment, re.I)
+    if m and not re.search(r"(?<![\w-])" + re.escape(m.group("v")) + r"(?![\w])", value):
+        return [("cite-return", "the entry says the return at %s gives %s, but v0 there is %s" % (
+            address, m.group("v"), value or "(not shown)"))]
+    return []
+
+
+def check_cited(sentences, sheet):
+    """[(rule, reason, sentence)] for an entry written in the cited format: every citation tested against
+    the fact it names (the address exists, the call target and arguments, the branch side, a load or a
+    store, the return value), every sentence that states a fact and cites none, and the Role sentence.
+    The rules of check_entry also run, on the prose with its citations."""
+    sentences = [s for s in sentences if not re.match(r"Reviewed:", s)]
+    problems = []
+    known = _known_addresses(sheet)
+    roles = {"facts": 0, "name": 0}
+    previous_site = None
+    for sentence in sentences:
+        cites = citations_of(sentence, sheet)
+        plain = _CITE.sub(" ", sentence)
+        found = []
+        if _FROM_NAME.match(sentence):
+            roles["name"] += 1
+            found.append(("role-from-name", "the role comes from the name, so the entry earns at most located", None))
+        elif _FROM_FACTS.match(sentence):
+            roles["facts"] += 1
+            if not cites:
+                found.append(("role-uncited", "a Role (from facts) sentence must cite the facts it rests on", None))
+        elif _NAMED_ROLE.search(plain):
+            found.append(("role-unmarked", "a role taken from the name belongs in a sentence that starts "
+                          "'Role (from name):'", None))
+        names_fact = (bool(re.search(HEX, plain)) or bool(_FACT_VERB.search(plain)) or bool(mentions(plain, sheet)))
+        if (not cites and names_fact and not _FROM_NAME.match(sentence) and not _HEDGE.search(plain)
+                and not _FROM_FACTS.match(sentence)):
+            found.append(("uncited", "the sentence states a fact and cites none; add [@0xADDR] or [call N]", None))
+        previous_end, sites_here = 0, []
+        for start, end, group in cites:
+            segment = _CITE.sub(" ", sentence[previous_end:start])
+            for part in group:
+                if part.get("bad"):
+                    found.append(("cite-address", "%r is not a citation of this routine's facts (a call number "
+                                  "counts from 1 over %d calls, an address must be one the facts list)" % (
+                                      part["bad"], len(sheet.calls)), None))
+                    continue
+                address = part["addr"]
+                kind = known.get(address)
+                if kind is None:
+                    found.append(("cite-address", "%s is not an instruction the facts list for this routine" % address,
+                                  None))
+                    continue
+                if part["call"] or (not part["side"] and kind == "call"):
+                    site = address
+                    sites_here.append(site)
+                    names = mentions(segment, sheet)
+                    last = names[-1] if names else None
+                    if last and not any(sheet.calls[site][k] and sheet.calls[site][k] in last["callee"]
+                                        for k in ("callee", "target")):
+                        found.append(("cite-callee", "the sentence names %s, but %s is a call to %s" % (
+                            last["callee"][0] or last["callee"][1], "[call %d]" % (_call_sites(sheet).index(site) + 1)
+                            if part["call"] else site, sheet.calls[site]["callee"] or sheet.calls[site]["target"]), None))
+                    found.extend((r, why, None) for r, why in _check_call_args(segment, site, sheet))
+                    if _STORE_VERB.search(segment[-40:]) and not _CALL_VERB.search(segment[-40:]):
+                        found.append(("cite-kind", "the sentence says it stores at %s, which the facts show as a call" % site,
+                                      None))
+                elif part["side"]:
+                    if kind != "branch":
+                        found.append(("cite-kind", "%s takes a side, but the facts show a %s there, not a branch" % (
+                            address, kind), None))
+                elif kind in ("load", "store"):
+                    # the verb that governs a run of citations is the last one before them: "reads A, B and C [@a][@b][@c]"
+                    before = _CITE.sub(" ", sentence[:start])[-100:]
+                    verbs = sorted([(m.start(), "store") for m in _STORE_VERB.finditer(before)] +
+                                   [(m.start(), "load") for m in _LOAD_VERB.finditer(before)])
+                    said = verbs[-1][1] if verbs else None
+                    if said == "store" and kind == "load":
+                        found.append(("access-kind", "the sentence says it stores at %s, but the instruction there is "
+                                      "a load" % address, None))
+                    elif said == "load" and kind == "store":
+                        found.append(("access-kind", "the sentence says it reads at %s, but the instruction there is "
+                                      "a store" % address, None))
+                    if kind == "store" and _VALUE_CLAIM.search(before[-80:]):
+                        found.append(("cite-value", "the facts list the store at %s but not what it stores; say a word "
+                                      "or a doubleword was stored, not its value" % address, None))
+                elif kind == "return":
+                    found.extend((r, why, None) for r, why in _check_return_claim(segment, address, sheet))
+                elif kind == "branch" and re.search(r"\bcalls\b", segment[-40:]):
+                    found.append(("cite-kind", "the sentence says it calls at %s, but the facts show a branch there" %
+                                  address, None))
+            if _PASS_THROUGH.search(segment) and any(p["call"] or known.get(p["addr"]) == "call"
+                                                    for p in group if p.get("addr")):
+                found.append(("cite-arg", "'passes its arguments' is not checkable; name each register, for example "
+                              "'a1 at entry'", None))
+            found.extend((r, why, None) for r, why in _check_group(group, sheet, sentence))
+            previous_end = end
+        found.extend((r, why, None) for r, why in _check_sentence(sentence, plain, cites, sheet, known))
+        if cites:
+            call_sites = [p["addr"] for _s, _e, g in cites for p in g
+                          if p.get("addr") and not p.get("bad") and known.get(p["addr"]) == "call"]
+            if call_sites and previous_site and re.match(r"(?:It |The routine )?(?:then|next)\b", plain.strip(), re.I) \
+                    and sheet.reaches(previous_site, call_sites[0]) is False and sheet.reaches(call_sites[0], previous_site):
+                found.append(("cite-order", "the sentence puts %s after %s, but the facts reach them in the other order" % (
+                    _label(sheet, call_sites[0]), _label(sheet, previous_site)), None))
+            if call_sites:
+                previous_site = call_sites[-1]
+        problems.extend((rule, why, sentence) for rule, why, _s in found)
+    looped = any(_LOOP.search(_CITE.sub(" ", x)) and not _HEDGE.search(x) and _CITE.search(x) for x in sentences)
+    if looped:
+        info = {_hex(a): b for a, b in sheet.branches.items()}
+        back = [p for x in sentences for _s, _e, g in citations_of(x, sheet) for p in g
+                if p.get("side") == "taken" and p.get("addr") in info
+                and _int(info[p["addr"]]["target"]) <= _int(p["addr"])]
+        if not back:
+            problems.append(("cite-loop", "the entry describes a loop and cites no branch whose taken side goes back "
+                             "to an earlier address", ""))
+    if not roles["facts"] and not roles["name"]:
+        problems.append(("role-missing", "the entry has no sentence that starts 'Role (from facts):' or "
+                         "'Role (from name):'", ""))
+    # the prose rules that do not duplicate a citation check: branch words, order, returns, role words
+    skip = ("arg-slot", "arg-register") + (("access-kind",) if any(p[0] == "access-kind" for p in problems) else ())
+    problems.extend(item for item in check_entry([_CITE.sub(" ", s) for s in sentences], sheet)
+                    if item[0] not in skip)
+    seen, unique = set(), []
+    for item in problems:
+        if item[:2] not in seen:
+            seen.add(item[:2])
+            unique.append(item)
+    return unique
+
+
+def _check_group(group, sheet, sentence):
+    """The branch sides of one bracket against the calls and stores cited beside them."""
+    problems = []
+    infos = {_hex(a): b for a, b in sheet.branches.items()}
+    branches = [p for p in group if p.get("side") and not p.get("bad") and p["addr"] in infos]
+    actions = [p["addr"] for p in group if not p.get("side") and not p.get("bad") and p.get("addr")]
+    for branch in branches:
+        info = infos[branch["addr"]]
+        if branch.get("pol"):
+            text = info["taken" if branch["side"] == "taken" else "fall"]
+            m = re.fullmatch(r"(?P<l>.+?) (?P<op>==|!=) 0", text)
+            want = "==" if branch["pol"] == "zero" else "!="
+            if not m:
+                problems.append(("cite-branch", "the branch at %s does not compare a word with zero (it is %s on the "
+                                 "%s side), so %s cannot be checked" % (branch["addr"], text, branch["side"], branch["pol"])))
+            elif m.group("op") != want:
+                problems.append(("cite-branch", "the branch at %s is %s on its %s side, not a %s word" % (
+                    branch["addr"], text, branch["side"], branch["pol"])))
+        for action in actions:
+            deciders = dict(sheet.deciding(action))
+            mine = next((a for a in deciders if _hex(a) == branch["addr"]), None)
+            if mine is None:
+                # a call that runs on both sides is not wrong to cite under one of them, unless the sentence says
+                # the side is the only one that runs it
+                if not sheet.guarded(action) and not re.search(r"\b(only|alone|unless|skips?|solely|no such call|without)\b", sentence):
+                    continue
+                problems.append(("cite-branch", "the branch at %s does not decide whether %s runs" % (
+                    branch["addr"], action)))
+            elif deciders[mine] != branch["side"]:
+                problems.append(("cite-branch", "%s runs on the %s side of the branch at %s, not the %s side" % (
+                    action, deciders[mine], branch["addr"], branch["side"])))
+    return problems
+
+
+def _check_sentence(sentence, plain, cites, sheet, known):
+    """Rules that read a whole sentence: conditions, unconditional wording, counts, order."""
+    problems = []
+    flat = [p for _s, _e, g in cites for p in g if p.get("addr") and not p.get("bad") and p["addr"] in known]
+    call_parts = [p for p in flat if known[p["addr"]] == "call"]
+    branch_parts = [p for p in flat if known[p["addr"]] == "branch"]
+    hedged = bool(_HEDGE.search(plain))
+    is_role = bool(_FROM_FACTS.match(sentence) or _FROM_NAME.match(sentence))
+    # a call or store cited after "otherwise" that no branch skips cannot be on the other side of one
+    for m in re.finditer(r"\b(?:otherwise|else)\b", plain):
+        for start, end, group in cites:
+            if start >= m.start():
+                for p in group:
+                    if p.get("addr") and p["addr"] in known and known[p["addr"]] in ("call", "store") \
+                            and not p.get("side") and sheet.guarded(p["addr"]) is False:
+                        problems.append(("cite-conditional", "the sentence puts %s on the 'otherwise' side of a branch, "
+                                         "but it runs on every path" % p["addr"]))
+    # "always calls f [call 1]": the word belongs to the citation after it in its clause, or else the one before it
+    for m in _UNCOND.finditer(sentence):
+        after = next(((s, e, g) for s, e, g in cites if s >= m.end()), None)
+        if after and re.search(r"[;.]", sentence[m.end():after[0]]):
+            after = None
+        before = next(((s, e, g) for s, e, g in reversed(cites) if e <= m.start()), None)
+        for _s, _e, group in [after or before] if (after or before) else []:
+            for p in group:
+                if p.get("addr") and known.get(p["addr"]) == "call" and not p.get("side") and sheet.guarded(p["addr"]):
+                    problems.append(("cite-conditional", "the sentence says the call at %s is unconditional, but a "
+                                     "branch can skip it" % p["addr"]))
+    # a call behind one or two tests is the shape of a flag-gated call; one behind a ladder of tests is left to the
+    # reviewer, since a sentence cannot cite them all
+    if call_parts and not hedged and not branch_parts and not is_role:
+        for p in call_parts:
+            deciders = [a for a, _side in sheet.deciding(p["addr"])]
+            if sheet.guarded(p["addr"]) and 0 < len(deciders) <= 2 and not _UNCOND.search(plain):
+                problems.append(("condition-missing", "the call at %s runs only on one side of the branch at %s; cite "
+                                 "the branch, for example [call N, @%s taken]" % (p["addr"], deciders[-1], deciders[-1])))
+    if _CONDITION.search(plain) and cites and not hedged and not branch_parts and not _FROM_NAME.match(sentence):
+        problems.append(("condition-uncited", "the sentence states a condition and cites no branch; add the branch "
+                         "with its side, for example [@0xADDR taken]"))
+    for m in _COUNT.finditer(plain):
+        n = _WORD_NUMBER.get(m.group("n").lower()) or _int(m.group("n"))
+        kind = (m.group("kind") or "").strip()
+        total = sum(1 for c in sheet.calls.values()
+                    if kind != "indirect" or not c.get("target")) if kind != "direct" else sum(
+                        1 for c in sheet.calls.values() if c.get("target"))
+        if m.group("approx"):
+            problems.append(("cite-count", "%r is not a count the facts can confirm; give the exact number" % m.group(0).strip()))
+        elif n != total:
+            problems.append(("cite-count", "the sentence says %d%s calls, but the facts list %d" % (
+                n, " " + kind if kind else "", total)))
+    for (s1, e1, g1), (s2, e2, g2) in zip(cites, cites[1:]):
+        a = next((p["addr"] for p in g1 if p.get("addr") and known.get(p["addr"]) == "call"), None)
+        b = next((p["addr"] for p in g2 if p.get("addr") and known.get(p["addr"]) == "call"), None)
+        if not a or not b or a == b:
+            continue
+        between = sentence[e1:s2]
+        word = re.search(r"\b(then|before|after)\b", between)
+        if not word or re.search(r"\b(when|if|unless|otherwise)\b", between):
+            continue
+        early, late = (b, a) if word.group(1) == "after" else (a, b)
+        if sheet.reaches(early, late) is False and sheet.reaches(late, early):
+            problems.append(("cite-order", "the sentence puts %s %s %s, but the facts reach %s first" % (
+                _label(sheet, a), word.group(1), _label(sheet, b), _label(sheet, late))))
+    return problems
+
