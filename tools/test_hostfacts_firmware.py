@@ -1087,6 +1087,13 @@ class FirmwareFacts(unittest.TestCase):
         self.assertEqual(sorted(a['origin_offset'] for a in saves), list(range(-60,-20,4)))
         self.assertEqual(fs['calls'][0]['args'][0]['value'], '0x7')
 
+    def test_m68k_movem_leaves_the_base_register_known(self):
+        # movea.l #0x10000000,a0; movem.l d2-d3,(a0); move.l d0,4(a0);
+        # movem.l (a0),d2-d3; move.l d0,(a0); rts
+        fs, _ = self.analyze('coldfire', '207c10000000' '48d0000c' '21400004' '4cd0000c' '20800000' '4e75')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store' and not a['implicit']]
+        self.assertEqual([a.get('absolute') for a in stores][-2:], ['0x10000004', '0x10000000'])
+
     def test_m68k_tst_compares_value_with_zero(self):
         # moveq #1,d0; tst.l d0; beq +2; rts; rts
         fs, text = self.analyze('m68k', '70014a8067024e754e75')
@@ -1501,10 +1508,31 @@ class FirmwareFacts(unittest.TestCase):
         self.assertEqual([e['address'] for e in fs['exits']], ['0x1004', '0x1010'])
         self.assertEqual([(a['kind'], a['width']) for a in fs['accesses']], [('store', 1), ('store', 2)])
 
-    def test_ppc32_unmodelled_memory_instruction_invalidates_registers(self):
-        # lis r9,0xfa20; lmw r28,0(r9) (not modelled, has a memory operand); lwz r0,0(r9); blr
-        fs, _ = self.analyze('ppc32', '3d20fa20' 'bb890000' '80090000' '4e800020')
-        self.assertEqual([a.get('absolute') for a in fs['accesses']][-1:], [None])
+    def test_ppc32_lmw_invalidates_only_its_destination_run(self):
+        # lis r9,0xfa20; lis r30,0xfa20; lmw r28,0(r10); lwz r0,0(r9); lwz r1,0(r30); blr
+        fs, _ = self.analyze('ppc32', '3d20fa20' '3fc0fa20' 'bb8a0000' '80090000' '803e0000' '4e800020')
+        after_r9, after_r30 = fs['accesses'][-2:]
+        self.assertEqual(after_r9['absolute'], '0xfa200000')
+        self.assertNotIn('absolute', after_r30)
+
+    def test_ppc32_stmw_keeps_the_base_register_known(self):
+        # lis r9,0xfa20; stmw r29,0x10(r9); stw r0,0xfc(r9); stw r9,0x104(r9); blr
+        fs, text = self.analyze('ppc32', '3d20fa20' 'bfa90010' '900900fc' '91290104' '4e800020')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store']
+        self.assertEqual([a.get('absolute') for a in stores], ['0xfa200010', '0xfa2000fc', '0xfa200104'])
+        self.assertNotIn('to ?', text)
+        self.assertEqual((stores[0]['width'], stores[0]['absolute']), (12, '0xfa200010'))
+
+    def test_ppc32_unmodelled_alu_writes_only_its_destination(self):
+        # lis r9,0xfa20; andi. r0,r0,0x3000; rlwinm r0,r0,20,0,29; stw r0,0xfc(r9); blr
+        fs, _ = self.analyze('ppc32', '3d20fa20' '70003000' '5400a03a' '900900fc' '4e800020')
+        self.assertEqual([a.get('absolute') for a in fs['accesses']], ['0xfa2000fc'])
+
+    def test_ppc32_string_forms_write_only_their_destinations(self):
+        # lis r9,0xfa20; stswi r5,r9,8; lswi r5,r9,8; stw r5,0xfc(r9); stw r0,0x100(r9); blr
+        fs, _ = self.analyze('ppc32', '3d20fa20' '7ca945aa' '7ca944aa' '90a900fc' '90090100' '4e800020')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store' and a['address'] in ('0x100c', '0x1010')]
+        self.assertEqual([a.get('absolute') for a in stores], ['0xfa2000fc', '0xfa200100'])
 
     def test_ppc32_indexed_forms(self):
         # lis r11,0x1000; lwzx r0,r11,r3 (r3 unknown); li r4,0x10; stbx r0,r11,r4; lwzux r5,r11,r4; lwz r6,0(r11); blr
