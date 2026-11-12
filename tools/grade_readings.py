@@ -757,10 +757,48 @@ def needs_review(doc, workspace):
     return inv.review_required(cfg, os.path.relpath(os.path.abspath(doc), workspace))
 
 
-def check_doc(doc, inventory=None, out=None, review=False):
+def is_routines_file(doc, workspace):
+    """Whether DOC is a routines file of the workspace: one the inventory config lists in review_required,
+    or one under docs/routines/."""
+    rel = os.path.relpath(os.path.abspath(doc), workspace)
+    return needs_review(doc, workspace) or rel.startswith("docs" + os.sep + "routines" + os.sep)
+
+
+ENTRY_LIKE = re.compile(r"(?:[-*+]|\d+\.|#{1,6})\s")
+
+
+def entry_like_lines(lines):
+    """[(line number, text)] of the lines outside code fences that look like an entry header: a bullet or
+    heading at the left margin that gives a code address 0x... and says "in" or "at". Indented lines are
+    the text of an entry and are not counted."""
+    found, fence = [], False
+    for i, text in enumerate(lines):
+        if text.strip().startswith("```"):
+            fence = not fence
+        elif (not fence and ENTRY_LIKE.match(text) and re.search(HEX, text)
+              and re.search(r"\b(?:in|at)\b", text)):
+            found.append((i + 1, text.strip()))
+    return found
+
+
+def unread_entries(lines):
+    """[(line number, reason)] for a routines file: each entry-like line the parser did not take as an entry
+    header, or line 1 when the file is empty or yields no entry at all. Without this a file whose headers are
+    all in a shape the parser does not read passes every other check on an empty set."""
+    if not "".join(lines).strip():
+        return [(1, "the file is empty")]
+    taken = {e["line"] for e in parse_lines(lines)}
+    found = [(n, "%r gives an address but is not an entry the parser reads; write `routine` in "
+                 "`path/of/binary` at 0xADDR with the role lines under it" % text[:70])
+             for n, text in entry_like_lines(lines) if n not in taken]
+    return found or ([] if taken else [(1, "the file has no entry the parser reads")])
+
+
+def check_doc(doc, inventory=None, out=None, review=False, routines=False):
     """Lint a routine-role document. Prints each problem as DOC:LINE: subject, then the reason, and
     returns how many entries were reported. review says the workspace requires a Reviewed line in
-    each entry of DOC. See the module docstring."""
+    each entry of DOC. routines says DOC is a routines file, so an empty file or an entry-like line the
+    parser did not take as an entry is a problem. See the module docstring."""
     import inventory as inv
     out = out or sys.stdout
     saved = inv.REPO
@@ -863,6 +901,12 @@ def check_doc(doc, inventory=None, out=None, review=False):
     for line, subject, reason, problem in problems:
         print("%s:%d: %s%s\n  %s" % (doc, line, subject, "" if problem else " (note)", reason), file=out)
     count = sum(1 for p in problems if p[3])
+    if routines:
+        reported = {p[0] for p in problems}      # a line the checks above reported is not reported twice
+        for line, reason in unread_entries(lines):
+            if line not in reported:
+                count += 1
+                print("%s:%d: %s" % (doc, line, reason), file=out)
     print("entries=%d understood=%d located=%d named-only=%d problems=%d" % (
         sum(counts.values()), counts["understood"], counts["located"], counts["named-only"], count), file=out)
     return count
@@ -1092,7 +1136,8 @@ def main(argv=None):
         table = args.inventory
         if table is None:
             table = os.path.join(workspace, "docs", "inventory", "functions.tsv")
-        problems = check_doc(args.doc, table, review=needs_review(args.doc, workspace))
+        problems = check_doc(args.doc, table, review=needs_review(args.doc, workspace),
+                             routines=is_routines_file(args.doc, workspace))
         if args.check_facts:
             problems += check_facts(args.doc, args.root or os.path.join(workspace, "root"), table,
                                     strict=args.strict_citations)

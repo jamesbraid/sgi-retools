@@ -383,12 +383,13 @@ class CheckDoc(unittest.TestCase):
     ROLE = ("Copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The return is the "
             "constant 0xe or the mount result at 0x2084.")
 
-    def lint(self, text, table=True, rows=None, review=False):
+    def lint(self, text, table=True, rows=None, review=False, routines=False, intro=True):
         directory = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, directory)
         doc = os.path.join(directory, "b000.md")
         with open(doc, "w", encoding="utf-8") as handle:
-            handle.write("# Readings\n\nIntro that names `swfio_mount` at 0x1f80 and is not an entry.\n\n" + text)
+            handle.write(("# Readings\n\nIntro that names `swfio_mount` at 0x1f80 and is not an entry.\n\n" if intro
+                          else "") + text)
         path = None
         if table:
             path = os.path.join(directory, "functions.tsv")
@@ -398,7 +399,7 @@ class CheckDoc(unittest.TestCase):
                 for binary, address, code in rows:
                     handle.write("%s\t%s\tswfio_mount\t%s\n" % (binary, address, code))
         out = io.StringIO()
-        problems = grade.check_doc(doc, path, out, review=review)
+        problems = grade.check_doc(doc, path, out, review=review, routines=routines)
         return problems, out.getvalue()
 
     def test_the_canonical_entry_has_no_problem(self):
@@ -430,6 +431,58 @@ class CheckDoc(unittest.TestCase):
         self.assertFalse(grade.needs_review(os.path.join(directory, "docs", "routines", "r3.md"), directory))
         self.assertFalse(grade.needs_review(os.path.join(directory, "docs", "routines", "t2-a.md"),
                                             os.path.join(directory, "docs")))
+
+    def test_a_routines_file_with_unread_bullet_headers_is_reported(self):
+        # both shapes that once parsed to zero entries and passed
+        text = ("- swfio_mount in `%s` at 0x1f80\n  %s\n\n- `swfio_umount` at 0x1fe0 in `%s`\n  %s\n"
+                % (self.BINARY, self.ROLE, self.BINARY, self.ROLE))
+        problems, out = self.lint(text, table=False, routines=True)
+        self.assertEqual(problems, 2, out)
+        self.assertIn(":5:", out)
+        self.assertIn(":8:", out)
+        self.assertIn("not an entry the parser reads", out)
+
+    def test_the_same_file_is_not_checked_unless_it_is_a_routines_file(self):
+        problems, out = self.lint("- swfio_mount in `%s` at 0x1f80\n  %s\n" % (self.BINARY, self.ROLE), table=False)
+        self.assertEqual(problems, 0, out)
+
+    def test_an_unread_header_beside_a_read_one_is_reported(self):
+        text = ("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s\n- swfio_umount in `%s` at 0x1fe0\n  %s\n"
+                % (self.BINARY, self.ROLE, self.BINARY, self.ROLE))
+        problems, out = self.lint(text, table=False, routines=True)
+        self.assertEqual(problems, 1, out)
+        self.assertIn(":7:", out)
+
+    def test_a_routines_file_with_every_header_read_has_no_problem(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s\n" % (self.BINARY, self.ROLE),
+                                  table=False, routines=True)
+        self.assertEqual(problems, 0, out)
+
+    def test_an_empty_routines_file_is_reported(self):
+        for text in ("", "\n \n"):
+            problems, out = self.lint(text, table=False, routines=True, intro=False)
+            self.assertEqual(problems, 1, out)
+            self.assertIn("empty", out)
+
+    def test_a_routines_file_with_no_entry_is_reported(self):
+        problems, out = self.lint("Notes with no entries.\n", table=False, routines=True, intro=False)
+        self.assertEqual(problems, 1, out)
+        self.assertIn("no entry the parser reads", out)
+
+    def test_a_listing_in_a_code_fence_is_not_an_unread_header(self):
+        text = ("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s\n\n```\n- swfio_umount in x at 0x1fe0\n```\n"
+                % (self.BINARY, self.ROLE))
+        problems, out = self.lint(text, table=False, routines=True)
+        self.assertEqual(problems, 0, out)
+
+    def test_routines_file_is_read_from_the_config_or_the_directory(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, directory)
+        os.makedirs(os.path.join(directory, "scripts"))
+        with open(os.path.join(directory, "scripts", "inventory-config.json"), "w") as handle:
+            handle.write('{"review_required": ["notes/t2-*.md"]}')
+        for rel, expect in (("docs/routines/r3.md", True), ("notes/t2-a.md", True), ("notes/other.md", False)):
+            self.assertEqual(grade.is_routines_file(os.path.join(directory, rel), directory), expect, rel)
 
     def test_a_heading_with_a_paragraph_has_no_problem(self):
         problems, out = self.lint("### `swfio_mount` in `%s` at 0x1f80\n\n%s\n\nGrade: inferred.\n"
