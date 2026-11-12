@@ -562,6 +562,50 @@ class CheckFacts(unittest.TestCase):
         self.assertEqual(reported, 0)
         self.assertIn("no-facts=1", out)
 
+    CITED = ("- `r` in `lib.so` at 0x10\n  **Inferred.** Calls f with a4 = 0xb4 [call 1].\n"
+             "  Role (from facts): a wrapper for f [call 1].\n\n")
+
+    def run_strict(self, text):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + text)
+        out = io.StringIO()
+        with mock.patch.object(fact_check, "sheet_for", return_value=self.sheet_with_a4()):
+            reported = grade.check_facts(self.doc, self.root, None, out, strict=True)
+        return reported, out.getvalue()
+
+    def sheet_with_a4(self):
+        return fact_check.FactSheet(
+            abi="n32", calls={"0x18": {"callee": "f", "target": "0x900", "args": {4: "0xb4"}, "tail": False}},
+            returns={}, blocks=[])
+
+    def test_strict_citations_accept_a_fully_cited_entry(self):
+        reported, out = self.run_strict(self.CITED)
+        self.assertEqual(reported, 0, out)
+
+    def test_strict_citations_report_an_uncited_fact_and_a_wrong_slot(self):
+        reported, out = self.run_strict(self.CITED.replace("a4 = 0xb4 [call 1]", "a3 = 0xb4 [call 1]. It stores a word"))
+        self.assertEqual(reported, 1)
+        self.assertIn("[cite-arg]", out)
+        self.assertIn("[uncited]", out)
+
+    def test_strict_citations_print_a_role_from_the_name_as_a_note_that_does_not_count(self):
+        reported, out = self.run_strict(self.CITED.replace("Role (from facts)", "Role (from name)"))
+        self.assertEqual(reported, 0, out)
+        self.assertIn("[role-from-name] (note)", out)
+
+    def test_a_reviewed_line_is_not_read_as_a_claim(self):
+        reported, out = self.run_strict(self.CITED.replace("\n\n", "\n  Reviewed: 2026-11-12\n\n"))
+        self.assertEqual(reported, 0, out)
+
+    def test_without_the_flag_an_uncited_sentence_is_not_reported(self):
+        reported, out, _patched = self.run_facts(self.CITED.replace("[call 1].\n  Role", "[call 1]. It stores a word.\n  Role"),
+                                                 sheet=self.sheet_with_a4())
+        self.assertEqual(reported, 0, out)
+
+    def test_strict_citations_need_check_facts(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            grade.main([self.doc, "--check-doc", "--strict-citations"])
+
     def test_check_facts_needs_check_doc(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             grade.main([self.doc, "--check-facts"])

@@ -183,6 +183,13 @@ Rules, each reported with the sentence it came from:
 The rules of the previous section also run, on the prose with its citations removed, except the two argument
 rules, which the citation check replaces.
 
+    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --check-doc --check-facts --strict-citations
+
+reads every entry of the file as a cited entry. It prints each finding as `FILE:LINE: routine [rule]` with the
+reason and the sentence, counts an entry once however many findings it has, and exits 1 when any entry has one.
+`role-from-name` is printed as a note and does not count. Without the flag nothing changes: an entry is read by the
+prose rules, and a citation in it is ordinary text. The flag needs `--check-doc --check-facts` and `root/`.
+
 The role is the claim the most errors turned up in, so it is the one sentence that must be labelled. An entry
 has a sentence that starts `Role (from facts):` and cites the facts it rests on, or one that starts
 `Role (from name):`. The second admits that the role is a guess from the routine's name or its neighbours; it is
