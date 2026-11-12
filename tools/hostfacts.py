@@ -1364,6 +1364,47 @@ class FirmwareRoutine:
             return 'conditional-call' if kind == 'conditional' else 'call', target, cc
         return kind, target, cc
 
+    def ppc_writes(self, ins):
+        """Registers a PowerPC instruction may change. Capstone's PowerPC backend has no usable
+        regs_access, so the effect comes from the operand layout. Treating an instruction it does not
+        know as writing everything also makes a live base register unknown, and every later access
+        through it then renders "to ?". A store writes no register (an update form writes back its
+        base), lmw writes rD..r31, lswi a run of ceil(n/4) registers from rD, and a compare, a move to
+        a special register or a cache, sync or TLB operation writes no general register. The rest write
+        rD (the first operand), plus the base for an update-form load. System calls, returns from
+        interrupt and anything unrecognised still invalidate everything."""
+        mn, op = ins.mnemonic, ins.operands
+        everything = ['r%d' % n for n in range(32)] + ['lr', 'ctr']
+        update = mn.endswith(('u', 'ux'))
+        if mn.startswith('st'):
+            if update and len(op) >= 2:
+                base = op[1].mem.base_reg if op[1].type == 3 else op[1].reg
+                return [self.reg(ins, base)] if base else []
+            return []
+        if mn in ('sc', 'rfi', 'rfid') or mn.startswith(('tw', 'td')):
+            return everything
+        if mn == 'mtspr' or mn.startswith('mtlr') or mn.startswith('mtctr'):
+            return ['lr', 'ctr']
+        if mn != 'cmpb' and mn.startswith(('cmp', 'fcmp', 'mt', 'cr', 'dcb', 'icb', 'tlb', 'sync', 'isync', 'eieio',
+                                          'lwsync', 'mbar', 'ptesync')):
+            return []
+        if not op or op[0].type != 1:
+            return everything
+        first = self.reg(ins, op[0].reg)
+        if mn == 'lmw':
+            return ['r%d' % n for n in range(int(first[1:]), 32)]
+        if mn == 'lswi' and len(op) == 3 and op[2].type == 2:
+            # NB of 0 means 32 bytes, and the run wraps from r31 to r0.
+            return ['r%d' % ((int(first[1:]) + n) % 32) for n in range(((op[2].imm & 31 or 32) + 3) // 4)]
+        if mn == 'lswx':
+            return everything
+        writes = [first]
+        if mn.startswith('l') and update and len(op) >= 2:
+            base = op[1].mem.base_reg if op[1].type == 3 else op[1].reg
+            if base:
+                writes.append(self.reg(ins, base))
+        return writes
+
     def invalidate(self, st, ins):
         try:
             writes = [self.reg(ins, n) for n in ins.regs_access()[1]]
@@ -1371,7 +1412,7 @@ class FirmwareRoutine:
             # Capstone's M68K backend has no regs_access implementation, and its PowerPC backend raises
             # for some instructions: assume every register may change.
             if self.ppc:
-                writes = ['r%d' % n for n in range(32)] + ['lr', 'ctr']
+                writes = self.ppc_writes(ins)
             else:
                 writes = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
                 if any(o.type == 3 and self.reg(ins, o.mem.base_reg) == 'a7' for o in ins.operands):
@@ -1753,6 +1794,10 @@ class FirmwareRoutine:
                 if self.arm and ins.insn_name() in ('ldrd','strd'):
                     kinds = ['load' if ins.insn_name() == 'ldrd' else 'store']
                 width = self.width(ins, operand)
+                if self.ppc and mn in ('stmw', 'lmw') and operand is op[-1] and op[0].type == 1:
+                    # Capstone leaves the access flags empty. The transfer runs from rS/rD through r31.
+                    kinds = ['store' if mn == 'stmw' else 'load']
+                    width = 4 * (32 - int(self.reg(ins, op[0].reg)[1:]))
                 if self.arm and ins.insn_name().startswith(('stc', 'ldc')):
                     # Capstone marks STC memory operands as reads. The
                     # coprocessor decides the transfer length, including
