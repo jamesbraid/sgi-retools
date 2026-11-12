@@ -29,6 +29,8 @@ jobs:
         run: python3 tools/test_inventory.py
       - name: Run the environment variable scanner tests
         run: python3 tools/test_envscan.py
+      - name: Run the fact check tests
+        run: python3 tools/test_fact_check.py
       - name: Run the reading grader tests
         run: python3 tools/test_grade_readings.py
       - name: Run the decode-header check
