@@ -96,8 +96,8 @@ def main():
     L.append(table(['variant', 'rows', 'sites', 'model: handled+specified', 'model: handled, guessed or LOG_UNIMP',
                     'model: unhandled / out of scope', 'not in datasheet', 'not in spec', 'spec conflict'], rows))
     L.append('\n`?` is an access whose path names no chip variant (the identification-word read every driver does before it knows which chip it holds). '
-             + ('`tiocp` has no emulator datasheet or model, so its rows are listed but not judged.' if bridge_like else
-                'This census compares only with the published specification: no emulator datasheet or model is read, so the datasheet and model columns carry no information.'))
+             + ('`tiocp` has no datasheet in this repository, so its rows are listed but not judged.' if bridge_like else
+                'This census compares only with the published specification: no datasheet or register model is read, so the datasheet and model columns carry no information.'))
     L.append('\nSite basis: %s.' % ', '.join('%d %s' % (n, k) for k, n in collections.Counter(s['basis'] for s in sites).most_common()))
     L.append('\n### Scan coverage and what is unresolved\n')
     tot = {}
