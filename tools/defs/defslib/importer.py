@@ -103,7 +103,8 @@ def unit_name_for(path, taken):
 
 def weakest(grades):
     gs = [g for g in grades if g in RANK]
-    return min(gs, key=lambda g: RANK[g]) if gs else "established"
+    # RANK counts up from the strongest grade, so the weakest is the highest rank
+    return max(gs, key=lambda g: RANK[g]) if gs else "established"
 
 
 def common_prefix(names):
