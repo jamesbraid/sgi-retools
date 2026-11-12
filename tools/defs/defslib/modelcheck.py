@@ -80,6 +80,8 @@ def check_unit(u, settings=None):
             for fn, want in t["expect"].items():
                 if fn not in got:
                     p.add(at, "unknown field %r" % fn)
+                elif isinstance(want, str):
+                    continue            # an unresolved @register reference; the loader resolves these
                 elif got[fn] != want:
                     p.add(at, "field %s decodes to %d (0x%x), stated %d" % (fn, got[fn], got[fn], want))
     return p

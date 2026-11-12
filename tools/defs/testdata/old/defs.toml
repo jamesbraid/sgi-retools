@@ -1,0 +1,54 @@
+[project]
+name = "oldmini"
+
+[checks]
+address_bits = 32
+max_reg_offset = 0xffffffff
+
+[rust]
+out_dir = "generated"
+
+[[rust.banned_extra]]
+label = "project name"
+regex = '\boldmini\b'
+
+[[banned.extra]]
+label = "driver routine prefix"
+regex = '\bmini_\w*'
+
+[[headers]]
+file = "UART_DECODE.h"
+block = "UART"
+group = "uart"
+notes_corpus = ["docs/uart.md"]
+description = ["Made-up UART registers and frame word."]
+
+[[headers]]
+file = "LEG_DECODE.h"
+form = "legacy"
+prefix = "LEG"
+macro_pairs = [
+  ["CMD.class", "LEG_CMD_CLASS_SHIFT", "LEG_CMD_CLASS_MASK"],
+  ["CMD.size_field", "LEG_CMD_SIZEFLD_SHIFT", "LEG_CMD_SIZEFLD_MASK"],
+]
+inplace = [["CMD.front", "LEG_CMD_FRONT_INPLACE"]]
+words = { CMD = ["Command", "A made-up command word."] }
+
+[[headers.enum_families]]
+prefix = "FMT"
+type = "Format"
+doc = "Pixel format."
+fields = ["CMD.format"]
+
+[[headers]]
+file = "CEN.h"
+
+[[headers]]
+file = "TAB.h"
+
+[[claims]]
+group = "uart"
+label = "frame payload"
+doc = "docs/uart.md"
+regex = 'payload in bits (\d+):(\d+)'
+binds = [["F", "FRAME.payload", 1, 2]]

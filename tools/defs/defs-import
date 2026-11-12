@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Convert a repo's annotated headers into defs/ sources.
+
+    defs-import [--root DIR] [--config defs.toml] [--out defs] [--from TEXT]
+                [--space-unit NAME ...] [--unit-name HEADER=UNIT ...] [--force] [--dry-run]
+
+Reads the repo's old defs.toml and every header it lists; writes defs/<unit>.toml,
+defs/<unit>_helpers.h (function-like macros) and defs/check.toml. It never edits a
+header. The report on stdout lists everything that needs a person: constants with no
+grade, macros with no counterpart, defaulted grades, and the legacy macro names that
+now live in [c.aliases]. The same report goes to <out>/import-report.txt, which is
+deleted after the migration.
+
+Exit 0 on success, 2 on a setup problem or when a file would be overwritten.
+"""
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from defslib import importer  # noqa: E402
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--root", default=".", help="repo root (default: current directory)")
+    ap.add_argument("--config", default="defs.toml", help="old config, relative to the root")
+    ap.add_argument("--out", default="defs", help="output directory, relative to the root")
+    ap.add_argument("--from", dest="frm", help="the source to record for every unit (default: a note that it was not recorded)")
+    ap.add_argument("--space-unit", action="append", default=[], metavar="NAME", help="declare this address space in register-index units")
+    ap.add_argument("--unit-name", action="append", default=[], metavar="HEADER=UNIT", help="name the unit for a header")
+    ap.add_argument("--force", action="store_true", help="overwrite existing files in the output directory")
+    ap.add_argument("--dry-run", action="store_true", help="print the report and write nothing")
+    args = ap.parse_args(argv)
+    names = dict(kv.split("=", 1) for kv in args.unit_name)
+    try:
+        res = importer.import_repo(args.root, args.config, args.frm, args.space_unit, names)
+    except (OSError, KeyError) as e:
+        print("error: %s" % e, file=sys.stderr)
+        return 2
+    report = res.report.lines()
+    print("\n".join(report))
+    if args.dry_run:
+        return 0
+    try:
+        written = importer.write_result(args.root, res, args.out, args.force)
+        rpath = os.path.join(args.root, args.out, "import-report.txt")
+        with open(rpath, "w", encoding="utf-8") as f:
+            f.write("\n".join(report) + "\n")
+        written.append(os.path.join(args.out, "import-report.txt"))
+    except FileExistsError as e:
+        print("error: %s" % e, file=sys.stderr)
+        return 2
+    print("wrote %d files under %s/" % (len(written), args.out))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
