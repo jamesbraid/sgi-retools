@@ -66,6 +66,16 @@ class ArgumentSlots(unittest.TestCase):
         self.assertEqual(rules(["It calls pack at 0x20 with a0 = 0x2 and a4 = 0xb4."], self.sheet()), ["arg-slot"])
         self.assertEqual(rules(["It calls pack at 0x20 with a0 = 1 and a4 = 0xb4."], self.sheet()), [])
 
+    def test_a_register_named_again_pairs_the_values_with_the_calls_one_by_one(self):
+        sheet = fc.FactSheet(abi="n64", calls={
+            "0x20": call("f", "0x900", {0: "0x4"}), "0x30": call("g", "0x910", {0: "0x6"})})
+        self.assertEqual(rules(["It calls f and g with a0 = 0x4 and a0 = 0x6 in turn."], sheet), [])
+
+    def test_a_call_site_written_before_as_is_not_a_value(self):
+        sheet = fc.FactSheet(abi="n64", calls={"0x20": call("pack", "0x900", {1: "0xb4", 2: "0x44"})})
+        self.assertEqual(rules(["It passes the helper to pack at 0x20 as a1."], sheet), [])
+        self.assertEqual(rules(["It passes 0x20 as a1 to pack at 0x20."], sheet), ["arg-slot"])
+
     def test_a_small_value_in_another_slot_is_not_evidence(self):
         sheet = fc.FactSheet(abi="n64", calls={"0x20": call("pack", "0x900", {1: "0x0", 3: "?"})})
         self.assertEqual(rules(["It calls pack at 0x20 with a3 = 0x0."], sheet), [])
@@ -166,6 +176,13 @@ class ConditionalWording(unittest.TestCase):
     def test_unconditionally_over_a_call_on_every_path_is_accepted(self):
         sheet = guarded_call_sheet(site="0x4")
         self.assertEqual(rules(["It unconditionally calls f at 0x4."], sheet), [])
+
+    def test_a_call_named_after_the_phrase_under_its_own_condition_is_not_covered_by_it(self):
+        sheet = guarded_call_sheet()
+        sheet.calls["0x4"] = call("g", "0x910")
+        self.assertEqual(rules(["It calls g at 0x4 on every path, and f at 0x10 only when the flag is set."], sheet), [])
+        self.assertEqual(rules(["It calls g at 0x4 (run unconditionally), then f at 0x10 (0x8 skips it)."], sheet), [])
+        self.assertEqual(rules(["It calls g at 0x4 on every path, and again at 0x10."], sheet), ["conditional-wording"])
 
     def test_the_otherwise_side_of_a_branch_cannot_hold_an_unguarded_store(self):
         sheet = guarded_call_sheet()
@@ -298,6 +315,18 @@ class Graph(unittest.TestCase):
             block(0x20, 0x24, []), reached=False)])
         sheet.blocks[0]["succ"] = [1]
         self.assertFalse(sheet.guarded("0x10"))
+
+    def test_a_routine_that_spins_on_itself_after_the_branch_still_guards_the_skipped_call(self):
+        # no block has no successor: the last one branches to itself, as a routine does after a fatal call
+        sheet = fc.FactSheet(blocks=[block(0x0, 0xc, [2, 1], "0x8"), block(0x10, 0x14, [2]), block(0x18, 0x1c, [2])])
+        self.assertTrue(sheet.guarded("0x10"))
+        self.assertFalse(sheet.guarded("0x18"))
+        self.assertFalse(sheet.guarded("0x4"))
+
+    def test_a_loop_with_a_way_out_is_not_an_exit(self):
+        # 0 -> 1 -> 0 loops; 1 also leaves to the return at 2, so the call in the loop body is on every path
+        sheet = fc.FactSheet(blocks=[block(0x0, 0x4, [1]), block(0x8, 0xc, [0, 2], "0xc"), block(0x10, 0x14, [])])
+        self.assertFalse(sheet.guarded("0x8"))
 
     def test_a_sheet_round_trips_through_json(self):
         sheet = guarded_call_sheet()

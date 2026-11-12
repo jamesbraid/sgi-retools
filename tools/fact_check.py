@@ -71,6 +71,7 @@ class FactSheet:
         self.returns = returns or {}      # address -> v0 text
         self.blocks = list(blocks)        # {"first", "last", "succ": [indexes], "reached"}
         self._reach = {}
+        self._end = {}
 
     def to_dict(self):
         return {"name": self.name, "abi": self.abi, "text": self.text, "accesses": self.accesses,
@@ -123,7 +124,20 @@ class FactSheet:
         if target == 0:
             return False
         reachable = self._walk(0, avoid=target)
-        return any(not self.blocks[node]["succ"] for node in reachable)
+        return any(self._ends(node) for node in reachable)
+
+    def _ends(self, node):
+        """Whether execution can end at a block: it has no successor, or it is in a loop it can never leave
+        (a routine that spins on itself after a fatal call has no return to reach)."""
+        if node not in self._end:
+            ahead = self._walk(node)
+            if not self.blocks[node]["succ"]:
+                self._end[node] = True
+            elif any(not self.blocks[n]["succ"] for n in ahead):
+                self._end[node] = False         # a return can still be reached from here
+            else:
+                self._end[node] = all(node in self._walk(n) for n in ahead)
+        return self._end[node]
 
     def reaches(self, first, second):
         """Whether execution can go from the instruction at first to the one at second."""
@@ -410,9 +424,15 @@ def check_arguments(sentence, sheet):
         near = _nearest(items, pos)
         if near is None or value is None:
             continue
+        # "the helper f at 0xADDR as r4": the address is where the call is, not a value passed
+        if re.search(r"\bat\s+$", sentence[max(0, pos - 4):pos]) and "0x%x" % value in sheet.calls:
+            continue
         # "A, B and C pass x, y and z as their fourth argument" pairs calls with values one by one
+        # ("A and B with r3=0x20 and r3=0x80" pairs them too: the same register named again is the next call's)
+        named = re.match(re.escape(spec[0]) + r"\d+", text)
+        again = r"(?:" + re.escape(named.group(0)) + r"\s*=\s*)?" if named else ""
         if re.search(r"(?:" + NUMBER + r",?|and)\s+$", sentence[max(0, pos - 12):pos]) or re.match(
-                r"[^.]{0,40}?(?:,|\band)\s+-?" + NUMBER, sentence[pos + len(text):pos + len(text) + 24]):
+                r"[^.]{0,40}?(?:,|\band)\s+" + again + r"-?" + NUMBER, sentence[pos + len(text):pos + len(text) + 24]):
             continue
         # a site written right after the claim ("a1 of 1 at 0xec43bc4") narrows it to that call
         after = re.match(r"\s*\(?(?:\w+ )?(?:at|from) (" + HEX + r")", sentence[pos + len(text):])
@@ -678,7 +698,15 @@ def check_conditional_wording(sentence, entry_text, sheet):
     problems = []
     explicit = re.search(r"\b(unconditionally|on every path|every path|on all paths|regardless of)\b", sentence)
     if explicit:
-        for _pos, address in _actions(sentence, sheet):
+        for pos, address in _actions(sentence, sheet):
+            # an address after the phrase belongs to it only while the clause runs on: a closing bracket or a
+            # stop before it, or a condition before it or after it in its own clause ("... on every path, and
+            # at B only when ..."), starts another claim
+            cond = r"\b(?:when|whenever|if|unless|otherwise|else|only)\b"
+            if pos > explicit.end() and (
+                    re.search(r"[;.)]|" + cond, sentence[explicit.end():pos])
+                    or re.search(cond, re.split(r"[;.)]", sentence[pos:], maxsplit=1)[0])):
+                continue
             if sheet.guarded(address):
                 problems.append(("conditional-wording", "the entry says %r about %s, but a branch can skip it" % (
                     explicit.group(1), address), sentence))
