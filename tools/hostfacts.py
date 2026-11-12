@@ -683,6 +683,19 @@ PPC_INDEXED = {'lwzx': 'lwz', 'lhzx': 'lhz', 'lhax': 'lha', 'lbzx': 'lbz', 'lfsx
 PPC_CONDITIONS = {'eq', 'ne', 'lt', 'le', 'gt', 'ge', 'ns', 'so', 'dnz', 'dz', 'dnzt', 'dnzf', 'dzt', 'dzf'}
 
 
+# m68k and ColdFire mnemonics (size suffix removed) whose last operand is the only thing they write.
+M68K_WRITES_LAST = {
+    'move', 'movea', 'moveq', 'mov3q', 'mvs', 'mvz', 'movec', 'lea', 'add', 'adda', 'addi', 'addq', 'addx',
+    'sub', 'suba', 'subi', 'subq', 'subx', 'and', 'andi', 'or', 'ori', 'eor', 'eori', 'asl', 'asr', 'lsl',
+    'lsr', 'rol', 'ror', 'roxl', 'roxr', 'neg', 'negx', 'not', 'clr', 'ext', 'extb', 'swap', 'bset', 'bclr',
+    'bchg', 'bitrev', 'byterev', 'ff1', 'mulu', 'muls', 'divu', 'divs', 'remu', 'rems', 'tas', 'sats', 'abs',
+    'st', 'sf', 'shi', 'sls', 'scc', 'scs', 'sne', 'seq', 'svc', 'svs', 'spl', 'smi', 'sge', 'slt', 'sgt',
+    'sle', 'shs', 'slo'}
+# Instructions that change no register, except through a postincrement or predecrement operand.
+M68K_WRITES_NONE = {'cmp', 'cmpa', 'cmpi', 'cmpm', 'tst', 'btst', 'pea', 'nop', 'cpushl', 'cpusha', 'cinvl',
+                    'cinva', 'wddata', 'wdebug', 'pulse'}
+
+
 def ppc_width(mnemonic):
     """Bytes moved by a PowerPC load or store mnemonic; 4 for anything else."""
     plain = mnemonic[:-1] if mnemonic.endswith('u') and mnemonic[:-1] in PPC_MEMORY else mnemonic
@@ -1409,6 +1422,36 @@ class FirmwareRoutine:
                 writes.append(self.reg(ins, base))
         return writes
 
+    def m68k_writes(self, ins):
+        """Registers an m68k or ColdFire instruction may change. Capstone's M68K backend has no
+        regs_access, and treating every instruction as writing d0-d7 and a0-a7 loses every pointer held
+        across an addq, and, lsl or lea. A listed instruction writes its destination operand (the last
+        one) when that is a register, and writes back the base of a postincrement or predecrement
+        operand. exg writes both operands. Anything unlisted, or with an operand shape that is not
+        understood, still invalidates everything. Calls never come here: they clobber d0, d1, a0 and a1
+        by convention."""
+        from capstone import m68k_const as c
+        mn, op = ins.mnemonic.split('.')[0], ins.operands
+        everything = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
+        writes = []
+        for o in op:
+            if o.type == 3 and o.address_mode in (c.M68K_AM_REGI_ADDR_POST_INC, c.M68K_AM_REGI_ADDR_PRE_DEC):
+                rid = o.mem.base_reg or o.reg
+                if not rid:
+                    return everything
+                writes.append(self.reg(ins, rid))
+        if mn in M68K_WRITES_NONE:
+            return writes
+        if mn == 'exg' and len(op) == 2 and all(o.type == 1 for o in op):
+            return writes + [self.reg(ins, o.reg) for o in op]
+        if mn in M68K_WRITES_LAST and op:
+            if op[-1].type == 1:
+                writes.append(self.reg(ins, op[-1].reg))
+            elif op[-1].type != 3:
+                return everything
+            return writes
+        return everything
+
     def invalidate(self, st, ins):
         try:
             writes = [self.reg(ins, n) for n in ins.regs_access()[1]]
@@ -1417,10 +1460,10 @@ class FirmwareRoutine:
             # for some instructions: assume every register may change.
             if self.ppc:
                 writes = self.ppc_writes(ins)
+            elif self.m68k:
+                writes = self.m68k_writes(ins)
             else:
                 writes = ['d%d' % n for n in range(8)] + ['a%d' % n for n in range(8)]
-                if any(o.type == 3 and self.reg(ins, o.mem.base_reg) == 'a7' for o in ins.operands):
-                    writes.append('a7')
         if self.arm and ins.insn_name() in ('mrc', 'mrc2'):
             # Capstone omits the destination write for coprocessor reads.
             writes.extend(self.reg(ins, o.reg) for o in ins.operands if o.type == 1)
