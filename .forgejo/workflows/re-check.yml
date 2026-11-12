@@ -1,5 +1,5 @@
-# Self-check for this repository: the decode-header test suite and the
-# ci-check entry point. Nothing here fetches submodules.
+# Self-check for this repository: the decode-header and hardware-definition
+# test suites and the ci-check entry point. Nothing here fetches submodules.
 name: re-check
 on:
   push:
@@ -19,6 +19,8 @@ jobs:
         uses: https://code.forgejo.org/actions/checkout@v4
       - name: Run the decode-header tests
         run: python3 tools/defs/test_defs.py
+      - name: Run the hardware-definition tests
+        run: python3 -m unittest discover -s tools/defs -p 'test_defslib_*.py'
       - name: Run the census header naming tests
         run: python3 tools/chips/test_gen_headers.py
       - name: Run the host-interface microcode reader tests
