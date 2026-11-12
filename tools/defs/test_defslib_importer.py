@@ -40,6 +40,14 @@ class ImporterTest(OldRepoTest):
         self.assertEqual(u["constants"]["FIFO_DEPTH"], {"value": 16, "grade": "established"})
         self.assertEqual(u["words"]["FRAME"]["grade"], "established")
 
+    def test_word_grade_is_the_weakest_of_its_fields(self):
+        self.assertEqual(importer.weakest(["established", "inferred"]), "inferred")
+        self.assertEqual(importer.weakest(["inferred", "unknown", "established"]), "unknown")
+        self.assertEqual(importer.weakest(["established", "established"]), "established")
+        self.edit("UART_DECODE.h", "FIELD: FRAME.payload 8:1 established", "FIELD: FRAME.payload 8:1 inferred")
+        u = normalize(self.result().units["uart"])
+        self.assertEqual(u["words"]["FRAME"]["grade"], "inferred")
+
     def test_grade_comes_from_the_header_not_from_a_guess(self):
         res = self.result()
         u = res.units["leg"]
