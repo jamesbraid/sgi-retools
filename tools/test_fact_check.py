@@ -83,6 +83,112 @@ class ArgumentSlots(unittest.TestCase):
         self.assertEqual(rules(["It passes 0xb4 as its fourth argument."], self.sheet()), [])
 
 
+class BranchDirection(unittest.TestCase):
+    def test_a_clear_flag_that_the_branch_treats_as_set_is_reported(self):
+        found = fc.check_entry(["Checks the flag at 0xece8bf0 and, when it is clear, calls f (0x900) first."],
+                               guarded_call_sheet())
+        self.assertEqual([rule for rule, _r, _s in found], ["branch-direction"])
+        self.assertIn("!= 0", found[0][1])
+
+    def test_a_set_flag_is_accepted(self):
+        self.assertEqual(rules(["Checks the flag at 0xece8bf0 and, when it is set, calls f (0x900) first; a clear "
+                                "flag skips that call."], guarded_call_sheet()), [])
+
+    def test_the_condition_after_the_call_counts_too(self):
+        self.assertEqual(rules(["It calls f at 0x10 only when the flag at 0xece8bf0 is zero."], guarded_call_sheet()),
+                         ["branch-direction"])
+
+    def test_unless_and_skips_reverse_the_word(self):
+        sheet = guarded_call_sheet()
+        self.assertEqual(rules(["It calls f at 0x10 unless the flag at 0xece8bf0 is zero."], sheet), [])
+        self.assertEqual(rules(["It skips f at 0x10 when the flag at 0xece8bf0 is zero."], sheet), [])
+
+    def test_a_condition_on_another_word_is_not_compared(self):
+        self.assertEqual(rules(["When the flag at 0xece9000 is clear, it calls f (0x900)."], guarded_call_sheet()), [])
+
+    def test_a_condition_on_a_result_is_not_a_flag(self):
+        self.assertEqual(rules(["It calls f at 0x10 and returns 1 when that result is zero."], guarded_call_sheet()), [])
+
+    def test_a_compound_condition_is_not_split(self):
+        self.assertEqual(rules(["When the flag at 0xece8bf0 is clear and a1 allows it, it calls f at 0x10."],
+                               guarded_call_sheet()), [])
+
+    def test_a_register_inside_a_bracket_is_a_field_not_the_register(self):
+        sheet = guarded_call_sheet(taken="v0(=[a0+114]:2) == 0", fall="v0(=[a0+114]:2) != 0")
+        self.assertEqual(rules(["It calls f at 0x10 when a0 is zero."], sheet), [])
+        sheet = guarded_call_sheet(taken="a0 == 0", fall="a0 != 0")
+        self.assertEqual(rules(["It calls f at 0x10 when a0 is zero."], sheet), ["branch-direction"])
+
+
+class CallOrder(unittest.TestCase):
+    def sheet(self):
+        """compile sits first in memory but runs second when the word is zero: insert, then compile."""
+        return fc.FactSheet(
+            calls={"0x10": call("compile", "0x900"), "0x30": call("insert", "0x910")},
+            blocks=[block(0x0, 0xc, [2, 1], "0x8"), block(0x30, 0x34, [2]), block(0x10, 0x14, [])])
+
+    def test_a_then_that_runs_the_other_way_is_reported(self):
+        found = fc.check_entry(["It calls compile (0x900) with a stack buffer, then insert (0x910) with the table."],
+                               self.sheet())
+        self.assertEqual([rule for rule, _r, _s in found], ["call-order"])
+
+    def test_the_order_the_facts_show_is_accepted(self):
+        self.assertEqual(rules(["It calls insert (0x910), then falls into the compile (0x900) call."], self.sheet()), [])
+
+    def test_after_and_before_are_read(self):
+        self.assertEqual(rules(["It calls compile (0x900) after insert (0x910)."], self.sheet()), [])
+        self.assertEqual(rules(["It calls compile (0x900) before insert (0x910)."], self.sheet()), ["call-order"])
+
+    def test_calls_on_exclusive_paths_say_nothing_about_order(self):
+        sheet = fc.FactSheet(calls={"0x10": call("a", "0x900"), "0x20": call("b", "0x910")},
+                             blocks=[block(0x0, 0xc, [1, 2], "0x8"), block(0x10, 0x14, []), block(0x20, 0x24, [])])
+        self.assertEqual(rules(["It calls a (0x900), then b (0x910)."], sheet), [])
+
+    def test_a_then_that_belongs_to_another_action_is_not_a_call_order(self):
+        text = "It calls compile (0x900), stores a word, then decrements the count with insert (0x910)."
+        self.assertEqual(rules([text], self.sheet()), [])
+
+    def test_a_returned_value_is_not_a_call(self):
+        self.assertEqual(rules(["It calls insert (0x910) and stores ret(compile), then returns."], self.sheet()), [])
+
+    def test_a_panic_is_not_a_step(self):
+        sheet = fc.FactSheet(calls={"0x10": call("assfail", "0x900"), "0x30": call("splhi", "0x910")},
+                             blocks=[block(0x0, 0xc, [2, 1], "0x8"), block(0x30, 0x34, [2]), block(0x10, 0x14, [])])
+        self.assertEqual(rules(["It leads to assfail at 0x10, then splhi at 0x30."], sheet), [])
+
+
+class ConditionalWording(unittest.TestCase):
+    def test_unconditionally_over_a_guarded_call_is_reported(self):
+        self.assertEqual(rules(["It unconditionally calls f at 0x10."], guarded_call_sheet()), ["conditional-wording"])
+
+    def test_unconditionally_over_a_call_on_every_path_is_accepted(self):
+        sheet = guarded_call_sheet(site="0x4")
+        self.assertEqual(rules(["It unconditionally calls f at 0x4."], sheet), [])
+
+    def test_the_otherwise_side_of_a_branch_cannot_hold_an_unguarded_store(self):
+        sheet = guarded_call_sheet()
+        sheet.accesses = [{"address": "0x4", "kind": "store", "mn": "sw", "offset": 0}]
+        found = fc.check_entry(["When the flag is clear it calls f at 0x10; otherwise it stores a word at 0x4."], sheet)
+        self.assertEqual([rule for rule, _r, _s in found], ["conditional-wording"])
+        self.assertIn("every path", found[0][1])
+
+    def test_a_flat_release_that_a_branch_skips_is_reported(self):
+        sheet = guarded_call_sheet(callee="free", target="0x940")
+        self.assertEqual(rules(["It then frees the buffer (0x10) and resets the pointer."], sheet),
+                         ["conditional-wording"])
+
+    def test_a_release_with_a_condition_is_accepted(self):
+        sheet = guarded_call_sheet(callee="free", target="0x940")
+        self.assertEqual(rules(["It then frees the buffer (0x10) unless it is null."], sheet), [])
+
+    def test_a_release_the_entry_ties_to_its_branch_is_accepted(self):
+        sheet = guarded_call_sheet(callee="free", target="0x940")
+        self.assertEqual(rules(["It frees the buffer (0x10).", "The beq at 0x8 skips it for a null buffer."], sheet), [])
+
+    def test_other_flat_calls_are_left_alone(self):
+        self.assertEqual(rules(["It then calls f (0x10) and resets the pointer."], guarded_call_sheet()), [])
+
+
 class Graph(unittest.TestCase):
     def test_a_call_in_the_entry_block_is_never_guarded(self):
         self.assertFalse(guarded_call_sheet().guarded("0x4"))
