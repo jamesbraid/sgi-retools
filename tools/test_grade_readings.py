@@ -899,8 +899,9 @@ class ApplyVerdicts(unittest.TestCase):
             "verdict": "fixed", "reviewer": "sonnet",
             "text": "**Inferred.** Calls g [call 1].\nRole (from name): a wrapper."}})
         self.assertIn("- `b` in `lib.so` at 0x20\n  **Inferred.** Calls g [call 1].\n  Role (from name): a wrapper.\n"
-                      "  Reviewed: 2026-11-12 (sonnet)\n\n- `c`", text)
-        self.assertNotIn("Role (from facts): a wrapper [call 1].\n  Reviewed: 2026-11-12 (sonnet)", text)
+                      "  Reviewed: 2026-11-12\n\n- `c`", text)
+        self.assertNotIn("Role (from facts): a wrapper [call 1].\n  Reviewed: 2026-11-12", text)
+        self.assertNotIn("sonnet", text)
 
     def test_reject_changes_nothing(self):
         counts, text, _out = self.apply({"a@0x10@lib.so": {"verdict": "reject"}})
@@ -911,6 +912,14 @@ class ApplyVerdicts(unittest.TestCase):
         _c, text, _out = self.apply({"c@0x30@lib.so": {"verdict": "ok"}})
         self.assertEqual(text.count("Reviewed:"), 1)
         self.assertIn("Reviewed: 2026-11-12\n\nTail text.", text)
+
+    def test_an_older_marker_with_a_reviewer_suffix_is_still_read_and_replaced(self):
+        doc = self.DOC.replace("Reviewed: 2026-01-01", "Reviewed: 2026-01-01 (sonnet)")
+        _c, text, _out = self.apply({"c@0x30@lib.so": {"verdict": "ok", "reviewer": "opus"}}, doc)
+        self.assertEqual(text.count("Reviewed:"), 1)
+        self.assertIn("Reviewed: 2026-11-12\n\nTail text.", text)
+        self.assertNotIn("sonnet", text)
+        self.assertNotIn("opus", text)
 
     def test_several_verdicts_apply_without_disturbing_each_other_or_the_text_around_them(self):
         counts, text, out = self.apply({"a@0x10@lib.so": {"verdict": "ok"}, "b@0x20@lib.so": {
@@ -1063,7 +1072,7 @@ class InventoryShapes(unittest.TestCase):
             self.assertEqual(self.apply({key: {"verdict": "ok", "reviewer": "x"}})["ok"], 1)
             after = self.read()
             with self.subTest(label):
-                marker = "  Reviewed: 2026-11-12 (x)\n" if label == "list" else "\nReviewed: 2026-11-12 (x)\n"
+                marker = "  Reviewed: 2026-11-12\n" if label == "list" else "\nReviewed: 2026-11-12\n"
                 self.assertIn(marker, after)
                 self.assertEqual(after.replace(marker, "\n" if label != "list" else "", 1).count("Reviewed"), 0)
                 self.assertEqual(after.split("\n", 3)[2], before.split("\n", 3)[2])

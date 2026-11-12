@@ -33,7 +33,7 @@ numbered as the citations count them) and the checker's findings: what a reviewe
 --unreviewed and --batch K/M choose the entries.
 
 --apply-verdicts JSON reads a reviewer's verdicts, {entry key: {"verdict": "ok" | "fixed" | "reject",
-"text": corrected role lines, "reviewer": optional name}}, and rewrites DOC: ok keeps the entry, fixed
+"text": corrected role lines, "reviewer": ignored}}, and rewrites DOC: ok keeps the entry, fixed
 replaces the lines under its header with text, and both add "Reviewed: DATE"; reject changes nothing. A key or
 verdict that does not fit stops the run before anything is written. --review-pack, --apply-verdicts and
 --check-facts take the entries the inventory reads: bullets, header-only bullets with indented paragraphs
@@ -1069,7 +1069,7 @@ def review_pack(doc, root, inventory=None, out_path=None, routines=None, unrevie
 def apply_verdicts(doc, verdicts_path, date, out=None):
     """Rewrite the entries of a routine-role document from a reviewer's verdicts and add the review marker.
     The verdicts file is JSON, {entry key: {"verdict": "ok" | "fixed" | "reject", "text": "...",
-    "reviewer": "..."}}. ok keeps the entry and marks it reviewed, fixed replaces the lines under the header with
+    "reviewer": "..."}}; reviewer is accepted and ignored, since the marker records the date only. ok keeps the entry and marks it reviewed, fixed replaces the lines under the header with
     text and marks it, reject changes nothing and leaves the entry unreviewed. Nothing is written when a key or a
     verdict is wrong. Returns {verdict: count}."""
     import json
@@ -1109,7 +1109,7 @@ def apply_verdicts(doc, verdicts_path, date, out=None):
         body = [l for l in body if not REVIEWED.match(l.strip())]
         while body and not body[-1].strip():
             body.pop()
-        note = "Reviewed: %s%s" % (date, " (%s)" % item["reviewer"] if item.get("reviewer") else "")
+        note = "Reviewed: %s" % date
         # under a heading the marker is a paragraph of its own, so it stays in the entry
         marker = ["", note] if head else ["  " + note]
         lines[first:end] = [lines[first]] + body + marker
