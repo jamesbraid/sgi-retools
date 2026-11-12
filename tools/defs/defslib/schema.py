@@ -206,6 +206,7 @@ CHECK = Obj({
     "units": Map(RE_UNIT.pattern, Obj({
         "group": Str(minlen=1), "notes_corpus": Arr(Str(minlen=1)), "no_addresses": Bool(),
         "size_limit_macro": Str(), "address_field_prefix": Str(), "plugin_form": Choice("regs", "legacy"),
+        "prose_offsets": Bool(),
     }), "unit name"),
     "claims": Arr(Obj({
         "group": Str(minlen=1), "label": Str(minlen=1), "doc": Str(minlen=1), "regex": Str(minlen=1),
