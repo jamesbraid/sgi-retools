@@ -99,7 +99,7 @@ it carries a review marker, a line (or sentence) of the form
 
 with an ISO date. The list defaults to empty, so a workspace that does not set it is unaffected.
 `grade_readings.py --check-doc` reads the same list and reports an unreviewed entry that would otherwise
-be understood as a note.
+be understood as a note. `grade_readings.py --apply-verdicts` writes the marker after a review.
 
 Review does not lift every cap. An entry with a sentence that starts `Role (from name):` states a role
 that comes from the routine's name, not from its facts, and earns at most located however it is reviewed.
@@ -208,3 +208,16 @@ findings of the checker, a cited-entry check when the entry has citations and th
 finding is a reason to look at a sentence against the facts, not a verdict. `--unreviewed` leaves out entries that
 have a Reviewed line, `--batch K/M` takes the Kth of M equal slices of what is left, and an entry whose facts
 cannot be rendered says so in place of the facts. It needs `root/`, as `--check-facts` does.
+
+### Applying a review
+
+    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --apply-verdicts VERDICTS.json [--review-date 2026-11-12]
+
+reads a reviewer's verdicts, a JSON object from entry key (the `routine@0xADDR@binary` of the review pack) to
+
+    {"verdict": "ok" | "fixed" | "reject", "text": "corrected lines under the header", "reviewer": "optional"}
+
+`ok` keeps the entry as written, `fixed` replaces the lines under its header with `text`, and both add
+`Reviewed: DATE (reviewer)` as the entry's last line, replacing an older marker. `reject` changes nothing and
+leaves the entry unreviewed, so the inventory still holds it at located. A key that is not in the file, an unknown
+verdict or a `fixed` with no text stops the run before the file is written. The date defaults to today.
