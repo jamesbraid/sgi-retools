@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""CI entry point for a workspace's decode headers.
+"""CI entry point for a workspace's hardware definitions.
 
 Run from the workspace root, with this repository checked out as retools/.
 Needs Python 3.11 or newer, a C compiler and, optionally, rustc.
+
+A workspace with a defs/ directory is on the TOML sources: defs-check runs every
+check, confirms gen/ is fresh and builds the committed outputs (C, Python, genxml
+through the upstream pack generator and, when rustc exists, the Rust crate).
+A workspace with only a defs.toml still has decode headers and takes the older
+path below. With neither it prints "no decode headers". So workspaces move one at
+a time.
 """
 import glob
 import os
@@ -27,7 +34,25 @@ def run(label, argv):
     return p.returncode == 0
 
 
+def main_toml():
+    if os.path.isfile("defs.toml"):
+        print("ci-check: defs/ exists, so defs.toml is not used; delete it once its settings are in defs/check.toml", file=sys.stderr)
+    p = subprocess.run([sys.executable, os.path.join(HERE, "defs-check"), "--build"], capture_output=True, text=True)
+    sys.stdout.write(p.stdout)
+    sys.stderr.write(p.stderr)
+    if p.returncode != 0:
+        failures.append("definitions: exit %d" % p.returncode)
+    for f in failures:
+        print("FAIL %s" % f, file=sys.stderr)
+    if failures:
+        return 1
+    print("hardware definitions ok")
+    return 0
+
+
 def main():
+    if os.path.isdir("defs"):
+        return main_toml()
     if not os.path.isfile("defs.toml"):
         print("no decode headers")
         return 0
