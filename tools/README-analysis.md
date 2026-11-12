@@ -196,3 +196,15 @@ has a sentence that starts `Role (from facts):` and cites the facts it rests on,
 reported as the note `role-from-name` and the inventory holds the entry at located. A role taken from the name
 anywhere else (the name suggests, by its name, looks like) is `role-unmarked`. An entry with neither sentence is
 `role-missing`. A line that starts `Reviewed:` is not a sentence of the entry.
+
+### Review pack
+
+    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --review-pack OUT.md [--unreviewed] [--batch 2/6] [--routine NAME...]
+
+writes what a reviewer reads. For each entry of the file: its key (`routine@0xADDR@binary`, the key a verdict file
+uses), then the entry as written beside the facts rendered for its routine (`fact_check.fact_index`: calls
+numbered the way `[call N]` counts them, branches with both conditions, returns, loads and stores), then the
+findings of the checker, a cited-entry check when the entry has citations and the prose rules otherwise. A
+finding is a reason to look at a sentence against the facts, not a verdict. `--unreviewed` leaves out entries that
+have a Reviewed line, `--batch K/M` takes the Kth of M equal slices of what is left, and an entry whose facts
+cannot be rendered says so in place of the facts. It needs `root/`, as `--check-facts` does.

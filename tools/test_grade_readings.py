@@ -611,5 +611,90 @@ class CheckFacts(unittest.TestCase):
             grade.main([self.doc, "--check-facts"])
 
 
+class ReviewPack(unittest.TestCase):
+    """--review-pack: each entry beside its rendered facts and the checker's findings."""
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.directory)
+        os.mkdir(os.path.join(self.directory, "root"))
+        open(os.path.join(self.directory, "root", "lib.so"), "w").close()
+        self.root = os.path.join(self.directory, "root")
+        self.doc = os.path.join(self.directory, "b.md")
+        self.out = os.path.join(self.directory, "pack.md")
+
+    def sheet(self):
+        return fact_check.FactSheet(
+            abi="n32", calls={"0x18": {"callee": "f", "target": "0x900", "args": {0: "0x4", 4: "0xb4"}, "tail": False}},
+            branches={"0x8": {"mn": "beq", "target": "0x1c", "taken": "a0 == 0", "fall": "a0 != 0"}},
+            returns={"0x24": "ret(f)"},
+            accesses=[{"address": "0x4", "kind": "load", "mn": "lw", "offset": 0x30}],
+            blocks=[{"first": 0, "last": 12, "succ": [2, 1], "reached": True, "branch": "0x8"},
+                    {"first": 16, "last": 28, "succ": [2], "reached": True},
+                    {"first": 32, "last": 36, "succ": [], "reached": True}])
+
+    GOOD = ("- `r` in `lib.so` at 0x10\n  **Inferred.** Calls f with a0 = 0x4 [call 1, @0x8 fall].\n"
+            "  Role (from facts): a wrapper for f [call 1, @0x8 fall].\n\n")
+    BAD = ("- `s` in `lib.so` at 0x10\n  **Inferred.** Calls f with 0xb4 as its fourth argument [call 1, @0x8 fall].\n"
+           "  Role (from facts): a wrapper for f [call 1, @0x8 fall].\n\n")
+    PLAIN = "- `p` in `lib.so` at 0x10\n  **Inferred.** Reads +0x30 at 0x4.\n\n"
+
+    def pack(self, text, **kwargs):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + text)
+        with mock.patch.object(fact_check, "sheet_for", return_value=self.sheet()):
+            count = grade.review_pack(self.doc, self.root, None, self.out, **kwargs)
+        with open(self.out, encoding="utf-8") as handle:
+            return count, handle.read()
+
+    def test_an_entry_is_written_beside_its_facts_with_the_call_numbers(self):
+        count, text = self.pack(self.GOOD)
+        self.assertEqual(count, 1)
+        self.assertIn("## r@0x10@lib.so", text)
+        row = [l for l in text.splitlines() if "Calls f with a0 = 0x4" in l][0]
+        self.assertIn(" | ", row)
+        self.assertIn("call 1   @0x18  f [0x900]  a0=0x4 a4=0xb4", text)
+        self.assertIn("branch   @0x8  beq -> 0x1c  taken: a0 == 0 | fall: a0 != 0", text)
+        self.assertIn("0 findings", text)
+
+    def test_the_findings_of_a_cited_entry_are_listed_with_their_sentence(self):
+        _count, text = self.pack(self.BAD)
+        self.assertIn("- [cite-arg]", text)
+        self.assertIn("a4, the fifth argument", text)
+        self.assertIn("  in: Calls f with 0xb4 as its fourth argument", text)
+
+    def test_an_entry_without_citations_is_checked_by_the_prose_rules(self):
+        _count, text = self.pack(self.PLAIN)
+        self.assertNotIn("[uncited]", text)
+        self.assertIn("load     @0x4  lw +0x30", text)
+
+    def test_a_routine_an_unreviewed_filter_and_a_batch_choose_the_entries(self):
+        both = self.GOOD + self.BAD.replace("`s`", "`t`") + self.GOOD.replace("`r`", "`u`").replace(
+            "[call 1, @0x8 fall].\n\n", "[call 1, @0x8 fall].\n  Reviewed: 2026-11-12\n\n")
+        self.assertEqual(self.pack(both)[0], 3)
+        self.assertEqual(self.pack(both, routines=["t"])[0], 1)
+        self.assertEqual(self.pack(both, unreviewed=True)[0], 2)
+        count, text = self.pack(both, batch=(2, 2))
+        self.assertEqual(count, 1)
+        self.assertIn("## u@", text)
+
+    def test_an_entry_whose_facts_cannot_be_built_says_why(self):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + self.GOOD)
+        with mock.patch.object(fact_check, "sheet_for", side_effect=SystemExit("no such routine")):
+            grade.review_pack(self.doc, self.root, None, self.out)
+        with open(self.out, encoding="utf-8") as handle:
+            self.assertIn("no facts: no such routine", handle.read())
+
+    def test_main_writes_the_pack_and_reports_the_count(self):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + self.GOOD)
+        out = io.StringIO()
+        with mock.patch.object(fact_check, "sheet_for", return_value=self.sheet()), contextlib.redirect_stdout(out):
+            code = grade.main([self.doc, "--review-pack", self.out, "--root", self.root, "--inventory", "none.tsv"])
+        self.assertEqual(code, 0)
+        self.assertIn("1 entries written", out.getvalue())
+        self.assertTrue(os.path.isfile(self.out))
+
+
 if __name__ == "__main__":
     unittest.main()

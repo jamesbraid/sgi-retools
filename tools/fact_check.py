@@ -1069,3 +1069,26 @@ def _check_sentence(sentence, plain, cites, sheet, known):
                 _label(sheet, a), word.group(1), _label(sheet, b), _label(sheet, late))))
     return problems
 
+
+
+# ---------------------------------------------------------------- the facts, numbered for a reader
+
+def fact_index(sheet):
+    """The citable facts of a routine, one per line in address order: calls with their number, branches with
+    both conditions, returns, and the loads and stores. This is what a writer cites and a reviewer reads."""
+    rows = []
+    for number, site in enumerate(_call_sites(sheet), 1):
+        c = sheet.calls[site]
+        args = " ".join("a%d=%s" % (slot, value) for slot, value in sorted(c["args"].items()))
+        rows.append((_int(site), "call %-3d @%s  %s%s%s  %s" % (
+            number, site, "tail " if c.get("tail") else "", c["callee"] or "?",
+            " [%s]" % c["target"] if c.get("target") else "", args)))
+    for address, b in sheet.branches.items():
+        rows.append((_int(address), "branch   @%s  %s -> %s  taken: %s | fall: %s" % (
+            address, b["mn"], b["target"], b["taken"], b["fall"])))
+    for address, value in sheet.returns.items():
+        rows.append((_int(address), "return   @%s  v0 = %s" % (address, value)))
+    for a in sheet.accesses:
+        rows.append((_int(a["address"]), "%-8s @%s  %s%s" % (
+            a["kind"], a["address"], a["mn"], " +0x%x" % a["offset"] if a["offset"] is not None else "")))
+    return [text for _addr, text in sorted(rows, key=lambda r: r[0])]

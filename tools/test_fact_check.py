@@ -535,6 +535,23 @@ class CitedClaims(unittest.TestCase):
         self.assertIn("branch-direction", [r for r, _w, _s in found])
 
 
+class FactIndex(unittest.TestCase):
+    """fact_index: the citable facts, numbered the way a citation counts them."""
+    def test_calls_are_numbered_in_address_order_and_every_kind_of_fact_is_listed(self):
+        sheet = fc.FactSheet(
+            abi="n32", calls={"0x20": call("g", "0x910", {0: "0x1"}), "0x10": call("f", None, {0: "?"}, tail=True)},
+            branches={"0x8": {"mn": "beq", "target": "0x18", "taken": "a0 == 0", "fall": "a0 != 0"}},
+            returns={"0x24": "ret(g)"}, accesses=[{"address": "0x4", "kind": "load", "mn": "lw", "offset": None},
+                                                 {"address": "0xc", "kind": "store", "mn": "sw", "offset": 0x34}])
+        self.assertEqual(fc.fact_index(sheet), [
+            "load     @0x4  lw",
+            "branch   @0x8  beq -> 0x18  taken: a0 == 0 | fall: a0 != 0",
+            "store    @0xc  sw +0x34",
+            "call 1   @0x10  tail f  a0=?",
+            "call 2   @0x20  g [0x910]  a0=0x1",
+            "return   @0x24  v0 = ret(g)"])
+
+
 class CitedPilot(unittest.TestCase):
     """Twenty-five kona routine entries that audits corrected, written in the cited format twice: as the audit
     found them (before: the error kept, each claim cited by the sites the original text named) and as corrected
