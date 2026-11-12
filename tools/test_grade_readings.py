@@ -617,8 +617,8 @@ class CheckFacts(unittest.TestCase):
         _r, _out, patched = self.run_facts(self.ENTRY, table="lib.so\tn32\t0x10\t52\tr\n")
         self.assertEqual(patched.call_args.args, (os.path.join(self.root, "lib.so"), None, "0x10", 52))
 
-    def test_an_entry_the_table_says_is_not_mips_is_skipped(self):
-        reported, out, patched = self.run_facts(self.ENTRY, table="lib.so\tcoldfire\t0x10\t52\tr\n")
+    def test_an_entry_the_table_says_is_not_mips_nor_firmware_with_facts_is_skipped(self):
+        reported, out, patched = self.run_facts(self.ENTRY, table="lib.so\tarm\t0x10\t52\tr\n")
         self.assertEqual(reported, 0)
         patched.assert_not_called()
         self.assertIn("checked=0 not-mips=1", out)
@@ -761,6 +761,105 @@ class ReviewPack(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("1 entries written", out.getvalue())
         self.assertTrue(os.path.isfile(self.out))
+
+
+def have_capstone():
+    try:
+        import capstone  # noqa: F401
+        import elftools  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+@unittest.skipUnless(have_capstone(), "needs capstone and pyelftools")
+class FirmwareFacts(unittest.TestCase):
+    """--check-facts and --review-pack on PowerPC and ColdFire entries, rendered from the layout's segment."""
+    PPC = ("2c030000" "41820010" "38800010" "48000ff5" "60000000" "80060030" "90060034" "4e800020")
+    CF = ("4e560000" "203910000014" "4a80" "6706" "4eb900004000" "23c010000018" "4e5e" "4e75")
+    L2 = "fw/l2.bin(flash)"
+    L1 = "fw/l1.bin(l1#0)"
+    # flash at 0xfe000000: beq at 0xfe000004 skips the bl at 0xfe00000c; L1 code at 0xffe00008: jsr at 0xffe00016
+    PPC_ENTRY = ("- `p` in `%s` at 0xfe000000\n  **Inferred.** It calls the routine at 0xfe00000c only when r3 is %s.\n\n")
+    CF_ENTRY = ("- `c` in `%s` at 0xffe00008\n  **Inferred.** It calls the routine at 0xffe00016 only when the word at "
+                "0x10000014 is %s.\n\n")
+    TABLE = ("binary\tabi\taddress\tsize\tname\n"
+             "fw/l2.bin(flash)\tppc32\t0xfe000000\t32\tp\n"
+             "fw/l1.bin(l1#0)\tcoldfire\t0xffe00008\t30\tc\n")
+
+    def setUp(self):
+        import json
+        import test_firmware_layout as fl
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.directory)
+        self.root = os.path.join(self.directory, "root")
+        fl.write_root(self.root, {"fw/l1.bin": fl.l1_container(bytes.fromhex(self.CF)),
+                                  "fw/l2.bin": fl.l2_container(bytes.fromhex(self.PPC), b"")})
+        os.mkdir(os.path.join(self.directory, "scripts"))
+        with open(os.path.join(self.directory, "scripts", "inventory-config.json"), "w") as handle:
+            json.dump(fl.CONFIG, handle)
+        self.doc = os.path.join(self.directory, "b.md")
+        self.table = os.path.join(self.directory, "functions.tsv")
+        with open(self.table, "w") as handle:
+            handle.write(self.TABLE)
+        self.out = os.path.join(self.directory, "pack.md")
+
+    def facts(self, text, strict=False):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + text)
+        out = io.StringIO()
+        reported = grade.check_facts(self.doc, self.root, self.table, out, strict=strict)
+        return reported, out.getvalue()
+
+    def test_a_powerpc_claim_is_tested_against_the_segment_it_names(self):
+        reported, out = self.facts(self.PPC_ENTRY % (self.L2, "zero"))
+        self.assertEqual(reported, 1, out)
+        self.assertIn("p [branch-direction]", out)
+        self.assertIn("checked=1 not-mips=0 no-facts=0 reported=1", out)
+
+    def test_a_powerpc_claim_the_facts_agree_with_is_not_reported(self):
+        reported, out = self.facts(self.PPC_ENTRY % (self.L2, "nonzero"))
+        self.assertEqual(reported, 0, out)
+        self.assertIn("checked=1", out)
+
+    def test_a_coldfire_claim_is_tested_against_the_segment_it_names(self):
+        reported, out = self.facts(self.CF_ENTRY % (self.L1, "zero"))
+        self.assertEqual(reported, 1, out)
+        self.assertIn("c [branch-direction]", out)
+        reported, out = self.facts(self.CF_ENTRY % (self.L1, "nonzero"))
+        self.assertEqual(reported, 0, out)
+
+    def test_the_architecture_line_stands_in_for_the_table_row(self):
+        text = (self.PPC_ENTRY % (self.L2, "zero")).replace(
+            "\n  **Inferred.**", "\n  Range: 0xfe000000-0xfe000020 (32 bytes).\n  Architecture: ppc32, load 0xfe000000, offset 0x0.\n  **Inferred.**")
+        os.remove(self.table)
+        self.assertEqual(self.facts(text)[0], 1)
+
+    def test_a_firmware_entry_in_no_layout_group_is_counted_as_no_facts(self):
+        reported, out = self.facts((self.PPC_ENTRY % ("fw/other.bin", "zero")))
+        self.assertEqual(reported, 0)
+        self.assertIn("checked=0 not-mips=0 no-facts=1", out)
+
+    def test_strict_citations_run_on_firmware_facts(self):
+        text = ("- `p` in `%s` at 0xfe000000\n  **Inferred.** Calls 0xfe001000 with r4 = 0x20 [call 1, @0xfe000004 fall].\n"
+                "  Role (from facts): a stub [call 1].\n\n" % self.L2)
+        reported, out = self.facts(text, strict=True)
+        self.assertEqual(reported, 1, out)
+        self.assertIn("[cite-arg]", out)
+        reported, out = self.facts(text.replace("0x20", "0x10"), strict=True)
+        self.assertEqual(reported, 0, out)
+
+    def test_the_review_pack_lists_the_numbered_facts_of_a_firmware_entry(self):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + (self.PPC_ENTRY % (self.L2, "zero")) + (self.CF_ENTRY % (self.L1, "zero")))
+        self.assertEqual(grade.review_pack(self.doc, self.root, self.table, self.out), 2)
+        with open(self.out, encoding="utf-8") as handle:
+            pack = handle.read()
+        self.assertIn("call 1   @0xfe00000c  (unnamed) [0xfe001000]  r3=r3 at entry r4=0x10", pack)
+        self.assertIn("branch   @0xfe000004  beq -> 0xfe000014  taken: r3 == 0x0 | fall: r3 != 0x0", pack)
+        self.assertIn("call 1   @0xffe00016  (unnamed) [0x4000]", pack)
+        self.assertNotIn("not MIPS", pack)
+        self.assertIn("[branch-direction]", pack)
 
 
 class ApplyVerdicts(unittest.TestCase):

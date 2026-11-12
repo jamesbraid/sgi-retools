@@ -19,7 +19,9 @@ The canonical entry is in README-analysis.md, "Routine role entries".
 facts, pulls the checkable claims out of the prose (argument slots, branch direction, call order, loads
 against stores, conditional wording, return values) and reports each one the facts contradict, with the
 reason. It needs root/, reads the entry's size from the functions table when the header has none, and
-skips entries it cannot render (non-MIPS images, binaries that are not in root/) with a count.
+skips entries it cannot render (ARM and x86 images, binaries that are not in root/) with a count. PowerPC
+and ColdFire firmware entries are rendered from the segment the config's layout group cuts out; the
+argument-slot rules use r3-r10 on PowerPC and skip on ColdFire, where arguments are on the stack.
 
 --strict-citations reads each entry as a cited entry instead (README-analysis.md, "Cited entries"): each
 claim carries a [@0xADDR] or [call N] citation that is tested against the fact it names, a sentence that
@@ -241,20 +243,25 @@ def resolve_binary(root, entry):
     return binary, (member if separator else None)
 
 
-def firmware_facts(root, entry):
-    """(routine, facts) of an entry written for a non-MIPS image."""
+def firmware_facts(root, entry, size=None):
+    """(routine, facts) of an entry written for a non-MIPS image. size is the functions table's size, used
+    when the entry gives none."""
     binary, _member = resolve_binary(root, entry)
     fw = entry["firmware"]
     # a segment of a firmware container is cut out by the workspace's layout, as the inventory did
     import firmware_layout
     config = firmware_layout.read_config(os.path.dirname(os.path.abspath(root)))
-    routine = firmware_layout.segment_routine(config, root, entry["binary"], entry["address"], entry["size"])
+    routine = firmware_layout.segment_routine(config, root, entry["binary"], entry["address"],
+                                              entry["size"] or size)
     if routine:
-        if (routine.arch, routine.img.load) != (fw["arch"], fw["load"]):
+        if fw and (routine.arch, routine.img.load) != (fw["arch"], fw["load"]):
             raise ValueError("the header says %s at load 0x%x, the config's layout gives %s at 0x%x" % (
                 fw["arch"], fw["load"], routine.arch, routine.img.load))
         return routine, routine.facts(False)
-    routine = hostfacts.routine_for(binary, entry["address"], size=entry["size"], arch=fw["arch"],
+    if not fw:
+        raise ValueError("%s is in no firmware layout group of the config and the entry has no Architecture line" %
+                         entry["binary"])
+    routine = hostfacts.routine_for(binary, entry["address"], size=entry["size"] or size, arch=fw["arch"],
                                     load=fw["load"], offset=fw["offset"], elf=fw["elf"])
     return routine, routine.facts(False)
 
@@ -919,6 +926,28 @@ def check_doc(doc, inventory=None, out=None, review=False, routines=False):
     return count
 
 
+def facts_arch(entry, abi):
+    """The architecture an entry's facts are rendered for: "mips", a firmware architecture the fact sheet
+    covers (fact_check.FIRMWARE_ARCHES), or None for one it does not (ARM, x86). A firmware entry names its
+    architecture on an Architecture line; otherwise the functions table's abi column does."""
+    arch = entry["firmware"]["arch"] if entry["firmware"] else abi
+    if arch in ("", "o32", "n32", "n64"):
+        return "mips"
+    import fact_check
+    return arch if arch in fact_check.FIRMWARE_ARCHES else None
+
+
+def entry_sheet(root, entry, arch, size):
+    """The fact sheet of an entry: from the binary for MIPS, from the segment the config's layout cuts for
+    a firmware image."""
+    import fact_check
+    if arch == "mips":
+        binary, member = resolve_binary(root, entry)
+        return fact_check.sheet_for(binary, member, entry["address"], entry["size"] or size)
+    routine, facts = firmware_facts(root, entry, size)
+    return fact_check.sheet_from_firmware(routine, facts)
+
+
 def _function_sites(path):
     """{(binary, address): (abi, size)} of a functions table."""
     sites = {}
@@ -944,12 +973,12 @@ def check_facts(doc, root, inventory=None, out=None, strict=False):
     skipped, checked, reported = collections.Counter(), 0, 0
     for entry in parse_entries(doc):
         abi, size = sites.get((entry["install"], int(entry["address"], 16)), ("", None))
-        if entry["firmware"] or abi not in ("", "o32", "n32", "n64"):
+        arch = facts_arch(entry, abi)
+        if arch is None:
             skipped["not MIPS"] += 1
             continue
         try:
-            binary, member = resolve_binary(root, entry)
-            sheet = fact_check.sheet_for(binary, member, entry["address"], entry["size"] or size)
+            sheet = entry_sheet(root, entry, arch, size)
         except (Exception, SystemExit):
             # facts refuses an address it cannot place with SystemExit; the rest of the document is still checked
             skipped["no facts"] += 1
@@ -1011,12 +1040,12 @@ def review_pack(doc, root, inventory=None, out_path=None, routines=None, unrevie
         abi, size = sites.get((entry["install"], int(entry["address"], 16)), ("", None))
         sentences = fact_check.sentences_of(entry["sentences"])
         facts, findings, why = [], [], ""
-        if entry["firmware"] or abi not in ("", "o32", "n32", "n64"):
-            why = "not MIPS: the facts are not rendered"
+        arch = facts_arch(entry, abi)
+        if arch is None:
+            why = "not MIPS, PowerPC or ColdFire: the facts are not rendered"
         else:
             try:
-                binary, member = resolve_binary(root, entry)
-                sheet = fact_check.sheet_for(binary, member, entry["address"], entry["size"] or size)
+                sheet = entry_sheet(root, entry, arch, size)
                 facts = fact_check.fact_index(sheet)
                 cited = any("[@" in s or "[call " in s for s in entry["sentences"])
                 findings = (fact_check.check_cited if cited else fact_check.check_entry)(sentences, sheet)

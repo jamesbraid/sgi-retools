@@ -119,8 +119,13 @@ adds a mechanical check of what each entry claims. It renders the routine's fact
 of the prose with fixed patterns, and reports every claim the facts contradict, with the rule and the
 reason. It reports a contradiction, never a missing detail, and it skips a claim it cannot place on one
 call, branch or access. It needs `root/`; the size of a routine the header does not give comes from
-`docs/inventory/functions.tsv`. Entries it cannot render (non-MIPS images, a binary not under `root/`) are
-counted and skipped. The check is opt-in: `--check-doc` alone does not run it, and `--check-facts` without
+`docs/inventory/functions.tsv`. PowerPC and ColdFire (m68k) firmware entries are rendered too, from the segment
+the config's `layout` group cuts out of the container (the same `firmware_layout.py` the inventory uses); the
+architecture comes from the entry's `Architecture:` line or, without one, the table's `abi` column. PowerPC
+passes arguments in r3-r10, so `arg-slot`, `arg-register` and their cited forms read `r4 = 0x10` and
+"second argument (r4)"; ColdFire and m68k pass arguments on the stack, so those rules and `enable-only` skip
+there. The other rules apply unchanged. Entries it cannot render (ARM and x86 images, a binary not under
+`root/`, a firmware key in no layout group) are counted and skipped. The check is opt-in: `--check-doc` alone does not run it, and `--check-facts` without
 `--check-doc` is an error. The rules are in `tools/fact_check.py`:
 
 | Rule | Claim | Reported when |

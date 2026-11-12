@@ -535,6 +535,116 @@ class CitedClaims(unittest.TestCase):
         self.assertIn("branch-direction", [r for r, _w, _s in found])
 
 
+def have_capstone():
+    try:
+        import capstone  # noqa: F401
+        import elftools  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+# ppc32 at 0x1000: cmpwi r3,0; beq 0x1014; li r4,0x10; bl 0x2000; nop; lwz r0,0x30(r6); stw r0,0x34(r6); blr
+PPC_CODE = bytes.fromhex("2c030000" "41820010" "38800010" "48000ff5" "60000000" "80060030" "90060034" "4e800020")
+# coldfire at 0x2000: link.w a6,#0; move.l (0x10000014).l,d0; tst.l d0; beq.b 0x2014; jsr 0x4000.l;
+#                     move.l d0,(0x10000018).l; unlk a6; rts
+CF_CODE = bytes.fromhex("4e560000" "203910000014" "4a80" "6706" "4eb900004000" "23c010000018" "4e5e" "4e75")
+
+
+def firmware_sheet(arch, load, code):
+    import hostfacts
+    routine = hostfacts.routine_for("fw.bin", "0x%x" % load, size=len(code), arch=arch, load=load, data=code)
+    return fc.sheet_from_firmware(routine, routine.facts(False))
+
+
+@unittest.skipUnless(have_capstone(), "needs capstone and pyelftools")
+class FirmwareSheets(unittest.TestCase):
+    """PowerPC and ColdFire routines get the sheet a MIPS routine gets, with their own argument registers."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ppc = firmware_sheet("ppc32", 0x1000, PPC_CODE)
+        cls.cf = firmware_sheet("coldfire", 0x2000, CF_CODE)
+
+    def test_the_powerpc_facts_are_numbered_for_citation(self):
+        self.assertEqual(fc.fact_index(self.ppc), [
+            "branch   @0x1004  beq -> 0x1014  taken: r3 == 0x0 | fall: r3 != 0x0",
+            "call 1   @0x100c  (unnamed) [0x2000]  r3=r3 at entry r4=0x10 r5=r5 at entry r6=r6 at entry "
+            "r7=r7 at entry r8=r8 at entry r9=r9 at entry r10=r10 at entry",
+            "load     @0x1014  lwz", "store    @0x1018  stw", "return   @0x101c  r3 = ?"])
+
+    def test_the_coldfire_facts_list_a_call_with_no_register_arguments(self):
+        self.assertEqual(fc.fact_index(self.cf), [
+            "load     @0x2004  move.l",
+            "branch   @0x200c  beq.b -> 0x2014  taken: [0x10000014] == 0x0 | fall: [0x10000014] != 0x0",
+            "call 1   @0x200e  (unnamed) [0x4000]  ", "store    @0x2014  move.l", "return   @0x201c  d0 = ?"])
+
+    def test_the_frame_stores_are_left_out_as_they_are_for_mips(self):
+        self.assertEqual([a["address"] for a in self.cf.accesses], ["0x2004", "0x2014"])
+
+    def test_the_block_graph_puts_the_taken_side_first(self):
+        branch = self.ppc.block_of("0x1004")
+        self.assertEqual([self.ppc.blocks[i]["first"] for i in self.ppc.blocks[branch]["succ"]], [0x1014, 0x1008])
+        self.assertEqual(self.ppc.deciding("0x100c"), [("0x1004", "fall")])
+
+    def test_a_sheet_round_trips_with_its_architecture(self):
+        again = fc.FactSheet.from_dict(self.ppc.to_dict())
+        self.assertEqual((again.arch, again.retreg, again.abi), ("ppc32", "r3", "ppc-sysv"))
+
+    def test_powerpc_arguments_are_r3_to_r10(self):
+        found = fc.check_entry(["It calls 0x2000 with 0x10 as its second argument (r5)."], self.ppc)
+        self.assertEqual([r for r, _w, _s in found], ["arg-register"])
+        self.assertIn("the second argument is r4", found[0][1])
+        self.assertEqual(rules(["It calls 0x2000 at 0x100c with 0x10 as its second argument (r4)."], self.ppc), [])
+        self.assertEqual(rules(["It calls 0x2000 at 0x100c with r4 = 0x11 and r5 = 0x20."], self.ppc), ["arg-slot"])
+        self.assertEqual(rules(["It calls 0x2000 at 0x100c with r4 = 0x10."], self.ppc), [])
+        found = fc.check_entry(["It calls 0x2000 at 0x100c with 0x10 as its fifth argument."], self.ppc)
+        self.assertIn("r4, the second argument", found[0][1])
+        self.assertIn("r3-r10", found[0][1])
+
+    def test_mips_argument_names_mean_nothing_on_powerpc(self):
+        self.assertEqual(rules(["It calls 0x2000 at 0x100c with a0 = 0x4."], self.ppc), [])
+
+    def test_coldfire_passes_arguments_on_the_stack_so_the_slot_rules_skip(self):
+        self.assertIsNone(self.cf.arg_regs())
+        for text in ("It calls 0x4000 at 0x200e with 0x10 as its second argument (a1).",
+                     "It calls 0x4000 at 0x200e with a1 = 0x10."):
+            self.assertEqual(rules([text], self.cf), [])
+        self.assertEqual([r for r, _w, _s in fc.check_cited(
+            ["Calls 0x4000 with a1 = 0x10 [call 1].", "Role (from facts): a stub [call 1]."], self.cf)
+            if r.startswith("cite-arg")], [])
+
+    def test_a_branch_direction_is_tested_on_powerpc(self):
+        found = fc.check_entry(["It calls the routine at 0x100c only when r3 is zero."], self.ppc)
+        self.assertEqual([r for r, _w, _s in found], ["branch-direction"])
+        self.assertEqual(rules(["It calls the routine at 0x100c only when r3 is nonzero."], self.ppc), [])
+
+    def test_a_branch_direction_is_tested_on_coldfire(self):
+        found = fc.check_entry(["It calls 0x4000 at 0x200e only when the word at 0x10000014 is zero."], self.cf)
+        self.assertEqual([r for r, _w, _s in found], ["branch-direction"])
+        self.assertEqual(rules(["It calls 0x4000 at 0x200e only when the word at 0x10000014 is nonzero."], self.cf), [])
+
+    def test_access_kind_and_conditional_wording_apply(self):
+        self.assertEqual(rules(["It reads the word (0x1018)."], self.ppc), ["access-kind"])
+        self.assertEqual(rules(["It reads the word (0x1014)."], self.ppc), [])
+        self.assertEqual(rules(["It unconditionally calls 0x2000 at 0x100c."], self.ppc), ["conditional-wording"])
+        self.assertEqual(rules(["It writes the word (0x2004)."], self.cf), ["access-kind"])
+
+    def test_cited_claims_are_tested_against_the_numbered_facts(self):
+        good = ["Calls 0x2000 with r4 = 0x10 [call 1, @0x1004 fall].", "Role (from facts): a stub [call 1]."]
+        self.assertEqual(fc.check_cited(good, self.ppc), [])
+        bad = ["Calls 0x2000 with r5 = 0x10 [call 1, @0x1004 fall].", "Role (from facts): a stub [call 1]."]
+        self.assertEqual([r for r, _w, _s in fc.check_cited(bad, self.ppc)], ["cite-arg"])
+        wrong_side = ["Calls 0x4000 [call 1, @0x200c taken].", "Role (from facts): a stub [call 1]."]
+        self.assertEqual([r for r, _w, _s in fc.check_cited(wrong_side, self.cf)], ["cite-branch"])
+
+    def test_an_architecture_without_a_sheet_is_refused(self):
+        import hostfacts
+        routine = hostfacts.routine_for("fw.bin", "0x0", size=4, arch="arm", load=0, data=bytes(4))
+        with self.assertRaises(ValueError):
+            fc.sheet_from_firmware(routine, routine.facts(False))
+
+
 class FactIndex(unittest.TestCase):
     """fact_index: the citable facts, numbered the way a citation counts them."""
     def test_calls_are_numbered_in_address_order_and_every_kind_of_fact_is_listed(self):
