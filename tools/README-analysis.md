@@ -84,6 +84,23 @@ binary, no citation, too few role words or items, a header that is not a row of 
 (`--inventory PATH` selects another table), or a bare file name that cannot pick between builds. Entries
 held at located by their own wording are listed as notes and do not change the exit status.
 
+### Review cap
+
+A reader that writes many entries quickly gets some of them wrong, and the mechanical fact check below
+sees only a small share of the wrong ones. A workspace can therefore ask for a second reading before an
+entry counts as understood. `scripts/inventory-config.json` takes a top-level list of globs:
+
+    "review_required": ["docs/routines/t2-*.md", "docs/routines/r3-*.md"]
+
+The paths are relative to the repository root. An entry in a matching file earns at most located unless
+it carries a review marker, a line (or sentence) of the form
+
+    Reviewed: 2026-11-12
+
+with an ISO date. The list defaults to empty, so a workspace that does not set it is unaffected.
+`grade_readings.py --check-doc` reads the same list and reports an unreviewed entry that would otherwise
+be understood as a note.
+
 ### Checking an entry's claims against its facts
 
     tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --check-doc --check-facts

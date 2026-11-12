@@ -22,6 +22,7 @@ import argparse
 import collections
 import csv
 import itertools
+import json
 import os
 import random
 import re
@@ -684,15 +685,27 @@ def _function_rows(path):
     return rows, builds
 
 
-def check_doc(doc, inventory=None, out=None):
+def needs_review(doc, workspace):
+    """Whether the workspace's inventory config lists DOC in review_required."""
+    import inventory as inv
+    path = os.path.join(workspace, "scripts", "inventory-config.json")
+    if not os.path.isfile(path):
+        return False
+    with open(path, encoding="utf-8") as config:
+        cfg = json.load(config)
+    return inv.review_required(cfg, os.path.relpath(os.path.abspath(doc), workspace))
+
+
+def check_doc(doc, inventory=None, out=None, review=False):
     """Lint a routine-role document. Prints each problem as DOC:LINE: subject, then the reason, and
-    returns how many entries were reported. See the module docstring."""
+    returns how many entries were reported. review says the workspace requires a Reviewed line in
+    each entry of DOC. See the module docstring."""
     import inventory as inv
     out = out or sys.stdout
     saved = inv.REPO
     inv.REPO = os.path.dirname(os.path.abspath(doc))
     try:
-        index = inv.DocIndex({"docs": {}})
+        index = inv.DocIndex({"docs": {}, "review_required": ["*"] if review else []})
         index.read_md(os.path.abspath(doc), False)
     finally:
         inv.REPO = saved
@@ -754,6 +767,10 @@ def check_doc(doc, inventory=None, out=None):
                 why = "it closes with Unverified (at most located)"
             else:
                 why = inv.read_why(body, ent.subj)[2]
+            if (not why and review and not inv.REVIEWED.search(body)
+                    and inv.classify(body, ent.subj)[0] == "understood"):
+                why = ("it has no Reviewed line (Reviewed: YYYY-MM-DD) and the workspace requires one in this "
+                       "file, so it is held at located")
         elif ent.capped:
             status, why = "located", ("it shares sentences with more than %d other entries, so the "
                                       "template cap holds it at located" % inv.TEMPLATE_CAP)
@@ -856,7 +873,7 @@ def main(argv=None):
         table = args.inventory
         if table is None:
             table = os.path.join(workspace, "docs", "inventory", "functions.tsv")
-        problems = check_doc(args.doc, table)
+        problems = check_doc(args.doc, table, review=needs_review(args.doc, workspace))
         if args.check_facts:
             problems += check_facts(args.doc, args.root or os.path.join(workspace, "root"), table)
         return 1 if problems else 0
