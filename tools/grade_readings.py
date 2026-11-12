@@ -767,16 +767,22 @@ def is_routines_file(doc, workspace):
 ENTRY_LIKE = re.compile(r"(?:[-*+]|\d+\.|#{1,6})\s")
 
 
+# a header names its routine in backticks, or is `name in path at 0xADDR` with the name bare; a bare
+# "name, at 0x..." is prose
+BARE_HEADER = re.compile(r"(?:[-*+]|\d+\.|#{1,6})\s+[\w.$@+-]+\s+in\s+\S+\s+at\s+" + HEX)
+
+
 def entry_like_lines(lines):
     """[(line number, text)] of the lines outside code fences that look like an entry header: a bullet or
-    heading at the left margin that gives a code address 0x... and says "in" or "at". Indented lines are
-    the text of an entry and are not counted."""
+    heading at the left margin that gives a code address 0x... and either names a routine in backticks or
+    reads `name in path at 0xADDR`. Indented lines are the text of an entry and are not counted, and
+    neither is a bare "name, at 0x..." bullet, which is prose."""
     found, fence = [], False
     for i, text in enumerate(lines):
         if text.strip().startswith("```"):
             fence = not fence
-        elif (not fence and ENTRY_LIKE.match(text) and re.search(HEX, text)
-              and re.search(r"\b(?:in|at)\b", text)):
+        elif not fence and ENTRY_LIKE.match(text) and re.search(HEX, text) and (
+                "`" in text or BARE_HEADER.match(text)):
             found.append((i + 1, text.strip()))
     return found
 
@@ -904,9 +910,10 @@ def check_doc(doc, inventory=None, out=None, review=False, routines=False):
     if routines:
         reported = {p[0] for p in problems}      # a line the checks above reported is not reported twice
         for line, reason in unread_entries(lines):
-            if line not in reported:
-                count += 1
-                print("%s:%d: %s" % (doc, line, reason), file=out)
+            if line in reported:
+                continue
+            count += 1
+            print("%s:%d: %s" % (doc, line, reason), file=out)
     print("entries=%d understood=%d located=%d named-only=%d problems=%d" % (
         sum(counts.values()), counts["understood"], counts["located"], counts["named-only"], count), file=out)
     return count
