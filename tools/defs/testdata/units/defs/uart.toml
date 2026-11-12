@@ -1,0 +1,74 @@
+# Made-up UART used to test the defs tools. Not a real device.
+unit = "uart"
+prefix = "UART"
+title = "made-up UART (fixture for the defs tools)"
+doc = "A control register, a status register, a data FIFO and a frame word."
+from = "fixture notes (docs/uart.md)"
+public_from = ["fixture notes"]
+
+[enums.parity]
+doc = "Parity modes of the control register."
+
+[enums.parity.values]
+none = { value = 0, grade = "established" }
+odd = { value = 1, grade = "established" }
+even = { value = 2, grade = "inferred" }
+
+[registers.ctl]
+offset = 0x10
+access = "rw"
+width = 32
+reset = 0
+grade = "established"
+doc = "Control register."
+
+[registers.ctl.fields]
+enable = { bits = [0, 0], grade = "established" }
+parity = { bits = [3, 1], grade = "inferred", enum = "parity" }
+divisor = { bits = [31, 16], grade = "established" }
+
+[[registers.ctl.tests]]
+value = 0x00040003
+expect = { enable = 1, parity = 1, divisor = 4 }
+
+[[registers.ctl.tests]]
+value = 0xff
+kind = "example"
+expect = { enable = 1, parity = 7, divisor = 0 }
+
+[registers.status]
+offset = 0x14
+access = "r"
+width = 32
+grade = "established"
+from = "fixture notes (status page)"
+
+[registers.status.fields]
+rx_ready = { bits = [0, 0], grade = "established" }
+
+[registers.data]
+offset = 0x120
+access = "rw"
+width = 8
+count = 16
+grade = "inferred"
+
+[words.FRAME]
+width = 32
+grade = "established"
+doc = "One frame: a start bit and eight payload bits."
+
+[words.FRAME.fields]
+start = { bits = [0, 0], grade = "established" }
+payload = { bits = [8, 1], grade = "established" }
+
+[[words.FRAME.tests]]
+value = 0x6b
+expect = { start = 1, payload = 0x35 }
+
+[[words.FRAME.tests]]
+value = 0x10
+expect = { start = 0, payload = 8 }
+
+[constants]
+FIFO_DEPTH = { value = 16, grade = "established" }
