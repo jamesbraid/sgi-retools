@@ -5,6 +5,7 @@
     grade_readings.py DOC --check-doc [--inventory functions.tsv]         lint docs/routines/*.md
     grade_readings.py DOC --check-doc --check-facts [--root ROOT]         also test each entry's claims against its facts
     grade_readings.py DOC --check-doc --check-facts --strict-citations    require and test a citation for every claim
+    grade_readings.py DOC --review-pack OUT [--root ROOT]                 entries beside their facts, for a reviewer
 
 --check-doc reads DOC the way tools/inventory.py does and reports every routine entry that will not
 reach located or understood, with the reason, plus every heading that looks like a routine header and
@@ -23,6 +24,10 @@ skips entries it cannot render (non-MIPS images, binaries that are not in root/)
 claim carries a [@0xADDR] or [call N] citation that is tested against the fact it names, a sentence that
 states a fact and cites nothing is reported, and the entry must have a Role (from facts) or Role (from
 name) sentence.
+
+--review-pack OUT writes, for each entry, its text beside the facts rendered for its routine (calls
+numbered as the citations count them) and the checker's findings: what a reviewer reads. --routine,
+--unreviewed and --batch K/M choose the entries.
 """
 import argparse
 import collections
@@ -861,6 +866,75 @@ def check_facts(doc, root, inventory=None, out=None, strict=False):
     return reported
 
 
+REVIEWED = re.compile(r"\bReviewed:\s*\d{4}-\d{2}-\d{2}")
+
+
+def entry_key(entry):
+    """The key a review verdict file uses for an entry: routine, address and the binary as written."""
+    return "%s@%s@%s" % (entry["name"], entry["address"], entry["install"])
+
+
+def _columns(left, right, width=78):
+    """Two blocks of text side by side, each line wrapped to width."""
+    import textwrap
+    lines_l = [w for text in left for w in (textwrap.wrap(text, width) or [""])]
+    lines_r = [w for text in right for w in (textwrap.wrap(text, width, subsequent_indent="    ") or [""])]
+    rows = max(len(lines_l), len(lines_r))
+    lines_l += [""] * (rows - len(lines_l))
+    lines_r += [""] * (rows - len(lines_r))
+    return ["%-*s | %s" % (width, a, b) for a, b in zip(lines_l, lines_r)]
+
+
+def review_pack(doc, root, inventory=None, out_path=None, routines=None, unreviewed=False, batch=None):
+    """Write, for each entry of a routine-role document, the entry beside the facts it was written from and what
+    the checker finds, in the form a reviewer reads. Entries with citations are checked as cited entries.
+    Returns the number of entries written."""
+    import fact_check
+    sites = _function_sites(inventory) if inventory and os.path.isfile(inventory) else {}
+    entries = parse_entries(doc)
+    if routines:
+        entries = [e for e in entries if e["name"] in routines]
+    with open(doc, encoding="utf-8") as source:
+        lines = source.read().splitlines()
+    if unreviewed:
+        entries = [e for e in entries if not REVIEWED.search("\n".join(lines[e["line"] - 1:e["end"]]))]
+    if batch:
+        index, total = batch
+        size = -(-len(entries) // total)
+        entries = entries[(index - 1) * size:index * size]
+    out = ["# Review pack for %s" % os.path.basename(doc), "",
+           "Each entry is shown beside the facts rendered for its routine (call N counts the calls in address order) "
+           "and the findings of the checker. A finding is a reason to look, not a verdict.", ""]
+    for entry in entries:
+        abi, size = sites.get((entry["install"], int(entry["address"], 16)), ("", None))
+        sentences = fact_check.sentences_of(entry["sentences"])
+        facts, findings, why = [], [], ""
+        if entry["firmware"] or abi not in ("", "o32", "n32", "n64"):
+            why = "not MIPS: the facts are not rendered"
+        else:
+            try:
+                binary, member = resolve_binary(root, entry)
+                sheet = fact_check.sheet_for(binary, member, entry["address"], entry["size"] or size)
+                facts = fact_check.fact_index(sheet)
+                cited = any("[@" in s or "[call " in s for s in entry["sentences"])
+                findings = (fact_check.check_cited if cited else fact_check.check_entry)(sentences, sheet)
+            except (Exception, SystemExit) as error:
+                why = "no facts: %s" % error
+        out += ["## %s" % entry_key(entry), "",
+                "%s:%d, %d finding%s" % (os.path.basename(doc), entry["line"], len(findings),
+                                         "" if len(findings) == 1 else "s"), "", "```"]
+        out += _columns(["ENTRY"] + [""] + entry["sentences"], ["FACTS"] + [""] + (facts or [why or "(none)"]))
+        out += ["```", ""]
+        for rule, reason, sentence in findings:
+            out += ["- [%s] %s" % (rule, reason)] + (["  in: %s" % sentence[:200]] if sentence else [])
+        out.append("")
+    text = "\n".join(out) + "\n"
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+    return len(entries)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("doc")
@@ -871,6 +945,12 @@ def main(argv=None):
     parser.add_argument("--strict-citations", action="store_true",
                         help="with --check-doc --check-facts, read each entry as a cited entry: every claim carries a "
                              "[@0xADDR] or [call N] citation that is tested against its fact, and the role is marked")
+    parser.add_argument("--review-pack", metavar="OUT",
+                        help="write, for each entry of DOC, the entry beside its rendered facts and the checker's findings "
+                             "to OUT; --routine, --unreviewed and --batch K/M choose the entries")
+    parser.add_argument("--unreviewed", action="store_true", help="with --review-pack, only entries with no Reviewed line")
+    parser.add_argument("--batch", metavar="K/M",
+                        help="with --review-pack, the Kth of M equal slices of the chosen entries (K from 1)")
     parser.add_argument("--inventory", metavar="FUNCTIONS_TSV",
                         help="functions table for --check-doc (default: docs/inventory/functions.tsv of the workspace)")
     parser.add_argument("--root", help="directory containing the cited binaries")
@@ -883,6 +963,17 @@ def main(argv=None):
         parser.error("--check-facts goes with --check-doc")
     if args.strict_citations and not args.check_facts:
         parser.error("--strict-citations goes with --check-doc --check-facts")
+    if args.review_pack:
+        from _workspace import find_workspace
+        workspace = find_workspace()
+        batch = tuple(int(n) for n in args.batch.split("/")) if args.batch else None
+        if batch and not 1 <= batch[0] <= batch[1]:
+            parser.error("--batch K/M needs 1 <= K <= M")
+        table = args.inventory or os.path.join(workspace, "docs", "inventory", "functions.tsv")
+        count = review_pack(args.doc, args.root or os.path.join(workspace, "root"), table, args.review_pack,
+                            args.routine, args.unreviewed, batch)
+        print("review pack: %d entries written to %s" % (count, args.review_pack))
+        return 0
     if args.check_doc:
         from _workspace import find_workspace
         workspace = find_workspace()
