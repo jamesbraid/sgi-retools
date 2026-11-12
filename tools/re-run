@@ -53,6 +53,9 @@
 #
 #   RE_ENGINE=CMD   container command to use instead of podman
 #   RE_NOTTY=1      never allocate a terminal
+#   RE_MEMORY=8g    hard memory cap for each container. Swap is capped at the same size, so
+#                   a runaway job is OOM-killed inside its container instead of swapping the host.
+#   RE_GHIDRA_MEMORY=16g  the same cap for --ghidra containers, which need more headroom
 set -eu
 # This file lives in the retools submodule and is run by that path. The container definitions,
 # the Ghidra scripts and the sibling tools are found from this file (shared is retools' top); the
@@ -135,9 +138,13 @@ fi
 [ $# -gt 0 ] || set -- bash
 tty=
 if [ -z "${RE_NOTTY:-}" ] && [ -t 0 ] && [ -t 1 ]; then tty=-it; fi
+mem=${RE_MEMORY:-8g}
+if [ -n "$ghidra" ]; then mem=${RE_GHIDRA_MEMORY:-16g}; fi
 # --userns=keep-id maps you to the same id inside, label=disable lets bind
-# mounts work on SELinux hosts.
+# mounts work on SELinux hosts. --memory and --memory-swap are equal so the
+# container gets no swap beyond its cap.
 # shellcheck disable=SC2086
-exec $engine run --rm $tty --userns=keep-id --security-opt label=disable \
+exec $engine run --rm $tty --memory "$mem" --memory-swap "$mem" \
+    --userns=keep-id --security-opt label=disable \
     -v "$workspace:/work" -v "$shared:/opt/retools:ro" $mounts -w /work -e ORIGAMI_RE_WORKSPACE=/work \
     -e HOME=/tmp -e XDG_CONFIG_HOME=/tmp/.config "$tag" "$@"
