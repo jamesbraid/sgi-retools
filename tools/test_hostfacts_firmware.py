@@ -1102,6 +1102,12 @@ class FirmwareFacts(unittest.TestCase):
         # the postincrement wrote a1 back, so its value is no longer known
         self.assertNotIn('absolute', stores[1])
 
+    def test_m68k_read_modify_write_steps_a_postincrement_destination_once(self):
+        # movea.l #0x20000000,a1; eor.l d0,(a1)+; move.l d0,(a1); rts
+        fs, _ = self.analyze('coldfire', '227c20000000' 'b199' '2280' '4e75')
+        stores = [a for a in fs['accesses'] if a['kind'] == 'store' and not a['implicit']]
+        self.assertEqual([a.get('absolute') for a in stores], ['0x20000000', '0x20000004'])
+
     def test_m68k_unknown_instruction_still_invalidates_everything(self):
         # movea.l #0x10000000,a0; abcd d0,d1; move.l d0,(a0); rts
         fs, _ = self.analyze('m68k', '207c10000000' 'c300' '2080' '4e75')
