@@ -1786,7 +1786,16 @@ class FirmwareRoutine:
             write(op[0], facts.C(0)); st.flags = ('cmp', facts.C(0), facts.C(0), self.width(ins)); modeled = True
         elif len(op) >= 2 and mn.split('.')[0].rstrip('s') in ('add', 'sub', 'and', 'or', 'orr', 'eor', 'xor', 'bic', 'addq', 'subq', 'adda', 'suba', 'lsl', 'lsr', 'shl', 'shr', 'sal', 'sar'):
             if self.m68k:
-                dest = op[1]; a, b = read(op[1]), read(op[0])
+                dest = op[1]
+                from capstone import m68k_const as mc
+                step = dest.type == 3 and dest.address_mode in (mc.M68K_AM_REGI_ADDR_POST_INC, mc.M68K_AM_REGI_ADDR_PRE_DEC)
+                before = self.getreg(st, self.reg(ins, dest.mem.base_reg or dest.reg)) if step else None
+                a = read(op[1])
+                if step:
+                    # Reading the destination already stepped the base. The write is the same bus
+                    # cycle pair on one address, so it must start from the unstepped value.
+                    self.setreg(st, self.reg(ins, dest.mem.base_reg or dest.reg), before)
+                b = read(op[0])
             elif self.arm and len(op) >= 3:
                 dest = op[0]; a, b = read(op[1]), read(op[2])
             else:
