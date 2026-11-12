@@ -1534,6 +1534,17 @@ class FirmwareFacts(unittest.TestCase):
         stores = [a for a in fs['accesses'] if a['kind'] == 'store' and a['address'] in ('0x100c', '0x1010')]
         self.assertEqual([a.get('absolute') for a in stores], ['0xfa2000fc', '0xfa200100'])
 
+    def test_ppc32_reservation_pair_is_an_access_at_ra_plus_rb(self):
+        # lis r11,0x1000; li r0,0x2c; stwcx. r5,r11,r0; lwarx r6,r11,r0; stwcx. r5,0,r0;
+        # stwcx. r5,r11,r3 (r3 unknown); blr
+        fs, _ = self.analyze('ppc32', '3d601000' '3800002c' '7cab012d' '7ccb0028' '7ca0012d' '7cab192d' '4e800020')
+        store, load, zero_base, unknown = fs['accesses']
+        self.assertEqual((store['kind'], store['width'], store['absolute']), ('store', 4, '0x1000002c'))
+        self.assertEqual((load['kind'], load['width'], load['absolute']), ('load', 4, '0x1000002c'))
+        self.assertEqual((zero_base['kind'], zero_base['absolute']), ('store', '0x2c'))
+        self.assertEqual((unknown['kind'], unknown['index_base']), ('store', '0x10000000'))
+        self.assertNotIn('absolute', unknown)
+
     def test_ppc32_indexed_forms(self):
         # lis r11,0x1000; lwzx r0,r11,r3 (r3 unknown); li r4,0x10; stbx r0,r11,r4; lwzux r5,r11,r4; lwz r6,0(r11); blr
         fs, _ = self.analyze('ppc32', '3d601000' '7c0b182e' '38800010' '7c0b21ae' '7cab226e' '80cb0000' '4e800020')

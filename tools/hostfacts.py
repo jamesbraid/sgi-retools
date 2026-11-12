@@ -672,12 +672,14 @@ class FirmwareState:
 
 
 PPC_MEMORY = {'lwz': False, 'lhz': False, 'lha': False, 'lbz': False, 'lfs': False, 'lfd': False,
-              'stw': True, 'sth': True, 'stb': True, 'stfs': True, 'stfd': True}
+              'stw': True, 'sth': True, 'stb': True, 'stfs': True, 'stfd': True, 'ld': False, 'std': True}
 # Indexed forms, rA + rB: the D-form mnemonic with the width and direction it shares. A `u` form (lwzux)
 # also writes the address back to rA; the byte-reversed forms move the same widths.
 PPC_INDEXED = {'lwzx': 'lwz', 'lhzx': 'lhz', 'lhax': 'lha', 'lbzx': 'lbz', 'lfsx': 'lfs', 'lfdx': 'lfd',
                'stwx': 'stw', 'sthx': 'sth', 'stbx': 'stb', 'stfsx': 'stfs', 'stfdx': 'stfd',
-               'lwbrx': 'lwz', 'lhbrx': 'lhz', 'stwbrx': 'stw', 'sthbrx': 'sth'}
+               'lwbrx': 'lwz', 'lhbrx': 'lhz', 'stwbrx': 'stw', 'sthbrx': 'sth',
+               # Load-reserved and store-conditional have no displacement, only rA|0 + rB.
+               'lwarx': 'lwz', 'stwcx.': 'stw', 'ldarx': 'ld', 'stdcx.': 'std'}
 PPC_CONDITIONS = {'eq', 'ne', 'lt', 'le', 'gt', 'ge', 'ns', 'so', 'dnz', 'dz', 'dnzt', 'dnzf', 'dzt', 'dzf'}
 
 
@@ -688,7 +690,7 @@ def ppc_width(mnemonic):
         return 1
     if plain in ('lhz', 'lha', 'sth'):
         return 2
-    if plain in ('lfd', 'stfd'):
+    if plain in ('lfd', 'stfd', 'ld', 'std'):
         return 8
     return 4
 
@@ -1230,6 +1232,8 @@ class FirmwareRoutine:
             return True
         indexed = PPC_INDEXED.get(mn.replace('ux', 'x') if mn.endswith('ux') else mn)
         if indexed and len(op) == 3 and op[1].type == 1 and op[2].type == 1:
+            if mn.endswith('cx.'):
+                st.flags = None  # the store-conditional sets cr0
             return self.ppc_indexed(st, old, ins, events, indexed, mn.endswith('ux'), val)
         update = mn.endswith('u') and mn[:-1] in PPC_MEMORY
         plain = mn[:-1] if update else mn
