@@ -6,8 +6,10 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fact_check
 import grade_readings as grade
 
 
@@ -476,6 +478,68 @@ class CheckDoc(unittest.TestCase):
             handle.write("### `swfio_mount` at 0x1f80\n\n%s\n" % self.ROLE)
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(grade.main([doc, "--check-doc", "--inventory", os.path.join(directory, "none.tsv")]), 1)
+
+
+class CheckFacts(unittest.TestCase):
+    """--check-facts: the claims of each entry against the facts of its routine."""
+    ENTRY = ("- `r` in `lib.so` at 0x10\n  **Inferred.** Calls f (0x900) at 0x18 with the constant 0xb4 as "
+             "its fifth argument (a4).\n\n")
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.directory)
+        os.mkdir(os.path.join(self.directory, "root"))
+        open(os.path.join(self.directory, "root", "lib.so"), "w").close()
+        self.root = os.path.join(self.directory, "root")
+        self.doc = os.path.join(self.directory, "b.md")
+
+    def sheet(self):
+        return fact_check.FactSheet(
+            abi="n32", calls={"0x18": {"callee": "f", "target": "0x900", "args": {3: "0xb4"}, "tail": False}})
+
+    def run_facts(self, text, table=None, sheet=None):
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("# Readings\n\n" + text)
+        path = None
+        if table:
+            path = os.path.join(self.directory, "functions.tsv")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("binary\tabi\taddress\tsize\tname\n" + table)
+        out = io.StringIO()
+        with mock.patch.object(fact_check, "sheet_for", return_value=sheet or self.sheet()) as patched:
+            reported = grade.check_facts(self.doc, self.root, path, out)
+        return reported, out.getvalue(), patched
+
+    def test_a_contradicted_claim_is_reported_with_its_line_rule_and_reason(self):
+        reported, out, _patched = self.run_facts(self.ENTRY)
+        self.assertEqual(reported, 1)
+        self.assertIn("b.md:3: r [arg-slot]", out)
+        self.assertIn("passes it in a3", out)
+        self.assertIn("checked=1 not-mips=0 no-facts=0 reported=1", out)
+
+    def test_an_entry_the_facts_agree_with_is_not_reported(self):
+        reported, out, _patched = self.run_facts(self.ENTRY.replace("fifth argument (a4)", "fourth argument (a3)"))
+        self.assertEqual(reported, 0, out)
+
+    def test_the_size_comes_from_the_functions_table_when_the_header_has_none(self):
+        _r, _out, patched = self.run_facts(self.ENTRY, table="lib.so\tn32\t0x10\t52\tr\n")
+        self.assertEqual(patched.call_args.args, (os.path.join(self.root, "lib.so"), None, "0x10", 52))
+
+    def test_an_entry_the_table_says_is_not_mips_is_skipped(self):
+        reported, out, patched = self.run_facts(self.ENTRY, table="lib.so\tcoldfire\t0x10\t52\tr\n")
+        self.assertEqual(reported, 0)
+        patched.assert_not_called()
+        self.assertIn("checked=0 not-mips=1", out)
+
+    def test_an_entry_whose_binary_is_missing_is_counted_not_fatal(self):
+        os.remove(os.path.join(self.root, "lib.so"))
+        reported, out, _patched = self.run_facts(self.ENTRY.replace("lib.so", "gone.so"))
+        self.assertEqual(reported, 0)
+        self.assertIn("no-facts=1", out)
+
+    def test_check_facts_needs_check_doc(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            grade.main([self.doc, "--check-facts"])
 
 
 if __name__ == "__main__":

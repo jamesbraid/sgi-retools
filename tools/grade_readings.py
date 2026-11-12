@@ -3,6 +3,7 @@
 
     grade_readings.py DOC --root ROOT [--count N | --routine NAME...]    grade instruction readings
     grade_readings.py DOC --check-doc [--inventory functions.tsv]         lint docs/routines/*.md
+    grade_readings.py DOC --check-doc --check-facts [--root ROOT]         also test each entry's claims against its facts
 
 --check-doc reads DOC the way tools/inventory.py does and reports every routine entry that will not
 reach located or understood, with the reason, plus every heading that looks like a routine header and
@@ -10,6 +11,12 @@ is not one. It exits 1 when it reports anything. It needs no root/. With the wor
 table (default docs/inventory/functions.tsv when it exists) it also checks that the header's binary
 and address are a row of the table and that a bare file name several builds share can say which build.
 The canonical entry is in README-analysis.md, "Routine role entries".
+
+--check-facts adds the mechanical fact check of fact_check.py: for each entry it renders the routine's
+facts, pulls the checkable claims out of the prose (argument slots) and reports each one the facts
+contradict, with the reason. It needs root/, reads the entry's size from the functions table when the
+header has none, and skips entries it cannot render (non-MIPS images, binaries that are not in root/)
+with a count.
 """
 import argparse
 import collections
@@ -783,11 +790,56 @@ def check_doc(doc, inventory=None, out=None):
     return count
 
 
+def _function_sites(path):
+    """{(binary, address): (abi, size)} of a functions table."""
+    sites = {}
+    with open(path, encoding="utf-8", newline="") as table:
+        for row in csv.DictReader(table, delimiter="\t"):
+            try:
+                sites[(row["binary"], int(row["address"], 16))] = (row.get("abi", ""), int(row.get("size") or 0) or None)
+            except ValueError:
+                continue
+    return sites
+
+
+def check_facts(doc, root, inventory=None, out=None):
+    """Test the claims of each entry of a routine-role document against the facts of its routine.
+    Prints each contradiction as DOC:LINE: routine [rule], then the reason, and returns the count of
+    entries reported. Entries the fact sheet cannot be built for are counted and skipped."""
+    import fact_check
+    out = out or sys.stdout
+    sites = _function_sites(inventory) if inventory and os.path.isfile(inventory) else {}
+    skipped, checked, reported = collections.Counter(), 0, 0
+    for entry in parse_entries(doc):
+        abi, size = sites.get((entry["install"], int(entry["address"], 16)), ("", None))
+        if entry["firmware"] or abi not in ("", "o32", "n32", "n64"):
+            skipped["not MIPS"] += 1
+            continue
+        try:
+            binary, member = resolve_binary(root, entry)
+            sheet = fact_check.sheet_for(binary, member, entry["address"], entry["size"] or size)
+        except (Exception, SystemExit):
+            # facts refuses an address it cannot place with SystemExit; the rest of the document is still checked
+            skipped["no facts"] += 1
+            continue
+        checked += 1
+        found = fact_check.check_entry(fact_check.sentences_of(entry["sentences"]), sheet)
+        for rule, reason, sentence in found:
+            print("%s:%d: %s [%s]\n  %s\n  in: %s" % (doc, entry["line"], entry["name"], rule, reason, sentence[:160]),
+                  file=out)
+        reported += bool(found)
+    print("facts: checked=%d not-mips=%d no-facts=%d reported=%d" % (
+        checked, skipped["not MIPS"], skipped["no facts"], reported), file=out)
+    return reported
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("doc")
     parser.add_argument("--check-doc", action="store_true",
                         help="lint DOC as a routine-role document instead of grading instruction readings")
+    parser.add_argument("--check-facts", action="store_true",
+                        help="with --check-doc, also test each entry's claims against the facts rendered for its routine")
     parser.add_argument("--inventory", metavar="FUNCTIONS_TSV",
                         help="functions table for --check-doc (default: docs/inventory/functions.tsv of the workspace)")
     parser.add_argument("--root", help="directory containing the cited binaries")
@@ -796,12 +848,18 @@ def main(argv=None):
     group.add_argument("--routine", nargs="+", help="grade named routine entries")
     parser.add_argument("--count", type=int, default=12, help="sample size; 0 grades every entry")
     args = parser.parse_args(argv)
+    if args.check_facts and not args.check_doc:
+        parser.error("--check-facts goes with --check-doc")
     if args.check_doc:
+        from _workspace import find_workspace
+        workspace = find_workspace()
         table = args.inventory
         if table is None:
-            from _workspace import find_workspace
-            table = os.path.join(find_workspace(), "docs", "inventory", "functions.tsv")
-        return 1 if check_doc(args.doc, table) else 0
+            table = os.path.join(workspace, "docs", "inventory", "functions.tsv")
+        problems = check_doc(args.doc, table)
+        if args.check_facts:
+            problems += check_facts(args.doc, args.root or os.path.join(workspace, "root"), table)
+        return 1 if problems else 0
     if not args.root:
         parser.error("--root is required to grade readings")
     entries = parse_entries(args.doc)
