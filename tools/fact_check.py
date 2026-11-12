@@ -39,6 +39,18 @@ CONVENTION_NOTE = {
 }
 
 
+# Where a routine's arguments arrive, by architecture: (register prefix, number of the first argument
+# register, regex of the register numbers). An architecture that passes arguments on the stack (ColdFire, m68k)
+# has no entry: a claim about an argument register has nothing to be tested against there, so those rules skip.
+ARG_REGS = {"mips": ("a", 0, "[0-7]"), "ppc32": ("r", 3, "(?:[3-9]|10)")}
+# The architectures of the non-MIPS firmware images whose facts are rendered (see sheet_from_firmware).
+FIRMWARE_ARCHES = ("ppc32", "coldfire", "m68k")
+# A register of the architecture as a condition or a sentence writes it.
+_COND_REG = {"mips": r"[av]\d", "ppc32": r"r\d+", "coldfire": r"[da][0-7]", "m68k": r"[da][0-7]"}
+_SUBJECT_REG = {"mips": r"a[0-7]|v[01]", "ppc32": r"r\d+", "coldfire": r"[da][0-7]", "m68k": r"[da][0-7]"}
+CONVENTION_NOTE["ppc-sysv"] = "PowerPC passes the first eight arguments in r3-r10, so the fifth is r7"
+
+
 def _int(text):
     try:
         return int(text, 0)
@@ -49,8 +61,10 @@ def _int(text):
 class FactSheet:
     """The facts of one routine. Plain data: see to_dict/from_dict."""
 
-    def __init__(self, name="", abi="", text="", accesses=(), calls=None, branches=None, returns=None, blocks=()):
+    def __init__(self, name="", abi="", text="", accesses=(), calls=None, branches=None, returns=None, blocks=(),
+                 arch="mips", retreg="v0"):
         self.name, self.abi, self.text = name, abi, text
+        self.arch, self.retreg = arch, retreg
         self.accesses = list(accesses)    # {"address", "kind", "mn", "offset" (or None)}
         self.calls = calls or {}          # site -> {"callee", "target", "args": {slot: text}, "tail"}
         self.branches = branches or {}    # address -> {"mn", "target", "taken", "fall"}
@@ -60,14 +74,27 @@ class FactSheet:
 
     def to_dict(self):
         return {"name": self.name, "abi": self.abi, "text": self.text, "accesses": self.accesses,
-                "calls": self.calls, "branches": self.branches, "returns": self.returns, "blocks": self.blocks}
+                "calls": self.calls, "branches": self.branches, "returns": self.returns, "blocks": self.blocks,
+                "arch": self.arch, "retreg": self.retreg}
 
     @classmethod
     def from_dict(cls, data):
         calls = {site: dict(call, args={int(k): v for k, v in call["args"].items()})
                  for site, call in data["calls"].items()}
         return cls(data["name"], data["abi"], data["text"], data["accesses"], calls, data["branches"],
-                   data["returns"], data["blocks"])
+                   data["returns"], data["blocks"], data.get("arch", "mips"), data.get("retreg", "v0"))
+
+    # ---- argument registers
+
+    def arg_regs(self):
+        """(prefix, first register number, digit regex) of the argument registers, or None when the
+        architecture passes arguments on the stack."""
+        return ARG_REGS.get(self.arch)
+
+    def reg_name(self, slot):
+        """The register that carries argument slot, or "arg<slot>" where arguments are on the stack."""
+        spec = self.arg_regs()
+        return "%s%d" % (spec[0], spec[1] + slot) if spec else "arg%d" % slot
 
     # ---- block graph
 
@@ -226,6 +253,55 @@ def _blocks_of(routine):
     return out
 
 
+def sheet_from_firmware(routine, facts, rendered=None):
+    """A sheet for a routine of a non-MIPS firmware image (PowerPC, ColdFire, m68k), built from the facts the
+    firmware renderer prints. It holds the same things as a MIPS sheet: calls with their argument slots,
+    conditional branches with both conditions, returns, loads and stores outside the frame, and the block graph.
+    Arguments are in r3-r10 on PowerPC; on ColdFire and m68k they are on the stack and no slots are listed, so
+    the argument rules skip. An argument register the routine leaves as it came in reads "rN at entry"."""
+    arch = routine.arch
+    if arch not in FIRMWARE_ARCHES:
+        raise ValueError("no facts are rendered for %s firmware" % arch)
+    if rendered is None:
+        import render_reading
+        rendered = "\n".join(render_reading.firmware_sentences(routine, facts))
+    mnemonic = {hex(ins["addr"]): ins["mn"] for ins in routine.insns}
+    spec = ARG_REGS.get(arch)
+    sheet = FactSheet(name=facts["routine"].get("name") or "", abi=facts["routine"].get("abi") or "", text=rendered,
+                      arch=arch, retreg=facts["exits"][0]["register"] if facts.get("exits") else routine.retreg)
+    for call in facts.get("calls", []):
+        callee = call.get("callee") or ("(unnamed)" if call.get("target") else "(unknown callee)")
+        args = {}
+        for arg in call.get("args", []) if spec else ():
+            m = re.fullmatch(re.escape(spec[0]) + r"(\d+)", arg["location"])
+            if m and 0 <= int(m.group(1)) - spec[1] < 8:
+                args[int(m.group(1)) - spec[1]] = "%s at entry" % arg["location"] if arg["value"] == arg["location"] \
+                    else arg["value"]
+        sheet.calls[call["address"]] = {"callee": callee, "target": call.get("target"), "args": args,
+                                        "tail": bool(call.get("tail"))}
+    for exit_fact in facts.get("exits", []):
+        sheet.returns[exit_fact["address"]] = exit_fact["value"]
+    for a in facts.get("accesses", []):
+        if a.get("origin") == "sp" or a.get("stack") or a.get("base") in ("sp", "gp", "r1", "a7"):
+            continue
+        sheet.accesses.append({"address": a["address"], "kind": a["kind"], "mn": a["mnemonic"],
+                               "offset": a.get("origin_offset") if "origin" in a else None})
+    unreached = set(facts.get("unreached", []))
+    index = {block["id"]: n for n, block in enumerate(facts.get("blocks", []))}
+    for block in facts.get("blocks", []):
+        reached = block["first"] not in unreached
+        # a conditional block lists its taken side first, as the MIPS blocks do
+        order = sorted(block["successors"], key=lambda s: s["kind"] != "taken")
+        entry = {"first": _int(block["first"]), "last": _int(block["last"]),
+                 "succ": [index[s["block"]] for s in order] if reached else [], "reached": reached}
+        if block["kind"] == "conditional" and reached and block.get("target") is not None:
+            entry["branch"] = block["last"]
+            sheet.branches[block["last"]] = {"mn": mnemonic.get(block["last"], "?"), "target": block["target"],
+                                             "taken": block["taken_when"], "fall": block["falls_through_when"]}
+        sheet.blocks.append(entry)
+    return sheet
+
+
 _SHEETS = {}
 
 
@@ -299,16 +375,18 @@ def _label(sheet, site):
 
 # ---------------------------------------------------------------- argument slots
 
-def _arg_claims(sentence):
-    """(position, slot, value, text) of every "value goes in this argument" claim."""
+def _arg_claims(sentence, spec=ARG_REGS["mips"]):
+    """(position, slot, value, text) of every "value goes in this argument" claim. spec names the argument
+    registers (ARG_REGS); a register outside them is not a claim about an argument."""
+    prefix, base, digits = spec
     claims = []
     for m in re.finditer(r"(?P<v>" + NUMBER + r")(?![\w.])\s+(?:as|in)\s+(?:its |the |their )?(?P<o>" + ORD + r")\s+argument",
                          sentence):
         claims.append((m.start(), ORDINALS[m.group("o")], _int(m.group("v")), m.group(0)))
-    for m in re.finditer(r"(?P<v>" + NUMBER + r")(?![\w.])\s+(?:as|in)\s+a(?P<r>[0-7])\b", sentence):
-        claims.append((m.start(), int(m.group("r")), _int(m.group("v")), m.group(0)))
-    for m in re.finditer(r"\ba(?P<r>[0-7])\s*(?:=|of)\s*(?P<v>" + NUMBER + r")(?![\w.])", sentence):
-        claims.append((m.start(), int(m.group("r")), _int(m.group("v")), m.group(0)))
+    for m in re.finditer(r"(?P<v>" + NUMBER + r")(?![\w.])\s+(?:as|in)\s+" + prefix + r"(?P<r>" + digits + r")\b", sentence):
+        claims.append((m.start(), int(m.group("r")) - base, _int(m.group("v")), m.group(0)))
+    for m in re.finditer(r"\b" + prefix + r"(?P<r>" + digits + r")\s*(?:=|of)\s*(?P<v>" + NUMBER + r")(?![\w.])", sentence):
+        claims.append((m.start(), int(m.group("r")) - base, _int(m.group("v")), m.group(0)))
     for m in re.finditer(r"\b(?P<o>" + ORD + r") argument\s+(?:fixed at|is|=)\s+(?P<v>" + NUMBER + r")(?![\w.])", sentence):
         claims.append((m.start(), ORDINALS[m.group("o")], _int(m.group("v")), m.group(0)))
     return claims
@@ -316,15 +394,19 @@ def _arg_claims(sentence):
 
 def check_arguments(sentence, sheet):
     problems = []
+    spec = sheet.arg_regs()
+    if spec is None:
+        return problems                   # arguments on the stack: no register to name
+    prefix, base, digits = spec
     note = CONVENTION_NOTE.get(sheet.abi, "")
-    for m in re.finditer(r"\b(?P<o>" + ORD + r") argument\s*\(a(?P<r>[0-7])\)", sentence):
+    for m in re.finditer(r"\b(?P<o>" + ORD + r") argument\s*\(" + prefix + r"(?P<r>" + digits + r")\)", sentence):
         slot = ORDINALS[m.group("o")]
-        if slot != int(m.group("r")):
-            problems.append(("arg-register", "%r names a%s as the %s argument; the %s argument is a%d%s" % (
-                m.group(0), m.group("r"), m.group("o"), m.group("o"), slot,
+        if slot != int(m.group("r")) - base:
+            problems.append(("arg-register", "%r names %s%s as the %s argument; the %s argument is %s%s" % (
+                m.group(0), prefix, m.group("r"), m.group("o"), m.group("o"), sheet.reg_name(slot),
                 " (%s)" % note if note else ""), sentence))
     items = mentions(sentence, sheet)
-    for pos, slot, value, text in _arg_claims(sentence):
+    for pos, slot, value, text in _arg_claims(sentence, spec):
         near = _nearest(items, pos)
         if near is None or value is None:
             continue
@@ -348,11 +430,11 @@ def check_arguments(sentence, sheet):
         bad = [(site, got, elsewhere) for site, got, elsewhere in results if site not in satisfied]
         site, got, elsewhere = bad[0]
         if elsewhere:
-            reason = "%r puts the value in a%d, but %s passes it in a%d, the %s argument%s" % (
-                text, slot, _label(sheet, site), elsewhere[0], ORDINAL_NAMES[elsewhere[0]],
+            reason = "%r puts the value in %s, but %s passes it in %s, the %s argument%s" % (
+                text, sheet.reg_name(slot), _label(sheet, site), sheet.reg_name(elsewhere[0]), ORDINAL_NAMES[elsewhere[0]],
                 " (%s)" % note if note else "")
         elif got is not None and _int(got) is not None:
-            reason = "%r, but %s passes %s in a%d" % (text, _label(sheet, site), got, slot)
+            reason = "%r, but %s passes %s in %s" % (text, _label(sheet, site), got, sheet.reg_name(slot))
         else:
             continue
         problems.append(("arg-slot", reason, sentence))
@@ -375,7 +457,7 @@ def _runs_when(sheet, site, claim_address):
         if not branch:
             continue
         text = branch["taken" if side == "taken" else "fall"]
-        m = re.fullmatch(r"(?P<l>.+?) (?P<op>==|!=) 0", text)
+        m = re.fullmatch(r"(?P<l>.+?) (?P<op>==|!=) 0(?:x0)?", text)
         if not m:
             continue
         if claim_address and claim_address not in text:
@@ -387,11 +469,11 @@ def _runs_when(sheet, site, claim_address):
     return options[-1][1], options[-1][2]
 
 
-def _compares(token, condition):
+def _compares(token, condition, register=_COND_REG["mips"]):
     """Whether the compared value is the register or number the prose names. A register inside a
     bracket is a field of what it points to, not the register itself."""
     token = token.lstrip("+")
-    if re.fullmatch(r"[av]\d", token):
+    if re.fullmatch(register, token):
         return re.search(r"(?<![\w\[+])" + token + r"(?![\w+])", condition) is not None
     return token in condition
 
@@ -431,11 +513,12 @@ def check_branch_direction(sentence, sheet):
         flag = addresses[-1] if addresses else None
         if starts_clause and re.search(r"\b(skips?|bypass\w*|avoids?)\b", sentence[m.end():target["pos"]]):
             value = 1 - value
-        subject = set(re.findall(r"\ba[0-7]\b|\bv[01]\b|\+?\b\d{2,}\b", m.group("subj")))
+        subject = set(re.findall(r"\b(?:" + _SUBJECT_REG.get(sheet.arch, _SUBJECT_REG["mips"]) + r")\b|\+?\b\d{2,}\b",
+                                 m.group("subj")))
         wrong = []
         for site in target["sites"]:
             found = _runs_when(sheet, site, flag)
-            if found is not None and not flag and not any(_compares(t, found[1]) for t in subject):
+            if found is not None and not flag and not any(_compares(t, found[1], _COND_REG.get(sheet.arch, _COND_REG["mips"])) for t in subject):
                 found = None              # nothing ties the words to the compared value
             if found is None or found[0] == value:
                 wrong = []
@@ -627,7 +710,7 @@ def check_conditional_wording(sentence, entry_text, sheet):
 
 def check_enable(sentence, entry_text, sheet):
     problems = []
-    if re.search(r"disabl|\bclears?\b|\boff\b|a1 of 0\b", entry_text):
+    if sheet.arg_regs() is None or re.search(r"disabl|\bclears?\b|\boff\b|%s of 0\b" % sheet.reg_name(1), entry_text):
         return problems
     for m in re.finditer(r"\benables (?P<v>" + NUMBER + r")(?![\w.])", sentence):
         value = _int(m.group("v"))
@@ -639,8 +722,8 @@ def check_enable(sentence, entry_text, sheet):
                 for other, c in sheet.calls.items():
                     if c["callee"] == call["callee"] and _int(c["args"].get(0, "")) == value \
                             and _int(c["args"].get(1, "")) == 0:
-                        problems.append(("enable-only", "the entry says it enables %s, but %s passes a1=0x0 at %s" % (
-                            m.group("v"), call["callee"], other), sentence))
+                        problems.append(("enable-only", "the entry says it enables %s, but %s passes %s=0x0 at %s" % (
+                            m.group("v"), call["callee"], sheet.reg_name(1), other), sentence))
                         return problems
     return problems
 
@@ -790,14 +873,18 @@ def _numbers(text):
 def _check_call_args(segment, site, sheet):
     """Argument claims written before a call's citation, tested on that call."""
     problems = []
+    spec = sheet.arg_regs()
+    if spec is None:
+        return problems                   # arguments on the stack: no register to name
+    prefix, base, digits = spec
     args = sheet.calls[site]["args"]
     note = CONVENTION_NOTE.get(sheet.abi, "")
-    for m in re.finditer(r"\b(?P<o>" + ORD + r") argument\s*\(a(?P<r>[0-7])\)", segment):
-        if ORDINALS[m.group("o")] != int(m.group("r")):
-            problems.append(("cite-arg", "%r names a%s as the %s argument; the %s argument is a%d%s" % (
-                m.group(0), m.group("r"), m.group("o"), m.group("o"), ORDINALS[m.group("o")],
+    for m in re.finditer(r"\b(?P<o>" + ORD + r") argument\s*\(" + prefix + r"(?P<r>" + digits + r")\)", segment):
+        if ORDINALS[m.group("o")] != int(m.group("r")) - base:
+            problems.append(("cite-arg", "%r names %s%s as the %s argument; the %s argument is %s%s" % (
+                m.group(0), prefix, m.group("r"), m.group("o"), m.group("o"), sheet.reg_name(ORDINALS[m.group("o")]),
                 " (%s)" % note if note else "")))
-    for _pos, slot, value, text in _arg_claims(segment):
+    for _pos, slot, value, text in _arg_claims(segment, spec):
         if value is None:
             continue
         got = args.get(slot)
@@ -805,32 +892,34 @@ def _check_call_args(segment, site, sheet):
             continue
         elsewhere = sorted(k for k, v in args.items() if k != slot and _int(v) == value and value > 0xf)
         if elsewhere:
-            problems.append(("cite-arg", "%r puts the value in a%d, but %s passes it in a%d, the %s argument%s" % (
-                text, slot, _label(sheet, site), elsewhere[0], ORDINAL_NAMES[elsewhere[0]],
-                " (%s)" % note if note else "")))
+            problems.append(("cite-arg", "%r puts the value in %s, but %s passes it in %s, the %s argument%s" % (
+                text, sheet.reg_name(slot), _label(sheet, site), sheet.reg_name(elsewhere[0]),
+                ORDINAL_NAMES[elsewhere[0]], " (%s)" % note if note else "")))
         elif got is None or _int(got) is None:
-            problems.append(("cite-arg", "%r, but the facts give a%d=%s at %s, so no value can be stated there" % (
-                text, slot, got if got is not None else "(not set)", _label(sheet, site))))
+            problems.append(("cite-arg", "%r, but the facts give %s=%s at %s, so no value can be stated there" % (
+                text, sheet.reg_name(slot), got if got is not None else "(not set)", _label(sheet, site))))
         else:
-            problems.append(("cite-arg", "%r, but %s passes %s in a%d" % (text, _label(sheet, site), got, slot)))
+            problems.append(("cite-arg", "%r, but %s passes %s in %s" % (text, _label(sheet, site), got,
+                                                                         sheet.reg_name(slot))))
     # "a1 = a2 at entry": slot a1 holds the caller's a2, and "a2 at entry as its fourth argument" says the same
     # of the slot the ordinal names
-    for m in re.finditer(r"\ba(?P<slot>[0-7])\s*=\s*(?P<reg>a[0-7]) at entry", segment):
-        _check_entry_register(problems, m.group(0), int(m.group("slot")), m.group("reg"), site, sheet)
-    for m in re.finditer(r"\b(?P<reg>a[0-7]) at entry (?:as|in) (?:its |the )?(?P<o>" + ORD + r") argument", segment):
+    reg = prefix + digits
+    for m in re.finditer(r"\b" + prefix + r"(?P<slot>" + digits + r")\s*=\s*(?P<reg>" + prefix + r"\d+) at entry", segment):
+        _check_entry_register(problems, m.group(0), int(m.group("slot")) - base, m.group("reg"), site, sheet)
+    for m in re.finditer(r"\b(?P<reg>" + prefix + r"\d+) at entry (?:as|in) (?:its |the )?(?P<o>" + ORD + r") argument", segment):
         _check_entry_register(problems, m.group(0), ORDINALS[m.group("o")], m.group("reg"), site, sheet)
-    rest = re.sub(r"\ba[0-7]\s*=\s*a[0-7] at entry|\ba[0-7] at entry (?:as|in) (?:its |the )?(?:" + ORD +
-                  r") argument", " ", segment)
-    for m in re.finditer(r"\b(?P<reg>a[0-7])\s+(?:unchanged|as received|at entry|passed through)", rest):
-        _check_entry_register(problems, m.group(0), int(m.group("reg")[1]), m.group("reg"), site, sheet)
+    rest = re.sub(r"\b" + prefix + r"\d+\s*=\s*" + prefix + r"\d+ at entry|\b" + prefix + r"\d+ at entry (?:as|in) (?:its |the )?(?:"
+                  + ORD + r") argument", " ", segment)
+    for m in re.finditer(r"\b(?P<reg>" + reg + r")\s+(?:unchanged|as received|at entry|passed through)", rest):
+        _check_entry_register(problems, m.group(0), int(m.group("reg")[len(prefix):]) - base, m.group("reg"), site, sheet)
     return problems
 
 
 def _check_entry_register(problems, text, slot, reg, site, sheet):
     got = sheet.calls[site]["args"].get(slot, "")
     if not str(got).startswith("%s at entry" % reg):
-        problems.append(("cite-arg", "%r, but %s passes %s in a%d" % (
-            text, _label(sheet, site), got or "(not set)", slot)))
+        problems.append(("cite-arg", "%r, but %s passes %s in %s" % (
+            text, _label(sheet, site), got or "(not set)", sheet.reg_name(slot))))
 
 
 def _check_return_claim(segment, address, sheet):
@@ -980,7 +1069,7 @@ def _check_group(group, sheet, sentence):
         info = infos[branch["addr"]]
         if branch.get("pol"):
             text = info["taken" if branch["side"] == "taken" else "fall"]
-            m = re.fullmatch(r"(?P<l>.+?) (?P<op>==|!=) 0", text)
+            m = re.fullmatch(r"(?P<l>.+?) (?P<op>==|!=) 0(?:x0)?", text)
             want = "==" if branch["pol"] == "zero" else "!="
             if not m:
                 problems.append(("cite-branch", "the branch at %s does not compare a word with zero (it is %s on the "
@@ -1079,7 +1168,7 @@ def fact_index(sheet):
     rows = []
     for number, site in enumerate(_call_sites(sheet), 1):
         c = sheet.calls[site]
-        args = " ".join("a%d=%s" % (slot, value) for slot, value in sorted(c["args"].items()))
+        args = " ".join("%s=%s" % (sheet.reg_name(slot), value) for slot, value in sorted(c["args"].items()))
         rows.append((_int(site), "call %-3d @%s  %s%s%s  %s" % (
             number, site, "tail " if c.get("tail") else "", c["callee"] or "?",
             " [%s]" % c["target"] if c.get("target") else "", args)))
@@ -1087,7 +1176,7 @@ def fact_index(sheet):
         rows.append((_int(address), "branch   @%s  %s -> %s  taken: %s | fall: %s" % (
             address, b["mn"], b["target"], b["taken"], b["fall"])))
     for address, value in sheet.returns.items():
-        rows.append((_int(address), "return   @%s  v0 = %s" % (address, value)))
+        rows.append((_int(address), "return   @%s  %s = %s" % (address, sheet.retreg, value)))
     for a in sheet.accesses:
         rows.append((_int(a["address"]), "%-8s @%s  %s%s" % (
             a["kind"], a["address"], a["mn"], " +0x%x" % a["offset"] if a["offset"] is not None else "")))
