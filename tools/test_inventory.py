@@ -731,6 +731,150 @@ class GpLiterals(unittest.TestCase):
         self.assertEqual(u.touch, {('6.5.30/unix.IP99', 'f')})
 
 
+class PacketHeaders(unittest.TestCase):
+    """A constant that fits a command-packet header form counts as a site of the register it names when it is
+    stored through a buffer pointer, the data words follow it and the pointer is stepped past the packet."""
+    RULE = {'label': 'type-0 header', 'window': 'mmio',
+            'type': {'shift': 30, 'mask': '0x3', 'eq': 0},
+            'count': {'shift': 16, 'mask': '0x3fff', 'bias': 1},
+            'index': {'shift': 0, 'mask': '0x1fff', 'scale': 4},
+            'same_register': {'mask': '0x8000'}, 'reserved': '0x6000', 'max_words': 8, 'registers': 'spec'}
+    ROWS = [['T', '1', 'mmio', '0x2180', 'A', 1, 0, 32, 'RW'], ['T', '1', 'mmio', '0x2310', 'B', 4, 4, 32, 'RW'],
+            ['T', '1', 'mmio', '0x221c', 'C', 1, 0, 32, 'RW']]
+
+    def replayed(self, body, rule=None, rows=None):
+        """(sites by offset, their access sets) of `body`, one function, under the packet rule."""
+        cfg = {'windows': [{'name': 'mmio', 'size': '0x10000'}],
+               'packets': [rule or self.RULE],
+               'spec_registers': [{'type': 'rows', 'spec': 's', 'rows': self.ROWS if rows is None else rows}]}
+        insns = [[0x1000 + 4 * i] + list(x) + [None, None] for i, x in enumerate(body + [('jr', ['$31']), ('nop', [])])]
+        img = {'elf': ELFFile(io.BytesIO(GpLiterals.kernel())), 'tmp': 'unused', 'label': 'x/dri.so',
+               'path': 'x/dri.so', 'group': {}, 'functab': {}}
+        saved = inv.run_objdump, inv.split_runs
+        inv.run_objdump, inv.split_runs = (lambda path: [('f', insns)]), (lambda funcs, tab: funcs)
+        try:
+            u = inv.Unit(inv.Model(cfg), cfg, [img]).run()
+        finally:
+            inv.run_objdump, inv.split_runs = saved
+        return {k[1]: sorted(e['acc']) for k, e in sorted(u.out_mmio.items())}
+
+    def test_a_header_and_its_data_through_a_stepped_pointer_is_a_site(self):
+        got = self.replayed([('li', ['$9', '0x860']),          # count 0, index 0x860: the register at 0x2180
+                             ('sw', ['$9', '16($11)']), ('sw', ['$5', '20($11)']),
+                             ('addiu', ['$11', '$11', '24'])])
+        self.assertEqual(got, {0x2180: ['packet']})
+
+    def test_a_run_credits_every_register_it_covers(self):
+        got = self.replayed([('lui', ['$9', '0x2']), ('ori', ['$9', '$9', '0x8c4']),    # 3 words from 0x2310
+                             ('sw', ['$9', '0($4)']), ('sw', ['$5', '4($4)']), ('swc1', ['$f4', '8($4)']),
+                             ('sd', ['$6', '12($4)']), ('addiu', ['$4', '$4', '16'])])
+        self.assertEqual(got, {0x2310: ['packet'], 0x2314: ['packet'], 0x2318: ['packet']})
+
+    def test_the_step_may_come_before_the_stores_and_data_may_precede_the_header(self):
+        got = self.replayed([('addiu', ['$11', '$11', '8']), ('li', ['$9', '0x860']),
+                             ('sw', ['$5', '-8($11)']), ('sw', ['$9', '-4($11)']), ('sw', ['$6', '0($11)']),
+                             ('addiu', ['$11', '$11', '8'])])
+        self.assertEqual(got, {0x2180: ['packet']})
+
+    def test_a_same_register_header_credits_the_one_register(self):
+        got = self.replayed([('lui', ['$9', '0x1']), ('ori', ['$9', '$9', '0x8887']),   # 2 words, all to 0x221c
+                             ('sw', ['$9', '0($4)']), ('sw', ['$5', '4($4)']), ('sw', ['$6', '8($4)']),
+                             ('addiu', ['$4', '$4', '12'])])
+        self.assertEqual(got, {0x221c: ['packet']})
+
+    def test_the_pointer_may_move_to_another_register_by_a_constant_register(self):
+        """The 64-bit build steps the cursor with `daddu next,cursor,r` where r holds the byte count."""
+        got = self.replayed([('li', ['$12', '8']), ('li', ['$9', '0x860']),
+                             ('sw', ['$9', '0($11)']), ('sw', ['$5', '4($11)']),
+                             ('daddu', ['$13', '$11', '$12']),
+                             ('li', ['$9', '0x887']),
+                             ('sw', ['$9', '0($13)']), ('sw', ['$5', '4($13)']),
+                             ('daddu', ['$13', '$13', '$12'])])
+        self.assertEqual(got, {0x2180: ['packet'], 0x221c: ['packet']})
+
+    def test_a_step_by_an_unknown_amount_ends_the_stream(self):
+        got = self.replayed([('li', ['$9', '0x860']), ('sw', ['$9', '0($11)']), ('sw', ['$5', '4($11)']),
+                             ('daddu', ['$11', '$11', '$6'])])
+        self.assertEqual(got, {})
+
+    def test_a_data_word_that_reads_as_a_header_makes_the_pair_ambiguous(self):
+        """A table fill stores one small constant after another; a packet's data is rarely a header too."""
+        got = self.replayed([('li', ['$9', '0x860']), ('sw', ['$9', '0($11)']), ('sw', ['$9', '4($11)']),
+                             ('sw', ['$9', '8($11)']), ('addiu', ['$11', '$11', '12'])])
+        self.assertEqual(got, {})
+
+    def test_min_chain_wants_packets_that_begin_where_the_last_ended(self):
+        rule = dict(self.RULE, min_chain=2)
+        one = [('li', ['$9', '0x860']), ('sw', ['$9', '0($11)']), ('sw', ['$5', '4($11)']),
+               ('addiu', ['$11', '$11', '8'])]
+        two = one[:3] + [('li', ['$10', '0x887']), ('sw', ['$10', '8($11)']), ('sw', ['$5', '12($11)']),
+                         ('addiu', ['$11', '$11', '16'])]
+        gap = one[:3] + [('li', ['$10', '0x887']), ('sw', ['$10', '16($11)']), ('sw', ['$5', '20($11)']),
+                         ('addiu', ['$11', '$11', '24'])]
+        self.assertEqual(self.replayed(one, rule), {})
+        self.assertEqual(self.replayed(two, rule), {0x2180: ['packet'], 0x221c: ['packet']})
+        self.assertEqual(self.replayed(gap, rule), {})
+
+    def test_function_patterns_limit_the_routines_that_count(self):
+        body = [('li', ['$9', '0x860']), ('sw', ['$9', '0($11)']), ('sw', ['$5', '4($11)']),
+                ('addiu', ['$11', '$11', '8'])]
+        self.assertEqual(self.replayed(body, dict(self.RULE, functions=['f'])), {0x2180: ['packet']})
+        self.assertEqual(self.replayed(body, dict(self.RULE, functions=['g'])), {})
+        self.assertEqual(self.replayed(body, dict(self.RULE, exclude_functions=['f.*'])), {})
+
+    def test_max_displacement_rejects_a_field_far_into_a_record(self):
+        body = [('li', ['$9', '0x860']), ('sw', ['$9', '2000($11)']), ('sw', ['$5', '2004($11)']),
+                ('addiu', ['$11', '$11', '2008'])]
+        self.assertEqual(self.replayed(body), {0x2180: ['packet']})
+        self.assertEqual(self.replayed(body, dict(self.RULE, max_displacement=1024)), {})
+
+    def test_a_header_without_its_data_words_is_not_a_site(self):
+        got = self.replayed([('li', ['$9', '0x860']), ('sw', ['$9', '0($11)']), ('addiu', ['$11', '$11', '8'])])
+        self.assertEqual(got, {})
+
+    def test_a_pointer_that_is_never_stepped_is_not_a_stream(self):
+        got = self.replayed([('li', ['$9', '0x860']), ('sw', ['$9', '0($11)']), ('sw', ['$5', '4($11)'])])
+        self.assertEqual(got, {})
+
+    def test_a_pointer_reloaded_between_header_and_data_is_not_a_stream(self):
+        got = self.replayed([('li', ['$9', '0x860']), ('sw', ['$9', '0($11)']), ('lw', ['$11', '8($4)']),
+                             ('sw', ['$5', '4($11)']), ('addiu', ['$11', '$11', '8'])])
+        self.assertEqual(got, {})
+
+    def test_a_pointer_stepped_short_of_the_packet_end_is_not_a_stream(self):
+        got = self.replayed([('lui', ['$9', '0x2']), ('ori', ['$9', '$9', '0x8c4']),
+                             ('sw', ['$9', '0($4)']), ('sw', ['$5', '4($4)']), ('sw', ['$5', '8($4)']),
+                             ('sw', ['$5', '12($4)']), ('addiu', ['$4', '$4', '8'])])
+        self.assertEqual(got, {})
+
+    def test_frame_global_and_window_stores_are_not_streams(self):
+        for base in ('$29', '$28', '$0'):
+            got = self.replayed([('li', ['$9', '0x860']), ('sw', ['$9', '0(%s)' % base]),
+                                 ('sw', ['$5', '4(%s)' % base]), ('addiu', [base, base, '8'])])
+            self.assertEqual(got, {}, base)
+
+    def test_a_constant_outside_the_header_form_is_not_a_header(self):
+        for hdr in ('0xc0000860',      # type 3
+                    '0x2860',          # a reserved bit set
+                    '0x90860',         # more data words than the rule allows
+                    '0x0'):            # no words
+            body = [('lui', ['$9', hex(int(hdr, 16) >> 16)]), ('ori', ['$9', '$9', hex(int(hdr, 16) & 0xffff)]),
+                    ('sw', ['$9', '0($11)'])] + [('sw', ['$5', '%d($11)' % (4 * i)]) for i in range(1, 12)] + \
+                   [('addiu', ['$11', '$11', '48'])]
+            self.assertEqual(self.replayed(body), {}, hdr)
+
+    def test_a_register_the_spec_does_not_list_is_not_credited(self):
+        got = self.replayed([('li', ['$9', '0x861']), ('sw', ['$9', '0($11)']), ('sw', ['$5', '4($11)']),
+                             ('addiu', ['$11', '$11', '8'])])
+        self.assertEqual(got, {})
+
+    def test_without_a_packets_entry_nothing_is_credited(self):
+        cfg_body = [('li', ['$9', '0x860']), ('sw', ['$9', '0($11)']), ('sw', ['$5', '4($11)']),
+                    ('addiu', ['$11', '$11', '8'])]
+        rule = dict(self.RULE, window='mmio', binaries=['*other.so'])
+        self.assertEqual(self.replayed(cfg_body, rule), {})
+
+
 class RequestLabels(unittest.TestCase):
     """A vendor driver-request name in a function row is written as its label."""
 

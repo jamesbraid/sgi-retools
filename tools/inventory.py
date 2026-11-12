@@ -9,8 +9,9 @@ the toolchain environment of AGENTS.md (MIPS objdump, dwarfdump, pyelftools).
 
 The script is the same in every workspace. Everything that belongs to one
 graphics family -- which files are in scope and what role each plays, the
-register windows and how code reaches them, where command tokens come from,
-which kernel tables dispatch ioctls, the microcode images, any register
+register windows and how code reaches them (a direct store through a window
+pointer, or a command-packet header stored into a buffer: `packets`), where
+command tokens come from, which kernel tables dispatch ioctls, the microcode images, any register
 tables from a specification and the small-data sections (`gp_literals`) in which
 a linked kernel with no GOT keeps its address constants -- is in
 scripts/inventory-config.json.
@@ -2059,6 +2060,7 @@ NO_DEST = set('''mult multu dmult dmultu div divu ddiv ddivu madd maddu msub msu
 mtc2 dmtc2 ctc2 mthi mtlo nop sync break syscall cache teq tne tlt tltu tge tgeu teqi tnei tlti tltiu tgei
 tgeiu tlbwi tlbwr tlbp tlbr eret pref prefx ssnop deret wait c.f c.un c.eq c.ueq c.olt c.ult c.ole c.ule
 c.sf c.ngle c.seq c.ngl c.lt c.nge c.le c.ngt'''.split())
+PTR_STEPS = {'addiu', 'daddiu', 'addu', 'daddu', 'or'}
 CALLER_SAVED = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 31]
 ARG_REGS = (4, 5, 6, 7, 8, 9, 10, 11)
 
@@ -2295,6 +2297,7 @@ class Model:
         self.aliases = [dict(a, lo=num(a['lo']), hi=num(a['hi']), bit=num(a['bit']))
                         for a in cfg.get('aliases', [])]
         self.decoders = cfg.get('decoders', [])
+        self.packets = [packet_rule(r, cfg) for r in cfg.get('packets', [])]
         tk = cfg.get('tokens', {})
         self.sinks = [s for s in tk.get('sources', []) if s['type'] == 'stores']
         self.families = tk.get('families', [])
@@ -2316,6 +2319,61 @@ class Model:
             if all(cond_ok(c, w) for c in f['when']):
                 return f
         return None
+
+
+SPEC_COLUMNS = ['table', 'page', 'window', 'offset', 'name', 'count', 'stride', 'width', 'rw']
+
+
+def packet_rule(r, cfg):
+    """A `packets` entry of the config with its numbers parsed, and the registers it may credit.
+
+    A packet header is one 32-bit word the driver stores into a command buffer; the hardware's command
+    processor reads it and writes the data words that follow into registers. The entry gives the header's
+    fields, each {shift, mask}: `type` (with `eq`, the value that marks this header form), `count` (the data
+    words, `bias` more than the field holds), `index` (the first register, `scale` bytes per index, plus
+    `base`) and optionally `same_register` (a flag mask: every data word goes to the one register) and
+    `reserved` (bits that must be clear). `max_words` caps the data words. `functions` and
+    `exclude_functions` (name patterns) limit the routines whose stores count, and `min_chain` (default 1)
+    asks for that many packets in a row, each beginning where the last ended. `max_displacement` caps the
+    header store's displacement from its pointer: a cursor that is stepped as it goes is addressed near
+    itself, while a field far into a large record is not a stream. `registers: "spec"` limits credit to
+    registers the config's spec_registers `rows` sources list for the window."""
+    def field(f):
+        return {'shift': int(f.get('shift', 0)), 'mask': num(f['mask'])}
+    out = {'label': r.get('label', 'packet header'), 'window': r['window'], 'binaries': r.get('binaries'),
+           'functions': r.get('functions'), 'exclude': r.get('exclude_functions', []),
+           'min_chain': int(r.get('min_chain', 1)),
+           'max_disp': num(r['max_displacement']) if 'max_displacement' in r else None,
+           'type': dict(field(r['type']), eq=num(r['type']['eq'])),
+           'count': dict(field(r['count']), bias=int(r['count'].get('bias', 1))),
+           'index': dict(field(r['index']), scale=int(r['index'].get('scale', 4)),
+                         base=num(r['index'].get('base', 0))),
+           'same': num(r['same_register']['mask']) if r.get('same_register') else 0,
+           'reserved': num(r.get('reserved', 0)), 'max_words': int(r.get('max_words', 64)), 'known': None}
+    if r.get('registers') == 'spec':
+        out['known'] = []
+        for src in cfg.get('spec_registers', []):
+            if src.get('type') != 'rows':
+                continue
+            for row in src['rows']:
+                d = dict(zip(src.get('columns', SPEC_COLUMNS), row))
+                if d['window'] == r['window']:
+                    out['known'].append((num(d['offset']), max(1, int(d.get('count') or 1)) *
+                                         (int(d.get('stride') or 0) or 4)))
+    return out
+
+
+def packet_header(rule, v):
+    """(first register offset, data words, same-register flag) of the header word v under a packet rule, or
+    None when v does not fit the form."""
+    v &= 0xffffffff
+    t, c, i = rule['type'], rule['count'], rule['index']
+    if (v >> t['shift']) & t['mask'] != t['eq'] or v & rule['reserved']:
+        return None
+    words = ((v >> c['shift']) & c['mask']) + c['bias']
+    if not 1 <= words <= rule['max_words']:
+        return None
+    return ((v >> i['shift']) & i['mask']) * i['scale'] + i['base'], words, bool(v & rule['same'])
 
 
 def cond_ok(c, w):
@@ -2358,6 +2416,8 @@ class Unit:
         self.recording = False
         self.mode = 'record'
         self.shadow = {}
+        self.pk_cands, self.pk_pos, self.pk_end = [], collections.defaultdict(set), {}
+        self.pk_const = collections.defaultdict(dict)
 
     # ------------------------------------------------------------ helpers
 
@@ -2500,6 +2560,8 @@ class Unit:
         n = len(insns)
         if not n:
             return
+        self.pk_cands, self.pk_pos, self.pk_end = [], collections.defaultdict(set), {}
+        self.pk_const = collections.defaultdict(dict)
         index = {ins[0]: i for i, ins in enumerate(insns)}
         leaders = {0}
         for i, ins in enumerate(insns):
@@ -2568,6 +2630,7 @@ class Unit:
         for k, (st, en) in enumerate(blocks):
             for _ in self.block_succ(insns, index, bindex, st, en, dict(IN[k] or {}), seeds_ret):
                 pass
+        self.packets_flush()
 
     def block_succ(self, insns, index, bindex, st, en, regs, seeds_ret=None):
         """Run one block; yield (successor block, state on that edge). With regs None, only
@@ -2653,6 +2716,7 @@ class Unit:
                         self.note_ioctl(c, 'sent', addr)
         for r in CALLER_SAVED:
             regs.pop(r, None)
+            regs.pop(('pp', r), None)
         if callee and callee in seeds_ret:
             regs[2] = seeds_ret[callee]
         for b in m.bases:
@@ -2801,7 +2865,7 @@ class Unit:
         if e is None:
             e = self.out_mmio[key] = {'acc': set(), 'sites': 0, 'funcs': set(), 'bins': set(), 'ev': set(),
                                       'ex': None}
-        e['acc'].add('%s%d%s%s' % (acc, width, ' alias' if alias else '', ' ' + note if note else ''))
+        e['acc'].add('%s%s%s%s' % (acc, width or '', ' alias' if alias else '', ' ' + note if note else ''))
         e['sites'] += 1
         self.touch.add((self.img['label'], self.fname))
         e['funcs'].add(self.fname)
@@ -2851,6 +2915,116 @@ class Unit:
             if e['ex'] is None or ex < e['ex']:
                 e['ex'] = ex
 
+    # ------------------------------------------------------------ command-stream packets
+
+    def packet_step(self, regs, mn, ops, val):
+        """A store pointer moved by a constant: `addiu d,p,N`, `daddu d,p,r` with r a known constant, or a
+        copy. The result is (d, new epoch position) when p is a tracked store pointer, so d continues p's
+        epoch, and the epoch records how far the stream has advanced."""
+        mp, md = REG.match(ops[1]), REG.match(ops[0])
+        if not md:
+            return None
+        pp = regs.get(('pp', int(mp.group(1)))) if mp else None
+        step = None
+        if mn in ('addiu', 'daddiu'):
+            try:
+                step = num(ops[2])
+            except ValueError:
+                return None
+        else:
+            other = val(ops[2])
+            if pp is None and REG.match(ops[2]):
+                # the pointer is the second operand: `daddu d,r,p`
+                q = regs.get(('pp', int(REG.match(ops[2]).group(1))))
+                other, pp = val(ops[1]), q
+            if mn == 'or' and ops[2] != '$0' and ops[1] != '$0':
+                return None
+            if other and other[0] == 'c':
+                step = other[1]
+        if pp is None or step is None:
+            return None
+        new = (pp[0], pp[1] + step)
+        if self.recording and self.mode == 'record':
+            self.pk_end[pp[0]] = max(self.pk_end.get(pp[0], new[1]), new[1])
+        return int(md.group(1)), new
+
+    def packet_store(self, regs, bk, disp, mn, width, value, addr):
+        """A store through a pointer that is no window, global or frame address. The pointer's epoch is the
+        run of code over which it keeps one value, moved only by constant steps; positions in the epoch are
+        the step total plus the displacement, so a packet's header and data words get consecutive positions
+        however the compiler spread the steps between them. A constant that fits a header form is kept as a
+        candidate; packets_flush credits it when the stores and steps around it look like a stream."""
+        pp = regs.get(('pp', bk))
+        if pp is None:
+            pp = regs[('pp', bk)] = (addr, 0)
+        if not (self.recording and self.mode == 'record'):
+            return
+        pos = pp[1] + disp
+        key = pp[0]
+        if width in (4, 8):
+            self.pk_pos[key].update(range(pos, pos + width, 4))
+        if mn != 'sw' or not value or value[0] != 'c':
+            return
+        self.pk_const[key][pos] = value[1] & 0xffffffff
+        for rule in self.m.packets:
+            if not self.applies(rule, self.img, self.fname) or \
+                    any(re.fullmatch(x, self.fname or '') for x in rule['exclude']) or \
+                    (rule['max_disp'] is not None and abs(disp) > rule['max_disp']):
+                continue
+            h = packet_header(rule, value[1])
+            if h is not None:
+                self.pk_cands.append((rule, key, pos, h, addr, value[1] & 0xffffffff))
+
+    def packets_flush(self):
+        """Credit the candidate headers that sit in a stream. Its data words are all stored right after it
+        through the same pointer, none of them is itself a constant that reads as a header of a register the
+        rule credits (two stores of one constant in a row are as likely a table fill as a packet), and the
+        pointer is later stepped past the packet's end. The header's register, and for a run the registers
+        after it, become sites with access `packet`."""
+        ok = {}
+        for rule, key, pos, (reg, words, same), addr, word in self.pk_cands:
+            end = pos + 4 * (words + 1)
+            if any(p not in self.pk_pos[key] for p in range(pos + 4, end, 4)):
+                continue
+            if self.pk_end.get(key, -1 << 30) < end:
+                continue
+            if any(self.packet_reads_as_header(rule, self.pk_const[key].get(p)) for p in range(pos + 4, end, 4)):
+                continue
+            ok[(id(rule), key, pos)] = (rule, words, end, reg, same, addr)
+        for (rid, key, pos), (rule, words, end, reg, same, addr) in sorted(ok.items(), key=lambda kv: kv[1][5]):
+            if rule['min_chain'] > 1 and self.packet_chain(ok, rid, key, pos) < rule['min_chain']:
+                continue
+            offs = [reg] if same else [reg + i * rule['index']['scale'] for i in range(words)]
+            if rule['known'] is not None:
+                offs = [o for o in offs if self.packet_known(rule, o)]
+            if not offs:
+                continue
+            self.sites[self.img['label']] += 1
+            for o in offs:
+                self.record(rule['window'], o, 'packet', 0, rule['label'], addr, False)
+
+    @staticmethod
+    def packet_known(rule, off):
+        return rule['known'] is None or any(lo <= off < lo + sp for lo, sp in rule['known'])
+
+    def packet_reads_as_header(self, rule, v):
+        h = packet_header(rule, v) if v is not None else None
+        return h is not None and any(self.packet_known(rule, h[0] + i * rule['index']['scale']) for i in range(1 if h[2] else h[1]))
+
+    @staticmethod
+    def packet_chain(ok, rid, key, pos):
+        """How many packets run back to back through this one, each ending where the next begins."""
+        n = 1
+        nxt = ok[(rid, key, pos)][2]
+        while (rid, key, nxt) in ok:
+            n += 1
+            nxt = ok[(rid, key, nxt)][2]
+        ends = {v[2]: k[2] for k, v in ok.items() if k[0] == rid and k[1] == key}
+        while pos in ends:
+            n += 1
+            pos = ends[pos]
+        return n
+
     # ------------------------------------------------------------ one instruction
 
     def step(self, regs, addr, mn, ops, rel, seeds_ret):
@@ -2863,10 +3037,13 @@ class Unit:
             k = int(mm.group(1))
             return ('c', 0) if k == 0 else regs.get(k)
 
+        moved = self.m.packets and mn in PTR_STEPS and n == 3 and self.packet_step(regs, mn, ops, val)
+
         def setr(tok, v):
             mm = REG.match(tok)
             if mm and int(mm.group(1)) != 0:
                 k = int(mm.group(1))
+                regs.pop(('pp', k), None)
                 if v is None:
                     regs.pop(k, None)
                 else:
@@ -2895,6 +3072,9 @@ class Unit:
                     else:
                         regs.pop(('m', disp), None)
                     return
+                if bv is None and bk != 28 and self.m.packets:
+                    self.packet_store(regs, bk, disp, mn, width, value, addr)
+
                 self.access(bv, disp, 'w', width, addr, value)
                 if value and value[0] == 'c' and bk != 29:
                     for s in self.m.sinks:
@@ -3004,6 +3184,8 @@ class Unit:
         elif mn in ('movn', 'movz'):
             v = None
         setr(d, v)
+        if moved:
+            regs[('pp', moved[0])] = moved[1]
 
     def load_value(self, regs, bk, bv, disp, rel, width, mn):
         info, img = self.info, self.img
