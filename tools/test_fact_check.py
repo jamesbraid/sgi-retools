@@ -364,5 +364,176 @@ class CorrectedKonaEntries(unittest.TestCase):
                 self.assertEqual(fc.check_entry(fc.sentences_of(self.fixture[name]["after"]), sheet), [])
 
 
+class CitedClaims(unittest.TestCase):
+    """check_cited: each citation is tested against the fact it names, and a sentence that states a fact
+    without one is reported."""
+
+    def sheet(self):
+        """beq at 0x8 skips the call to f (0x10) when a0 is zero; g (0x20) runs on every path, then the return.
+        Call 1 is f, call 2 is g."""
+        return fc.FactSheet(
+            name="r", abi="n32", text="",
+            accesses=[{"address": "0x4", "kind": "load", "mn": "lw", "offset": 0x30},
+                      {"address": "0xc", "kind": "store", "mn": "sw", "offset": 0x34}],
+            calls={"0x10": call("f", "0x900", {0: "0x4", 1: "a1 at entry (arg1)", 2: "?", 4: "0xb4"}),
+                   "0x20": call("g", "0x910", {0: "0x1"})},
+            branches={"0x8": {"mn": "beq", "target": "0x18", "taken": "a0 == 0", "fall": "a0 != 0"}},
+            returns={"0x24": "ret(g)"},
+            blocks=[block(0x0, 0xc, [2, 1], "0x8"), block(0x10, 0x14, [2]), block(0x18, 0x24, [])])
+
+    def loop_sheet(self):
+        return fc.FactSheet(
+            name="r", abi="n32", text="", calls={}, returns={"0x14": "?"},
+            branches={"0xc": {"mn": "bne", "target": "0x8", "taken": "a1 != 0", "fall": "a1 == 0"}},
+            blocks=[block(0x0, 0x4, [1]), block(0x8, 0xc, [1, 2], "0xc"), block(0x10, 0x14, [])])
+
+    ROLE = "Role (from facts): calls f only on one path [call 1, @0x8 fall]."
+
+    def rules(self, sentences, sheet=None):
+        found = fc.check_cited(sentences, sheet or self.sheet())
+        return sorted({rule for rule, _why, _s in found})
+
+    def test_a_fully_cited_entry_has_no_finding(self):
+        entry = ["When a0 is nonzero [@0x8 fall nonzero] it calls f with a0 = 0x4 and a4 = 0xb4 [call 1, @0x8 fall], "
+                 "then calls g with a0 = 0x1 [call 2].",
+                 "It loads a word at +0x30 [@0x4] and stores a word at +0x34 [@0xc].",
+                 "It returns the result of g [@0x24].", self.ROLE]
+        self.assertEqual(fc.check_cited(entry, self.sheet()), [])
+
+    def test_a_sentence_that_states_a_fact_and_cites_nothing_is_reported(self):
+        self.assertIn("uncited", self.rules(["It calls f with a0 = 0x4.", self.ROLE]))
+
+    def test_a_sentence_that_says_the_facts_leave_something_open_needs_no_citation(self):
+        self.assertEqual(self.rules(["The facts do not show what a1 holds.", self.ROLE]), [])
+
+    def test_an_address_the_facts_do_not_list_is_reported(self):
+        self.assertIn("cite-address", self.rules(["It stores a word [@0x1234].", self.ROLE]))
+
+    def test_a_call_number_past_the_last_call_is_reported(self):
+        self.assertIn("cite-address", self.rules(["It calls g [call 3].", self.ROLE]))
+
+    def test_a_citation_that_does_not_parse_is_reported(self):
+        self.assertIn("cite-address", self.rules(["It calls g [call two].", self.ROLE]))
+
+    def test_the_callee_must_match_the_call_cited(self):
+        self.assertIn("cite-callee", self.rules(["It calls g with a0 = 0x4 [call 1].", self.ROLE]))
+
+    def test_the_callee_may_be_named_by_its_target(self):
+        self.assertEqual(self.rules(["It calls 0x900 with a0 = 0x4 [call 1, @0x8 fall].", self.ROLE]), [])
+
+    def test_an_argument_in_the_wrong_slot_is_reported_with_the_convention(self):
+        found = fc.check_cited(["It calls f with 0xb4 as its fourth argument [call 1, @0x8 fall].", self.ROLE],
+                               self.sheet())
+        slot = [why for rule, why, _s in found if rule == "cite-arg"]
+        self.assertEqual(len(slot), 1, found)
+        self.assertIn("a4, the fifth argument", slot[0])
+
+    def test_an_argument_value_other_than_the_fact_is_reported(self):
+        self.assertIn("cite-arg", self.rules(["It calls f with a0 = 0x6 [call 1, @0x8 fall].", self.ROLE]))
+
+    def test_a_value_in_a_slot_the_facts_cannot_resolve_is_reported(self):
+        self.assertIn("cite-arg", self.rules(["It calls f with a2 = 0x10 [call 1, @0x8 fall].", self.ROLE]))
+
+    def test_a_register_passed_through_is_checked(self):
+        self.assertEqual(self.rules(["It calls f with a1 at entry [call 1, @0x8 fall].", self.ROLE]), [])
+        self.assertIn("cite-arg", self.rules(["It calls f with a0 at entry [call 1, @0x8 fall].", self.ROLE]))
+
+    def test_passing_its_arguments_without_naming_registers_is_reported(self):
+        self.assertIn("cite-arg", self.rules(["It calls f and passes its arguments through [call 1, @0x8 fall].",
+                                              self.ROLE]))
+
+    def test_a_store_called_a_read_and_a_load_called_a_write_are_reported(self):
+        found = fc.check_cited(["It reads the word at +0x34 [@0xc].", "It writes the word at +0x30 [@0x4].", self.ROLE],
+                               self.sheet())
+        self.assertEqual([r for r, _w, _s in found if r == "access-kind"], ["access-kind", "access-kind"])
+
+    def test_a_stored_value_the_facts_do_not_show_is_reported(self):
+        self.assertIn("cite-value", self.rules(["It stores zero at +0x34 [@0xc].", self.ROLE]))
+        self.assertNotIn("cite-value", self.rules(["It stores a word at +0x34 [@0xc].", self.ROLE]))
+
+    def test_a_call_cited_for_a_branch_and_a_branch_cited_for_a_call_are_reported(self):
+        self.assertIn("cite-kind", self.rules(["It stores a word [@0x20].", self.ROLE]))
+        self.assertIn("cite-kind", self.rules(["It calls f [@0x8].", self.ROLE]))
+
+    def test_the_noun_call_beside_a_branch_citation_is_not_a_claim_that_it_calls(self):
+        self.assertNotIn("cite-kind", self.rules(["Each call is guarded by a test [@0x8].", self.ROLE]))
+
+    def test_the_wrong_side_of_a_branch_is_reported(self):
+        found = fc.check_cited(["It calls f when a0 is zero [call 1, @0x8 taken].", self.ROLE], self.sheet())
+        self.assertIn("cite-branch", [r for r, _w, _s in found])
+        self.assertIn("fall side", [w for r, w, _s in found if r == "cite-branch"][0])
+
+    def test_a_branch_that_does_not_decide_the_call_is_reported_when_the_sentence_says_only(self):
+        self.assertIn("cite-branch", self.rules(["It calls g only when a0 is zero [call 2, @0x8 taken].", self.ROLE]))
+        self.assertNotIn("cite-branch", self.rules(["It calls g [call 2, @0x8 taken].", self.ROLE]))
+
+    def test_the_polarity_of_a_branch_side_is_checked_against_its_condition(self):
+        self.assertEqual(self.rules(["When a0 is zero [@0x8 taken zero] it skips f [call 1, @0x8 fall]."]), ["role-missing"])
+        self.assertIn("cite-branch", self.rules(["When a0 is zero [@0x8 fall zero] it calls f [call 1, @0x8 fall].",
+                                                 self.ROLE]))
+
+    def test_an_unconditional_claim_over_a_guarded_call_is_reported(self):
+        self.assertIn("cite-conditional", self.rules(["It always calls f [call 1].", self.ROLE]))
+        self.assertNotIn("cite-conditional", self.rules(["It always calls g [call 2].", self.ROLE]))
+
+    def test_a_guarded_call_stated_without_its_branch_is_reported(self):
+        self.assertIn("condition-missing", self.rules(["It calls f with a0 = 0x4 [call 1].", self.ROLE]))
+        self.assertNotIn("condition-missing", self.rules(["It calls g with a0 = 0x1 [call 2].", self.ROLE]))
+
+    def test_a_condition_with_no_branch_citation_is_reported(self):
+        self.assertIn("condition-uncited", self.rules(["It calls g when the flag is set [call 2].", self.ROLE]))
+
+    def test_a_loop_must_cite_a_branch_that_goes_back(self):
+        sheet = self.loop_sheet()
+        role = "Role (from facts): ends once a1 is zero [@0x14]."
+        self.assertEqual(self.rules(["It loops while a1 is nonzero [@0xc taken].", role], sheet), [])
+        self.assertIn("cite-loop", self.rules(["It loops over the entries [@0xc fall].", role], sheet))
+        self.assertIn("cite-loop", self.rules(["It loops over the entries [@0x14].", role], sheet))
+
+    def test_a_loop_cited_in_another_sentence_of_the_entry_is_enough(self):
+        role = "Role (from facts): repeats a step until a1 is zero [@0xc taken]."
+        self.assertEqual(self.rules(["Before the loop it returns nothing [@0x14].", role], self.loop_sheet()), [])
+
+    def test_a_store_on_the_otherwise_side_that_runs_on_every_path_is_reported(self):
+        self.assertIn("cite-conditional", self.rules(["When a0 is zero it returns [@0x24]; otherwise it stores a word [@0xc].",
+                                                      self.ROLE]))
+
+    def test_a_return_must_match_what_the_facts_say_v0_is(self):
+        self.assertIn("cite-return", self.rules(["It returns the result of f [@0x24].", self.ROLE]))
+        self.assertIn("cite-return", self.rules(["It returns 0x1 [@0x24].", self.ROLE]))
+
+    def test_a_count_of_calls_must_match_and_an_approximate_count_is_not_a_fact(self):
+        self.assertIn("cite-count", self.rules(["It makes three calls [call 1, @0x8 fall] [call 2].", self.ROLE]))
+        self.assertIn("cite-count", self.rules(["It makes about 2 calls [call 1, @0x8 fall] [call 2].", self.ROLE]))
+        self.assertNotIn("cite-count", self.rules(["It makes two calls [call 1, @0x8 fall] [call 2].", self.ROLE]))
+
+    def test_calls_in_the_wrong_order_are_reported(self):
+        self.assertIn("cite-order", self.rules(["It calls g [call 2] and then f [call 1, @0x8 fall].", self.ROLE]))
+        self.assertIn("cite-order", self.rules(["It calls f [call 1, @0x8 fall] after g [call 2].", self.ROLE]))
+        self.assertNotIn("cite-order", self.rules(["It calls f [call 1, @0x8 fall] then g [call 2].", self.ROLE]))
+
+    def test_an_entry_needs_a_marked_role_sentence(self):
+        self.assertEqual(self.rules(["It calls g [call 2]."]), ["role-missing"])
+
+    def test_a_role_from_the_facts_must_cite(self):
+        self.assertIn("role-uncited", self.rules(["It calls g [call 2].", "Role (from facts): a helper wrapper."]))
+
+    def test_a_role_from_the_name_is_a_note_that_caps_the_entry(self):
+        found = fc.check_cited(["It calls g [call 2].", "Role (from name): a wrapper for g."], self.sheet())
+        self.assertEqual([r for r, _w, _s in found], ["role-from-name"])
+        self.assertIn("role-from-name", fc.NOTE_RULES)
+
+    def test_a_role_taken_from_the_name_outside_a_marked_sentence_is_reported(self):
+        self.assertIn("role-unmarked", self.rules(["The name suggests a wrapper.", self.ROLE]))
+
+    def test_a_reviewed_line_is_not_a_claim(self):
+        self.assertEqual(fc.check_cited(["It calls g [call 2].", "Reviewed: 2026-11-12", self.ROLE.replace("f only", "g")
+                                         .replace("call 1, @0x8 fall", "call 2")], self.sheet()), [])
+
+    def test_the_prose_rules_still_run_on_a_cited_entry(self):
+        found = fc.check_cited(["It calls f at 0x10 when a0 is zero [call 1, @0x8 fall].", self.ROLE], self.sheet())
+        self.assertIn("branch-direction", [r for r, _w, _s in found])
+
+
 if __name__ == "__main__":
     unittest.main()
