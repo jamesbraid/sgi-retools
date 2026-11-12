@@ -179,7 +179,7 @@ def main():
         elif cfg.get('mode') == 'no-spec' and vs and not ds and not qm:
             dsc, qc, qd = 'n/a', 'n/a', 'no-spec mode: no datasheet or model compared'
         elif not vs:
-            qc, qd = 'out-of-scope', 'variant has no emulator datasheet or model here (hand off to its own census)'
+            qc, qd = 'out-of-scope', 'variant has no datasheet in this repository (hand off to its own census)'
         elif not qm:
             qc, qd = 'unhandled', 'no model entry; undefined-address path'
         else:

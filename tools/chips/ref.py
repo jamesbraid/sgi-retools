@@ -6,7 +6,7 @@ Usage: ref.py CONFIG.json [--repo DATASHEET_REPO] [--model model_SRC_DIR] [--out
 For each variant named in the config's "reference" block this builds three
 lists of register entries, each {lo, hi, stride, name, source, section, line, kind}:
 
-  datasheet  rows of emulator datasheet tables (and any prose list the config names)
+  datasheet  rows of datasheet tables (and any prose list the config names)
   spec       rows of the published specification's register map, as transcribed
   model       registers the model handles, from the model source
 
