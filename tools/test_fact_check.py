@@ -535,5 +535,48 @@ class CitedClaims(unittest.TestCase):
         self.assertIn("branch-direction", [r for r, _w, _s in found])
 
 
+class CitedPilot(unittest.TestCase):
+    """Twenty-five kona routine entries that audits corrected, written in the cited format twice: as the audit
+    found them (before: the error kept, each claim cited by the sites the original text named) and as corrected
+    (after). Each fixture carries the facts rendered from the shipped libgl.so and irsaudit; "error" is the rule
+    that names the audited error, or null for an error the checker cannot see."""
+    PILOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fact_check_cited_pilot.json")
+
+    @classmethod
+    def setUpClass(cls):
+        with open(cls.PILOT, encoding="utf-8") as handle:
+            cls.pilot = json.load(handle)
+
+    def found(self, name, which):
+        sheet = fc.FactSheet.from_dict(self.pilot[name]["sheet"])
+        return [r for r, _w, _s in fc.check_cited(fc.sentences_of(self.pilot[name][which]), sheet)
+                if r not in fc.NOTE_RULES]
+
+    def test_the_pilot_holds_twenty_five_entries(self):
+        self.assertEqual(len(self.pilot), 25)
+
+    def test_each_entry_fails_before_its_correction_for_the_error_it_had(self):
+        for name, item in self.pilot.items():
+            if item["error"]:
+                with self.subTest(name):
+                    self.assertIn(item["error"], self.found(name, "before"))
+
+    def test_each_entry_passes_after_its_correction(self):
+        for name in self.pilot:
+            with self.subTest(name):
+                self.assertEqual(self.found(name, "after"), [])
+
+    def test_the_errors_the_checker_cannot_see_are_roles_taken_from_a_name_or_a_constant(self):
+        unseen = sorted(name for name, item in self.pilot.items() if not item["error"])
+        self.assertEqual(unseen, ["freecharstr", "gl_c_cpack", "gl_d_cmovi", "gl_d_endpick"])
+        for name in unseen:
+            with self.subTest(name):
+                self.assertEqual(self.found(name, "before"), [])
+
+    def test_twenty_one_of_the_twenty_five_audited_errors_are_caught(self):
+        caught = [n for n, i in self.pilot.items() if i["error"] and i["error"] in self.found(n, "before")]
+        self.assertEqual(len(caught), 21)
+
+
 if __name__ == "__main__":
     unittest.main()

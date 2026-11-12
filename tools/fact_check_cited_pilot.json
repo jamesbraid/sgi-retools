@@ -1,0 +1,4181 @@
+{
+ "__iglooRestoreUsrMat": {
+  "address": "0xec439e0",
+  "after": [
+   "**Inferred.** Restores the saved user matrix.",
+   "It reads the state at gl_wstatep +0xba8 and +0xbb0 [@0xec43a08] [@0xec43a18] and stores a word to +0xd8 [@0xec43b44], saves the current matrix mode through __iglooGetMatrixMode [call 1], behind the compares [@0xec43a14] [@0xec43a24] [@0xec43a4c] [@0xec43a60], sets mode 0x1700 with __iglooMatrixMode [call 4], and reloads the matrix with __iglooGetMatrix [call 3], __iglooLoadIdentity [call 5], __iglooTranslate [call 6] and __iglooMultMatrix [call 7].",
+   "It then sets mode 0x1701 [call 8, @0xec43a60 taken].",
+   "Four floating-point compares choose the branches [@0xec43a14] [@0xec43a24] [@0xec43a4c] [@0xec43a60].",
+   "Role (from facts): reloads the saved user matrix through __iglooLoadIdentity [call 5] and __iglooMultMatrix [call 7]."
+  ],
+  "before": [
+   "**Inferred.** Restores the saved user matrix.",
+   "It reads the state at gl_wstatep +0xba8, +0xbb0 and +0xd8 [@0xec43a08] [@0xec43a18] [@0xec43b44], saves the current matrix mode through __iglooGetMatrixMode [call 1], sets mode 0x1700 with __iglooMatrixMode [call 4], and reloads the matrix with __iglooGetMatrix [call 3], __iglooLoadIdentity [call 5], __iglooTranslate [call 6] and __iglooMultMatrix [call 7].",
+   "It then sets mode 0x1701 [call 8].",
+   "Four floating-point compares choose the branches [@0xec43a14] [@0xec43a24] [@0xec43a4c] [@0xec43a60].",
+   "Role (from facts): reloads the saved user matrix through __iglooLoadIdentity [call 5] and __iglooMultMatrix [call 7]."
+  ],
+  "error": "access-kind",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec439fc",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43a08",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": 2984
+    },
+    {
+     "address": "0xec43a18",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": 2992
+    },
+    {
+     "address": "0xec43a40",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": 2992
+    },
+    {
+     "address": "0xec43a54",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": 2984
+    },
+    {
+     "address": "0xec43a74",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0xec43ac8",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": null
+    },
+    {
+     "address": "0xec43af8",
+     "kind": "store",
+     "mn": "sdc1",
+     "offset": null
+    },
+    {
+     "address": "0xec43b0c",
+     "kind": "load",
+     "mn": "ldc1",
+     "offset": null
+    },
+    {
+     "address": "0xec43b30",
+     "kind": "store",
+     "mn": "sdc1",
+     "offset": null
+    },
+    {
+     "address": "0xec43b40",
+     "kind": "store",
+     "mn": "sw",
+     "offset": null
+    },
+    {
+     "address": "0xec43b44",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 216
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec43a14",
+     "first": 247740896,
+     "last": 247740952,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "branch": "0xec43a24",
+     "first": 247740956,
+     "last": 247740968,
+     "reached": true,
+     "succ": [
+      6,
+      2
+     ]
+    },
+    {
+     "branch": "0xec43a4c",
+     "first": 247740972,
+     "last": 247741008,
+     "reached": true,
+     "succ": [
+      7,
+      3
+     ]
+    },
+    {
+     "branch": "0xec43a60",
+     "first": 247741012,
+     "last": 247741028,
+     "reached": true,
+     "succ": [
+      8,
+      4
+     ]
+    },
+    {
+     "branch": "0xec43a7c",
+     "first": 247741032,
+     "last": 247741056,
+     "reached": true,
+     "succ": [
+      9,
+      5
+     ]
+    },
+    {
+     "first": 247741060,
+     "last": 247741060,
+     "reached": true,
+     "succ": [
+      6
+     ]
+    },
+    {
+     "first": 247741064,
+     "last": 247741080,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247741084,
+     "last": 247741176,
+     "reached": true,
+     "succ": [
+      3
+     ]
+    },
+    {
+     "first": 247741180,
+     "last": 247741232,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247741236,
+     "last": 247741264,
+     "reached": true,
+     "succ": []
+    }
+   ],
+   "branches": {
+    "0xec43a14": {
+     "fall": "f0(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a0c)",
+     "mn": "bc1f",
+     "taken": "not (f0(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a0c))",
+     "target": "0xec43a2c"
+    },
+    "0xec43a24": {
+     "fall": "not (f1(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a1c))",
+     "mn": "bc1t",
+     "taken": "f1(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a1c)",
+     "target": "0xec43a88"
+    },
+    "0xec43a4c": {
+     "fall": "f2(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a44)",
+     "mn": "bc1f",
+     "taken": "not (f2(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a44))",
+     "target": "0xec43a9c"
+    },
+    "0xec43a60": {
+     "fall": "f3(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a58)",
+     "mn": "bc1f",
+     "taken": "not (f3(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a58))",
+     "target": "0xec43afc"
+    },
+    "0xec43a7c": {
+     "fall": "at(?) != a0(=0x1)",
+     "mn": "beq",
+     "taken": "at(?) == a0(=0x1)",
+     "target": "0xec43b34"
+    }
+   },
+   "calls": {
+    "0xec43a38": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "__iglooGetMatrixMode",
+     "tail": false,
+     "target": "0xecb8680"
+    },
+    "0xec43a68": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooMatrixMode",
+     "tail": false,
+     "target": "0xecb85d0"
+    },
+    "0xec43aa4": {
+     "args": {
+      "0": "0xba6",
+      "1": "sp-112",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooGetMatrix",
+     "tail": false,
+     "target": "0xecb8e70"
+    },
+    "0xec43ab0": {
+     "args": {
+      "0": "0x1700",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooMatrixMode",
+     "tail": false,
+     "target": "0xecb85d0"
+    },
+    "0xec43abc": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooLoadIdentity",
+     "tail": false,
+     "target": "0xecb88c0"
+    },
+    "0xec43adc": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooTranslate",
+     "tail": false,
+     "target": "0xecb8c60"
+    },
+    "0xec43ae8": {
+     "args": {
+      "0": "sp-112",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooMultMatrix",
+     "tail": false,
+     "target": "0xecb8ba0"
+    },
+    "0xec43b00": {
+     "args": {
+      "0": "0x1701",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooMatrixMode",
+     "tail": false,
+     "target": "0xecb85d0"
+    },
+    "0xec43b20": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooTranslate",
+     "tail": false,
+     "target": "0xecb8c60"
+    }
+   },
+   "name": "__iglooRestoreUsrMat",
+   "returns": {
+    "0xec43a94": "?",
+    "0xec43b4c": "?"
+   },
+   "text": "- `__iglooRestoreUsrMat` in `libgl.so` at 0xec439e0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec439e0-0xec43b54 (372 bytes).\n  It occupies 372 bytes.\n  The `lw` at 0xec439fc loads 4 bytes from sym(gl_wstatep) +0x0.\n  2 such `ldc1` accesses load 8 bytes from [sym(gl_wstatep)] +0xba8, including `ldc1` at 0xec43a08, `ldc1` at 0xec43a54.\n  2 such `ldc1` accesses load 8 bytes from [sym(gl_wstatep)] +0xbb0, including `ldc1` at 0xec43a18, `ldc1` at 0xec43a40.\n  The `lw` at 0xec43a74 loads 4 bytes from ?.\n  2 such `ldc1` accesses load 8 bytes from ?, including `ldc1` at 0xec43ac8, `ldc1` at 0xec43b0c.\n  2 such `sdc1` accesses store 8 bytes to ?, including `sdc1` at 0xec43af8, `sdc1` at 0xec43b30.\n  The `sw` at 0xec43b40 stores 4 bytes to ?.\n  The `sw` at 0xec43b44 stores 4 bytes to [sym(gl_wstatep)] +0xd8.\n  The `jalr` at 0xec43a38 calls __iglooGetMatrixMode [0xecb8680] with a0=a0 at entry (arg0), a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `jalr` at 0xec43a68 calls __iglooMatrixMode [0xecb85d0] with a0=?, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43aa4 calls __iglooGetMatrix [0xecb8e70] with a0=0xba6, a1=sp-112, a2=?, a3=?.\n  The `jalr` at 0xec43ab0 calls __iglooMatrixMode [0xecb85d0] with a0=0x1700, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43abc calls __iglooLoadIdentity [0xecb88c0] with a0=?, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43adc calls __iglooTranslate [0xecb8c60] with a0=?, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43ae8 calls __iglooMultMatrix [0xecb8ba0] with a0=sp-112, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43b00 calls __iglooMatrixMode [0xecb85d0] with a0=0x1701, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43b20 calls __iglooTranslate [0xecb8c60] with a0=?, a1=?, a2=?, a3=?.\n  The `bc1f` branch at 0xec43a14 targets 0xec43a2c, is taken when not (f0(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a0c)), and falls through when f0(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a0c).\n  The `bc1t` branch at 0xec43a24 targets 0xec43a88, is taken when f1(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a1c), and falls through when not (f1(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a1c)).\n  The `bc1f` branch at 0xec43a4c targets 0xec43a9c, is taken when not (f2(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a44)), and falls through when f2(=[[sym(gl_wstatep)]+2992]:8) == f20 (c.eq.d at 0xec43a44).\n  The `bc1f` branch at 0xec43a60 targets 0xec43afc, is taken when not (f3(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a58)), and falls through when f3(=[[sym(gl_wstatep)]+2984]:8) == f20 (c.eq.d at 0xec43a58).\n  The `beq` branch at 0xec43a7c targets 0xec43b34, is taken when at(?) == a0(=0x1), and falls through when at(?) != a0(=0x1).\n  The `beq` branch at 0xec43af4 targets 0xec43a54 and is always taken.\n  The `beq` branch at 0xec43b2c targets 0xec43a64 and is always taken.\n  The return at 0xec43a94 has v0 = ?.\n  The return at 0xec43b4c has v0 = ?.\n"
+  }
+ },
+ "__iglooSetColorProcsToDepthCue": {
+  "address": "0xec3e6d0",
+  "after": [
+   "**Inferred.** Reads the word at a0+0xc58 [@0xec3e6d4] and stores ten words into the context at a0+0x64 through +0x88 [@0xec3e710].",
+   "When that word is zero [@0xec3e734 taken zero] it calls __iglooSetColorProcsLight with a0 at entry and a1 = 0xec3e390, a2 = 0xec3e470, a3 = 0xec3e520, a4 = 0xec3e4a0, a5 = 0xec3e5a0, a6 = 0xec3e630 and a7 = 0xec3e690 [call 1, @0xec3e734 taken], and returns that call's result.",
+   "When it is nonzero [@0xec3e734 fall nonzero] it returns the word [@0xec3e740].",
+   "Role (from name): a depth-cue colour-procedure setter, going by the name; the facts do not confirm it."
+  ],
+  "before": [
+   "**Inferred.** Reads the word at a0+0xc58 [@0xec3e6d4] and stores ten words into the context at a0+0x64 through +0x88, as the default light setter does [@0xec3e710].",
+   "It then calls __iglooSetColorProcsLight with the store routines at 0xec3e390, 0xec3e470, 0xec3e520, 0xec3e4a0, 0xec3e5a0, 0xec3e630 and 0xec3e690 as its procedure arguments [call 1].",
+   "The beq checks [a0+3160] before the return [@0xec3e734].",
+   "Role (from facts): installs the depth-cue colour procedures through __iglooSetColorProcsLight [call 1].",
+   "Role (from name): a depth-cue mode, which the facts do not confirm."
+  ],
+  "error": "condition-missing",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec3e6d4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 3160
+    },
+    {
+     "address": "0xec3e710",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 136
+    },
+    {
+     "address": "0xec3e714",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 132
+    },
+    {
+     "address": "0xec3e718",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 124
+    },
+    {
+     "address": "0xec3e71c",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 128
+    },
+    {
+     "address": "0xec3e720",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 120
+    },
+    {
+     "address": "0xec3e724",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 116
+    },
+    {
+     "address": "0xec3e728",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 112
+    },
+    {
+     "address": "0xec3e72c",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 108
+    },
+    {
+     "address": "0xec3e730",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 104
+    },
+    {
+     "address": "0xec3e738",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 100
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec3e734",
+     "first": 247719632,
+     "last": 247719736,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247719740,
+     "last": 247719748,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247719752,
+     "last": 247719772,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec3e734": {
+     "fall": "v0(=[a0+3160]) != 0",
+     "mn": "beq",
+     "taken": "v0(=[a0+3160]) == 0",
+     "target": "0xec3e748"
+    }
+   },
+   "calls": {
+    "0xec3e750": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "0xec3e390",
+      "2": "0xec3e470",
+      "3": "0xec3e520",
+      "4": "0xec3e4a0",
+      "5": "0xec3e5a0",
+      "6": "0xec3e630",
+      "7": "0xec3e690"
+     },
+     "callee": "__iglooSetColorProcsLight",
+     "tail": false,
+     "target": "0xecb4740"
+    }
+   },
+   "name": "__iglooSetColorProcsToDepthCue",
+   "returns": {
+    "0xec3e740": "one of [a0+3160], ret(__iglooSetColorProcsLight)"
+   },
+   "text": "- `__iglooSetColorProcsToDepthCue` in `libgl.so` at 0xec3e6d0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec3e6d0-0xec3e760 (144 bytes).\n  It occupies 144 bytes.\n  The `lw` at 0xec3e6d4 loads 4 bytes from a0 (arg0 at entry) +0xc58.\n  The `sw` at 0xec3e710 stores 4 bytes to a0 (arg0 at entry) +0x88.\n  The `sw` at 0xec3e714 stores 4 bytes to a0 (arg0 at entry) +0x84.\n  The `sw` at 0xec3e718 stores 4 bytes to a0 (arg0 at entry) +0x7c.\n  The `sw` at 0xec3e71c stores 4 bytes to a0 (arg0 at entry) +0x80.\n  The `sw` at 0xec3e720 stores 4 bytes to a0 (arg0 at entry) +0x78.\n  The `sw` at 0xec3e724 stores 4 bytes to a0 (arg0 at entry) +0x74.\n  The `sw` at 0xec3e728 stores 4 bytes to a0 (arg0 at entry) +0x70.\n  The `sw` at 0xec3e72c stores 4 bytes to a0 (arg0 at entry) +0x6c.\n  The `sw` at 0xec3e730 stores 4 bytes to a0 (arg0 at entry) +0x68.\n  The `sw` at 0xec3e738 stores 4 bytes to a0 (arg0 at entry) +0x64.\n  The `jalr` at 0xec3e750 calls __iglooSetColorProcsLight [0xecb4740] with a0=a0 at entry (arg0), a1=0xec3e390, a2=0xec3e470, a3=0xec3e520, a4=0xec3e4a0, a5=0xec3e5a0, a6=0xec3e630, a7=0xec3e690.\n  The `beq` branch at 0xec3e734 targets 0xec3e748, is taken when v0(=[a0+3160]) == 0, and falls through when v0(=[a0+3160]) != 0.\n  The `beq` branch at 0xec3e758 targets 0xec3e73c and is always taken.\n  The return at 0xec3e740 has v0 = one of [a0+3160], ret(__iglooSetColorProcsLight).\n"
+  }
+ },
+ "freecharstr": {
+  "address": "0xec3a6d0",
+  "after": [
+   "**Inferred.** Passes a0 = a1 at entry to gl_free with a1 = 0xecd16e8 as the second argument [call 1] and returns the value of gl_free [@0xec3a704].",
+   "Role (from name): probably the release callback for a converted buffer, since gl_c_lchstr and gl_c_lcharstr pass its address to gl_ecallfunc.",
+   "The facts do not show how gl_ecallfunc uses it."
+  ],
+  "before": [
+   "**Inferred.** Frees a converted character buffer [call 1].",
+   "It passes arg1 to gl_free with the pool at 0xecd16e8 [call 1] and returns the value of gl_free [@0xec3a704].",
+   "Role (from facts): the release callback that gl_ecallfunc receives from gl_c_lchstr and gl_c_lcharstr [call 1]."
+  ],
+  "error": null,
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "first": 247703248,
+     "last": 247703304,
+     "reached": true,
+     "succ": []
+    }
+   ],
+   "branches": {},
+   "calls": {
+    "0xec3a6f4": {
+     "args": {
+      "0": "a1 at entry (arg1)",
+      "1": "0xecd16e8",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_free",
+     "tail": false,
+     "target": "0xec5f570"
+    }
+   },
+   "name": "",
+   "returns": {
+    "0xec3a704": "ret(gl_free)"
+   },
+   "text": "- `(unnamed)` in `libgl.so` at 0xec3a6d0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec3a6d0-0xec3a70c (60 bytes).\n  It occupies 60 bytes.\n  The `jalr` at 0xec3a6f4 calls gl_free [0xec5f570] with a0=a1 at entry (arg1), a1=0xecd16e8, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The return at 0xec3a704 has v0 = ret(gl_free).\n"
+  }
+ },
+ "gl_c_RGBwritemask": {
+  "address": "0xec34a80",
+  "after": [
+   "**Inferred.** The beq tests the flag at 0xecdd910 [@0xec34aa4].",
+   "When it is zero [@0xec34aa4 taken] gl_intrptab_insert is called with the block at 0xecd6858 [call 2, @0xec34aa4 taken] before the path joins the gl_compile call with a0 = 0x6, a1 = sp-64, a2 = a2 at entry and a4 = a1 at entry [call 1].",
+   "When the flag is nonzero [@0xec34aa4 fall] only the gl_compile call runs [call 1].",
+   "The return value is the gl_compile result [@0xec34ae0].",
+   "Role (from facts): registers a record on the zero path [call 2, @0xec34aa4 taken] and always compiles [call 1].",
+   "The facts do not show what replay does with the record."
+  ],
+  "before": [
+   "**Inferred.** A flag at 0xecdd910 [@0xec34aa4] chooses between a gl_compile call with a0 = 0x6 and a1 at entry as its fourth argument [call 1, @0xec34aa4 fall] and no such call [@0xec34aa4 taken].",
+   "gl_intrptab_insert is then called with the block at 0xecd6858 [call 2].",
+   "The return value is the gl_compile result [@0xec34ae0].",
+   "Role (from facts): a flag-gated compile call [call 1, @0xec34aa4 fall] followed by a record insert [call 2].",
+   "The facts do not show what replay does with the record."
+  ],
+  "error": "cite-branch",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec34aa4",
+     "first": 247679616,
+     "last": 247679656,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247679660,
+     "last": 247679716,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247679720,
+     "last": 247679760,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec34aa4": {
+     "fall": "at(=[0xecdd910]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdd910]) == 0",
+     "target": "0xec34ae8"
+    }
+   },
+   "calls": {
+    "0xec34acc": {
+     "args": {
+      "0": "0x6",
+      "1": "sp-64",
+      "2": "a2 at entry (arg2)",
+      "3": "?",
+      "4": "a1 at entry (arg1)"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec34af8": {
+     "args": {
+      "0": "0xecd6858",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)",
+      "4": "a1 at entry (arg1)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_RGBwritemask",
+   "returns": {
+    "0xec34ae0": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_RGBwritemask` in `libgl.so` at 0xec34a80 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec34a80-0xec34b14 (148 bytes).\n  It occupies 148 bytes.\n  The `jalr` at 0xec34acc calls gl_compile [0xecb5010] with a0=0x6, a1=sp-64, a2=a2 at entry (arg2), a3=?, a4=a1 at entry (arg1).\n  The `jalr` at 0xec34af8 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd6858, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3), a4=a1 at entry (arg1).\n  The `beq` branch at 0xec34aa4 targets 0xec34ae8, is taken when at(=[0xecdd910]) == 0, and falls through when at(=[0xecdd910]) != 0.\n  The `beq` branch at 0xec34b0c targets 0xec34aac and is always taken.\n  The return at 0xec34ae0 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_c_backface": {
+  "address": "0xec34650",
+  "after": [
+   "**Inferred.** The beq tests the flag at 0xecdd904 [@0xec34670].",
+   "When it is zero [@0xec34670 taken] gl_intrptab_insert is called with the block at 0xecd6828 [call 2, @0xec34670 taken] before the path joins the gl_compile call with a0 = 0x4 [call 1].",
+   "When the flag is nonzero [@0xec34670 fall] only the gl_compile call runs [call 1].",
+   "The return value is the gl_compile result [@0xec346a0].",
+   "Role (from facts): registers a record on the zero path [call 2, @0xec34670 taken] and always compiles [call 1].",
+   "The facts do not show what the registered record does later."
+  ],
+  "before": [
+   "**Inferred.** A flag at 0xecdd904 [@0xec34670] chooses between a gl_compile call with a0 = 0x4 [call 1, @0xec34670 fall] and no such call [@0xec34670 taken].",
+   "gl_intrptab_insert is then called with the block at 0xecd6828 [call 2].",
+   "The return value is the gl_compile result [@0xec346a0].",
+   "Role (from facts): a flag-gated compile call [call 1, @0xec34670 fall] followed by a record insert [call 2].",
+   "The facts do not show what the registered record does later, so that stays open."
+  ],
+  "error": "cite-branch",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec34670",
+     "first": 247678544,
+     "last": 247678580,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247678584,
+     "last": 247678628,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247678632,
+     "last": 247678656,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec34670": {
+     "fall": "at(=[0xecdd904]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdd904]) == 0",
+     "target": "0xec346a8"
+    }
+   },
+   "calls": {
+    "0xec3468c": {
+     "args": {
+      "0": "0x4",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec346b0": {
+     "args": {
+      "0": "0xecd6828",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_backface",
+   "returns": {
+    "0xec346a0": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_backface` in `libgl.so` at 0xec34650 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec34650-0xec346c4 (116 bytes).\n  It occupies 116 bytes.\n  The `jalr` at 0xec3468c calls gl_compile [0xecb5010] with a0=0x4, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec346b0 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd6828, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec34670 targets 0xec346a8, is taken when at(=[0xecdd904]) == 0, and falls through when at(=[0xecdd904]) != 0.\n  The `beq` branch at 0xec346bc targets 0xec34678 and is always taken.\n  The return at 0xec346a0 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_c_cpack": {
+  "address": "0xec3eff0",
+  "after": [
+   "**Inferred.** Tests the word at 0xecdd9c8 [@0xec3f010].",
+   "When it is zero [@0xec3f010 taken], it calls gl_intrptab_insert with a0 = 0xecd6bf0 and a1 to a3 at entry [call 2, @0xec3f010 taken], then calls gl_compile with a0 = 0x6 [call 1].",
+   "When it is nonzero [@0xec3f010 fall], it calls gl_compile with a0 = 0x6 alone [call 1].",
+   "Role (from name): the display-list-compile variant of the packed colour call; the name is the only evidence for that."
+  ],
+  "before": [
+   "**Inferred.** Tests the word at 0xecdd9c8 [@0xec3f010].",
+   "When it is zero [@0xec3f010 taken], it calls gl_intrptab_insert with the table entry at 0xecd6bf0 and the entry's arguments passed through [call 2, @0xec3f010 taken], then calls gl_compile with opcode size 0x6 [call 1].",
+   "When it is nonzero [@0xec3f010 fall], it calls gl_compile with opcode size 0x6 alone [call 1].",
+   "Role (from name): the display-list-compile variant of the packed colour call; the name is the only evidence for that."
+  ],
+  "error": null,
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec3f010",
+     "first": 247721968,
+     "last": 247722004,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247722008,
+     "last": 247722052,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247722056,
+     "last": 247722080,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec3f010": {
+     "fall": "at(=[0xecdd9c8]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdd9c8]) == 0",
+     "target": "0xec3f048"
+    }
+   },
+   "calls": {
+    "0xec3f02c": {
+     "args": {
+      "0": "0x6",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec3f050": {
+     "args": {
+      "0": "0xecd6bf0",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_cpack",
+   "returns": {
+    "0xec3f040": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_cpack` in `libgl.so` at 0xec3eff0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec3eff0-0xec3f064 (116 bytes).\n  It occupies 116 bytes.\n  The `jalr` at 0xec3f02c calls gl_compile [0xecb5010] with a0=0x6, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec3f050 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd6bf0, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec3f010 targets 0xec3f048, is taken when at(=[0xecdd9c8]) == 0, and falls through when at(=[0xecdd9c8]) != 0.\n  The `beq` branch at 0xec3f05c targets 0xec3f018 and is always taken.\n  The return at 0xec3f040 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_c_curveit": {
+  "address": "0xec42130",
+  "after": [
+   "**Inferred.** The beq tests the flag at 0xecdda14 [@0xec42150].",
+   "When it is zero [@0xec42150 taken] gl_intrptab_insert is called with the block at 0xecd7138 [call 2, @0xec42150 taken] before the path joins the gl_compile call with a0 = 0x4 [call 1].",
+   "When the flag is nonzero [@0xec42150 fall] only the gl_compile call runs [call 1].",
+   "The return value is the gl_compile result [@0xec42184].",
+   "Role (from facts): registers a record on the zero path [call 2, @0xec42150 taken] and always compiles [call 1].",
+   "The facts do not show what replay does with the inserted record."
+  ],
+  "before": [
+   "**Inferred.** A flag at 0xecdda14 [@0xec42150] chooses between a gl_compile call with a0 = 0x4 [call 1, @0xec42150 fall] and no such call [@0xec42150 taken].",
+   "gl_intrptab_insert is then called with the block at 0xecd7138 [call 2].",
+   "The return value is the gl_compile result [@0xec42184].",
+   "Role (from facts): a flag-gated compile call [call 1, @0xec42150 fall] followed by a record insert [call 2].",
+   "The facts do not show what replay does with the inserted record."
+  ],
+  "error": "cite-branch",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec42150",
+     "first": 247734576,
+     "last": 247734612,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247734616,
+     "last": 247734664,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247734668,
+     "last": 247734692,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec42150": {
+     "fall": "at(=[0xecdda14]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdda14]) == 0",
+     "target": "0xec4218c"
+    }
+   },
+   "calls": {
+    "0xec42170": {
+     "args": {
+      "0": "0x4",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec42194": {
+     "args": {
+      "0": "0xecd7138",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_curveit",
+   "returns": {
+    "0xec42184": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_curveit` in `libgl.so` at 0xec42130 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec42130-0xec421a8 (120 bytes).\n  It occupies 120 bytes.\n  The `jalr` at 0xec42170 calls gl_compile [0xecb5010] with a0=0x4, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec42194 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd7138, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec42150 targets 0xec4218c, is taken when at(=[0xecdda14]) == 0, and falls through when at(=[0xecdda14]) != 0.\n  The `beq` branch at 0xec421a0 targets 0xec42158 and is always taken.\n  The return at 0xec42184 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_c_depthcue": {
+  "address": "0xec43df0",
+  "after": [
+   "**Inferred.** Role (from name): the compile-time form of the depth-cue call, with the same shape as gl_c_patchbasis but opcode 0x4 in place of 0x6.",
+   "The beq tests the global at 0xecdda34 [@0xec43e10].",
+   "When it is zero [@0xec43e10 taken zero], the routine first calls gl_intrptab_insert with a0 = 0xecd72c0 and its own arguments [call 2, @0xec43e10 taken], then falls into the gl_compile call with a stack buffer at sp-48 [call 1].",
+   "When it is nonzero [@0xec43e10 fall nonzero] it makes the gl_compile call alone [call 1].",
+   "It returns ret(gl_compile) [@0xec43e40]."
+  ],
+  "before": [
+   "**Inferred.** Role (from name): the compile-time form of the depth-cue call, with the same shape as gl_c_patchbasis but opcode 0x4 in place of 0x6.",
+   "It calls gl_compile with a stack buffer at sp-48 [call 1], then gl_intrptab_insert with a0 = 0xecd72c0 [call 2], gated by the global at 0xecdda34 [@0xec43e10 taken].",
+   "It returns ret(gl_compile) [@0xec43e40]."
+  ],
+  "error": "cite-order",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec43e10",
+     "first": 247741936,
+     "last": 247741972,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247741976,
+     "last": 247742020,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247742024,
+     "last": 247742048,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec43e10": {
+     "fall": "at(=[0xecdda34]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdda34]) == 0",
+     "target": "0xec43e48"
+    }
+   },
+   "calls": {
+    "0xec43e2c": {
+     "args": {
+      "0": "0x4",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec43e50": {
+     "args": {
+      "0": "0xecd72c0",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_depthcue",
+   "returns": {
+    "0xec43e40": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_depthcue` in `libgl.so` at 0xec43df0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec43df0-0xec43e64 (116 bytes).\n  It occupies 116 bytes.\n  The `jalr` at 0xec43e2c calls gl_compile [0xecb5010] with a0=0x4, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec43e50 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd72c0, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec43e10 targets 0xec43e48, is taken when at(=[0xecdda34]) == 0, and falls through when at(=[0xecdda34]) != 0.\n  The `beq` branch at 0xec43e5c targets 0xec43e18 and is always taken.\n  The return at 0xec43e40 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_c_frontface": {
+  "address": "0xec34780",
+  "after": [
+   "**Inferred.** The beq tests the flag at 0xecdd908 [@0xec347a0].",
+   "When it is zero [@0xec347a0 taken] gl_intrptab_insert is called with the block at 0xecd6838 [call 2, @0xec347a0 taken] before the path joins the gl_compile call with a0 = 0x4 [call 1].",
+   "When the flag is nonzero [@0xec347a0 fall] only the gl_compile call runs [call 1].",
+   "The return value is the gl_compile result [@0xec347d0].",
+   "Role (from facts): registers a record on the zero path [call 2, @0xec347a0 taken] and always compiles [call 1].",
+   "The shape matches gl_c_backface, but the facts do not say what replay of the record does."
+  ],
+  "before": [
+   "**Inferred.** A flag at 0xecdd908 [@0xec347a0] chooses between a gl_compile call with a0 = 0x4 [call 1, @0xec347a0 fall] and no such call [@0xec347a0 taken].",
+   "gl_intrptab_insert is then called with the block at 0xecd6838 [call 2].",
+   "The return value is the gl_compile result [@0xec347d0].",
+   "Role (from facts): a flag-gated compile call [call 1, @0xec347a0 fall] followed by a record insert [call 2].",
+   "The shape matches gl_c_backface, but the facts do not say what replay of the record does."
+  ],
+  "error": "cite-branch",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec347a0",
+     "first": 247678848,
+     "last": 247678884,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247678888,
+     "last": 247678932,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247678936,
+     "last": 247678960,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec347a0": {
+     "fall": "at(=[0xecdd908]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdd908]) == 0",
+     "target": "0xec347d8"
+    }
+   },
+   "calls": {
+    "0xec347bc": {
+     "args": {
+      "0": "0x4",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec347e0": {
+     "args": {
+      "0": "0xecd6838",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_frontface",
+   "returns": {
+    "0xec347d0": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_frontface` in `libgl.so` at 0xec34780 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec34780-0xec347f4 (116 bytes).\n  It occupies 116 bytes.\n  The `jalr` at 0xec347bc calls gl_compile [0xecb5010] with a0=0x4, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec347e0 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd6838, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec347a0 targets 0xec347d8, is taken when at(=[0xecdd908]) == 0, and falls through when at(=[0xecdd908]) != 0.\n  The `beq` branch at 0xec347ec targets 0xec347a8 and is always taken.\n  The return at 0xec347d0 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_c_logicop": {
+  "address": "0xec36430",
+  "after": [
+   "**Inferred.** Tests the word at 0xecdd934 [@0xec36450].",
+   "When that word is zero [@0xec36450 taken zero], it calls gl_intrptab_insert with the table at 0xecd6950 [call 2, @0xec36450 taken].",
+   "Both paths then call gl_compile with a0 = 0x4 [call 1] and return its result [@0xec36480].",
+   "Role (from name): a compile-time logic-op call; the facts do not show what the constant 0x4 selects."
+  ],
+  "before": [
+   "**Inferred.** Tests the word at 0xecdd934 [@0xec36450].",
+   "On the nonzero path [@0xec36450 fall nonzero] it calls gl_compile with the constant 0x4 [call 1, @0xec36450 fall] and then gl_intrptab_insert with the table at 0xecd6950 [call 2, @0xec36450 fall].",
+   "It returns the gl_compile result [@0xec36480].",
+   "Role (from name): a compile-time logic-op call; the facts do not show what the constant 0x4 selects."
+  ],
+  "error": "cite-branch",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec36450",
+     "first": 247686192,
+     "last": 247686228,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247686232,
+     "last": 247686276,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247686280,
+     "last": 247686304,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec36450": {
+     "fall": "at(=[0xecdd934]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdd934]) == 0",
+     "target": "0xec36488"
+    }
+   },
+   "calls": {
+    "0xec3646c": {
+     "args": {
+      "0": "0x4",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec36490": {
+     "args": {
+      "0": "0xecd6950",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_logicop",
+   "returns": {
+    "0xec36480": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_logicop` in `libgl.so` at 0xec36430 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec36430-0xec364a4 (116 bytes).\n  It occupies 116 bytes.\n  The `jalr` at 0xec3646c calls gl_compile [0xecb5010] with a0=0x4, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec36490 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd6950, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec36450 targets 0xec36488, is taken when at(=[0xecdd934]) == 0, and falls through when at(=[0xecdd934]) != 0.\n  The `beq` branch at 0xec3649c targets 0xec36458 and is always taken.\n  The return at 0xec36480 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_c_shademodel": {
+  "address": "0xec34ec0",
+  "after": [
+   "**Inferred.** The beq tests the flag at 0xecdd918 [@0xec34ee0].",
+   "When it is zero [@0xec34ee0 taken] gl_intrptab_insert is called with the block at 0xecd6878 [call 2, @0xec34ee0 taken] before the path joins the gl_compile call with a0 = 0x4 [call 1].",
+   "When the flag is nonzero [@0xec34ee0 fall] only the gl_compile call runs [call 1].",
+   "The return value is the gl_compile result [@0xec34f10].",
+   "Role (from facts): registers a record on the zero path [call 2, @0xec34ee0 taken] and always compiles [call 1].",
+   "The facts do not show what replay does with the record."
+  ],
+  "before": [
+   "**Inferred.** A flag at 0xecdd918 [@0xec34ee0] chooses between a gl_compile call with a0 = 0x4 [call 1, @0xec34ee0 fall] and no such call [@0xec34ee0 taken].",
+   "gl_intrptab_insert is then called with the block at 0xecd6878 [call 2].",
+   "The return value is the gl_compile result [@0xec34f10].",
+   "Role (from facts): a flag-gated compile call [call 1, @0xec34ee0 fall] followed by a record insert [call 2].",
+   "The facts do not show what replay does with the record."
+  ],
+  "error": "cite-branch",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec34ee0",
+     "first": 247680704,
+     "last": 247680740,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247680744,
+     "last": 247680788,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247680792,
+     "last": 247680816,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec34ee0": {
+     "fall": "at(=[0xecdd918]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdd918]) == 0",
+     "target": "0xec34f18"
+    }
+   },
+   "calls": {
+    "0xec34efc": {
+     "args": {
+      "0": "0x4",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec34f20": {
+     "args": {
+      "0": "0xecd6878",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_shademodel",
+   "returns": {
+    "0xec34f10": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_shademodel` in `libgl.so` at 0xec34ec0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec34ec0-0xec34f34 (116 bytes).\n  It occupies 116 bytes.\n  The `jalr` at 0xec34efc calls gl_compile [0xecb5010] with a0=0x4, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec34f20 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd6878, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec34ee0 targets 0xec34f18, is taken when at(=[0xecdd918]) == 0, and falls through when at(=[0xecdd918]) != 0.\n  The `beq` branch at 0xec34f2c targets 0xec34ee8 and is always taken.\n  The return at 0xec34f10 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_c_wmpack": {
+  "address": "0xec34ce0",
+  "after": [
+   "**Inferred.** The beq tests the flag at 0xecdd914 [@0xec34d00].",
+   "When it is zero [@0xec34d00 taken] gl_intrptab_insert is called with the block at 0xecd6868 [call 2, @0xec34d00 taken] before the path joins the gl_compile call with a0 = 0x6 [call 1].",
+   "When the flag is nonzero [@0xec34d00 fall] only the gl_compile call runs [call 1].",
+   "The return value is the gl_compile result [@0xec34d30].",
+   "Role (from facts): registers a record on the zero path [call 2, @0xec34d00 taken] and always compiles [call 1].",
+   "The facts do not show what the registered record does later."
+  ],
+  "before": [
+   "**Inferred.** A flag at 0xecdd914 [@0xec34d00] chooses between a gl_compile call with a0 = 0x6 [call 1, @0xec34d00 fall] and no such call [@0xec34d00 taken].",
+   "gl_intrptab_insert is then called with the block at 0xecd6868 [call 2].",
+   "The return value is the gl_compile result [@0xec34d30].",
+   "Role (from facts): a flag-gated compile call [call 1, @0xec34d00 fall] followed by a record insert [call 2].",
+   "The facts do not show what the registered record does later."
+  ],
+  "error": "cite-branch",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec34d00",
+     "first": 247680224,
+     "last": 247680260,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247680264,
+     "last": 247680308,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247680312,
+     "last": 247680336,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec34d00": {
+     "fall": "at(=[0xecdd914]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdd914]) == 0",
+     "target": "0xec34d38"
+    }
+   },
+   "calls": {
+    "0xec34d1c": {
+     "args": {
+      "0": "0x6",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec34d40": {
+     "args": {
+      "0": "0xecd6868",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_wmpack",
+   "returns": {
+    "0xec34d30": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_wmpack` in `libgl.so` at 0xec34ce0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec34ce0-0xec34d54 (116 bytes).\n  It occupies 116 bytes.\n  The `jalr` at 0xec34d1c calls gl_compile [0xecb5010] with a0=0x6, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec34d40 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd6868, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec34d00 targets 0xec34d38, is taken when at(=[0xecdd914]) == 0, and falls through when at(=[0xecdd914]) != 0.\n  The `beq` branch at 0xec34d4c targets 0xec34d08 and is always taken.\n  The return at 0xec34d30 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_c_writemask": {
+  "address": "0xec34900",
+  "after": [
+   "**Inferred.** The beq tests the flag at 0xecdd90c [@0xec34920].",
+   "When it is zero [@0xec34920 taken] gl_intrptab_insert is called with the block at 0xecd6848 [call 2, @0xec34920 taken] before the path joins the gl_compile call with a0 = 0x4 [call 1].",
+   "When the flag is nonzero [@0xec34920 fall] only the gl_compile call runs [call 1].",
+   "The return value is the gl_compile result [@0xec34954].",
+   "Role (from facts): registers a record on the zero path [call 2, @0xec34920 taken] and always compiles [call 1].",
+   "The facts do not show what the registered record does at replay."
+  ],
+  "before": [
+   "**Inferred.** A flag at 0xecdd90c [@0xec34920] chooses between a gl_compile call with a0 = 0x4 [call 1, @0xec34920 fall] and no such call [@0xec34920 taken].",
+   "gl_intrptab_insert is then called with the block at 0xecd6848 [call 2].",
+   "The return value is the gl_compile result [@0xec34954].",
+   "Role (from facts): a flag-gated compile call [call 1, @0xec34920 fall] followed by a record insert [call 2].",
+   "The facts do not show what the registered record does at replay."
+  ],
+  "error": "cite-branch",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [],
+   "blocks": [
+    {
+     "branch": "0xec34920",
+     "first": 247679232,
+     "last": 247679268,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247679272,
+     "last": 247679320,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247679324,
+     "last": 247679348,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec34920": {
+     "fall": "at(=[0xecdd90c]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xecdd90c]) == 0",
+     "target": "0xec3495c"
+    }
+   },
+   "calls": {
+    "0xec34940": {
+     "args": {
+      "0": "0x4",
+      "1": "sp-48",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_compile",
+     "tail": false,
+     "target": "0xecb5010"
+    },
+    "0xec34964": {
+     "args": {
+      "0": "0xecd6848",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_intrptab_insert",
+     "tail": false,
+     "target": "0xec5f9f0"
+    }
+   },
+   "name": "gl_c_writemask",
+   "returns": {
+    "0xec34954": "ret(gl_compile)"
+   },
+   "text": "- `gl_c_writemask` in `libgl.so` at 0xec34900 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec34900-0xec34978 (120 bytes).\n  It occupies 120 bytes.\n  The `jalr` at 0xec34940 calls gl_compile [0xecb5010] with a0=0x4, a1=sp-48, a2=?, a3=?.\n  The `jalr` at 0xec34964 calls gl_intrptab_insert [0xec5f9f0] with a0=0xecd6848, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec34920 targets 0xec3495c, is taken when at(=[0xecdd90c]) == 0, and falls through when at(=[0xecdd90c]) != 0.\n  The `beq` branch at 0xec34970 targets 0xec34928 and is always taken.\n  The return at 0xec34954 has v0 = ret(gl_compile).\n"
+  }
+ },
+ "gl_d_RGBmode": {
+  "address": "0xec49130",
+  "after": [
+   "**Inferred.** Appends a 4-byte record: a single word stored at the cursor [@0xec49154].",
+   "The room test compares comm_endbuffer with cursor+4 [@0xec49164], and the short-room path calls gl_comm_flush with a0 = 0x84 [call 1, @0xec49164 taken].",
+   "The routine advances comm_curbufpos [@0xec49168].",
+   "The return is either 0xecd6c4c, the address of the comm_curbufpos variable, or the gl_comm_flush result, depending on the room test [@0xec49164 taken] [@0xec49170].",
+   "Role (from facts): appends a word to the comm buffer [@0xec49154] [@0xec49168]."
+  ],
+  "before": [
+   "**Inferred.** Appends a 4-byte record: a single word stored at the cursor [@0xec49154].",
+   "The room test compares comm_endbuffer with cursor+4 [@0xec49164], and the short-room path calls gl_comm_flush with the constant 0x84 as a0 [call 1, @0xec49164 taken].",
+   "The routine advances comm_curbufpos [@0xec49168] and returns the cursor address [@0xec49170].",
+   "Role (from facts): appends a word to the comm buffer [@0xec49154] [@0xec49168]."
+  ],
+  "error": "return-value",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec49148",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec49154",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec49158",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec49168",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec49164",
+     "first": 247763248,
+     "last": 247763304,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247763308,
+     "last": 247763316,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247763320,
+     "last": 247763340,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec49164": {
+     "fall": "v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+4) (unsigned)",
+     "mn": "bne",
+     "taken": "v1(=[0xecd6c48]) < at(=[0xecd6c4c]+4) (unsigned)",
+     "target": "0xec49178"
+    }
+   },
+   "calls": {
+    "0xec49180": {
+     "args": {
+      "0": "0x84",
+      "1": "0x99a40",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    }
+   },
+   "name": "gl_d_RGBmode",
+   "returns": {
+    "0xec49170": "one of 0xecd6c4c, ret(gl_comm_flush)"
+   },
+   "text": "- `gl_d_RGBmode` in `libgl.so` at 0xec49130 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec49130-0xec49190 (96 bytes).\n  It occupies 96 bytes.\n  The `lw` at 0xec49148 loads 4 bytes from abs 0xecd6c4c (comm_curbufpos).\n  The `sw` at 0xec49154 stores 4 bytes to [0xecd6c4c] +0x0.\n  The `lw` at 0xec49158 loads 4 bytes from abs 0xecd6c48 (comm_endbuffer).\n  The `sw` at 0xec49168 stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `jalr` at 0xec49180 calls gl_comm_flush [0xec40750] with a0=0x84, a1=0x99a40, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `bne` branch at 0xec49164 targets 0xec49178, is taken when v1(=[0xecd6c48]) < at(=[0xecd6c4c]+4) (unsigned), and falls through when v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+4) (unsigned).\n  The `beq` branch at 0xec49188 targets 0xec4916c and is always taken.\n  The return at 0xec49170 has v0 = one of 0xecd6c4c, ret(gl_comm_flush).\n"
+  }
+ },
+ "gl_d_cmov": {
+  "address": "0xec45660",
+  "after": [
+   "**Inferred.** Builds a 16-byte record at comm_curbufpos: three single-precision stores at +0x4, +0x8 and +0xc and one integer store at +0x0 [@0xec45680] [@0xec45684] [@0xec45688] [@0xec45690].",
+   "It advances the pointer by 16 and tests it against comm_endbuffer [@0xec456a0]; the full-buffer path calls gl_comm_flush with a0 = 0x17 [call 1, @0xec456a0 taken].",
+   "Role (from name): a colour-and-position move; the facts show three float fields but not what they mean."
+  ],
+  "before": [
+   "**Inferred.** Builds a 16-byte record at comm_curbufpos: three single-precision stores at +0x4, +0x8 and +0xc and one integer store at +0x0 [@0xec45680] [@0xec45684] [@0xec45688] [@0xec45690].",
+   "It advances the pointer by 16 and tests it against comm_endbuffer [@0xec456a0]; the full-buffer path calls gl_comm_flush with the constant 0x17 [call 1, @0xec456a0 taken].",
+   "Role (from facts): the float fields suggest a colour-and-position move, which is an inference from the swc1 stores [@0xec45680] [@0xec45684] [@0xec45688]."
+  ],
+  "error": "role-word",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec45678",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45680",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": 12
+    },
+    {
+     "address": "0xec45684",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": 8
+    },
+    {
+     "address": "0xec45688",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": 4
+    },
+    {
+     "address": "0xec45690",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45694",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec456a4",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec456a0",
+     "first": 247748192,
+     "last": 247748260,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247748264,
+     "last": 247748272,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247748276,
+     "last": 247748296,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec456a0": {
+     "fall": "v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+16) (unsigned)",
+     "mn": "bne",
+     "taken": "v1(=[0xecd6c48]) < at(=[0xecd6c4c]+16) (unsigned)",
+     "target": "0xec456b4"
+    }
+   },
+   "calls": {
+    "0xec456bc": {
+     "args": {
+      "0": "0x17",
+      "1": "0x9d510",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    }
+   },
+   "name": "gl_d_cmov",
+   "returns": {
+    "0xec456ac": "one of 0xecd6c4c, ret(gl_comm_flush)"
+   },
+   "text": "- `gl_d_cmov` in `libgl.so` at 0xec45660 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec45660-0xec456cc (108 bytes).\n  It occupies 108 bytes.\n  The `lw` at 0xec45678 loads 4 bytes from abs 0xecd6c4c (comm_curbufpos).\n  The `swc1` at 0xec45680 stores 4 bytes to [0xecd6c4c] +0xc.\n  The `swc1` at 0xec45684 stores 4 bytes to [0xecd6c4c] +0x8.\n  The `swc1` at 0xec45688 stores 4 bytes to [0xecd6c4c] +0x4.\n  The `sw` at 0xec45690 stores 4 bytes to [0xecd6c4c] +0x0.\n  The `lw` at 0xec45694 loads 4 bytes from abs 0xecd6c48 (comm_endbuffer).\n  The `sw` at 0xec456a4 stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `bgezall` at 0xec456bc calls gl_comm_flush [0xec40750] with a0=0x17, a1=0x9d510, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `bne` branch at 0xec456a0 targets 0xec456b4, is taken when v1(=[0xecd6c48]) < at(=[0xecd6c4c]+16) (unsigned), and falls through when v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+16) (unsigned).\n  The `beq` branch at 0xec456c4 targets 0xec456a8 and is always taken.\n  The return at 0xec456ac has v0 = one of 0xecd6c4c, ret(gl_comm_flush).\n"
+  }
+ },
+ "gl_d_cmovi": {
+  "address": "0xec457b0",
+  "after": [
+   "**Inferred.** Builds a 16-byte record of four integer stores at +0x0, +0x4, +0x8 and +0xc [@0xec457d0] [@0xec457d4] [@0xec457d8] [@0xec457e0].",
+   "It advances comm_curbufpos [@0xec457f4] and tests against comm_endbuffer [@0xec457f0]; the full-buffer flush passes a3 = 0x1a and a4 = 0x9d3c0 [call 1, @0xec457f0 taken].",
+   "Role (from facts): the integer variant of gl_d_cmov, by the record size and the store width [@0xec457d0]."
+  ],
+  "before": [
+   "**Inferred.** Builds a 16-byte record of four integer stores at +0x0, +0x4, +0x8 and +0xc [@0xec457d0] [@0xec457d4] [@0xec457d8] [@0xec457e0].",
+   "It advances comm_curbufpos [@0xec457f4] and tests against comm_endbuffer [@0xec457f0]; the full-buffer flush passes the constant 0x1a and the table 0x9d3c0 [call 1].",
+   "Role (from facts): the integer variant of gl_d_cmov, by the record size and the store width [@0xec457d0]."
+  ],
+  "error": null,
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec457c8",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec457d0",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 12
+    },
+    {
+     "address": "0xec457d4",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 8
+    },
+    {
+     "address": "0xec457d8",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 4
+    },
+    {
+     "address": "0xec457e0",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec457e4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec457f4",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec457f0",
+     "first": 247748528,
+     "last": 247748596,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247748600,
+     "last": 247748608,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247748612,
+     "last": 247748632,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec457f0": {
+     "fall": "v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+16) (unsigned)",
+     "mn": "bne",
+     "taken": "v1(=[0xecd6c48]) < at(=[0xecd6c4c]+16) (unsigned)",
+     "target": "0xec45804"
+    }
+   },
+   "calls": {
+    "0xec4580c": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "0x1a",
+      "4": "0x9d3c0"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    }
+   },
+   "name": "gl_d_cmovi",
+   "returns": {
+    "0xec457fc": "one of 0xecd6c4c, ret(gl_comm_flush)"
+   },
+   "text": "- `gl_d_cmovi` in `libgl.so` at 0xec457b0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec457b0-0xec4581c (108 bytes).\n  It occupies 108 bytes.\n  The `lw` at 0xec457c8 loads 4 bytes from abs 0xecd6c4c (comm_curbufpos).\n  The `sw` at 0xec457d0 stores 4 bytes to [0xecd6c4c] +0xc.\n  The `sw` at 0xec457d4 stores 4 bytes to [0xecd6c4c] +0x8.\n  The `sw` at 0xec457d8 stores 4 bytes to [0xecd6c4c] +0x4.\n  The `sw` at 0xec457e0 stores 4 bytes to [0xecd6c4c] +0x0.\n  The `lw` at 0xec457e4 loads 4 bytes from abs 0xecd6c48 (comm_endbuffer).\n  The `sw` at 0xec457f4 stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `bgezall` at 0xec4580c calls gl_comm_flush [0xec40750] with a0=a0 at entry (arg0), a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=0x1a, a4=0x9d3c0.\n  The `bne` branch at 0xec457f0 targets 0xec45804, is taken when v1(=[0xecd6c48]) < at(=[0xecd6c4c]+16) (unsigned), and falls through when v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+16) (unsigned).\n  The `beq` branch at 0xec45814 targets 0xec457f8 and is always taken.\n  The return at 0xec457fc has v0 = one of 0xecd6c4c, ret(gl_comm_flush).\n"
+  }
+ },
+ "gl_d_defrasterfont": {
+  "address": "0xec45b50",
+  "after": [
+   "**Inferred.** Writes a 16-byte header at comm_curbufpos: a word at +0x0 and +0xc and halfwords at +0x4, +0x6 and +0x8 [@0xec45bb0] [@0xec45bb8] [@0xec45bc0] [@0xec45bcc] [@0xec45bd4].",
+   "It then packs two blocks with gl_mem_pack_array, at one call with a3 = 0xec7ef90 [call 1] and at another with a3 = 0xec7e410 [call 2], each with a4 = 0xb4, a1 = a3 at entry in the first [call 1] and a1 = a5 at entry in the second [call 2], and the walk of the header is behind a test of a3 [@0xec45bd8] and of a5 [@0xec45c00].",
+   "The facts do not show what that second argument is.",
+   "The full-buffer test is against 180 bytes past the pointer [@0xec45ba8], and the final flush passes the table 0x9d020 [call 3].",
+   "Role (from name): a font header followed by two glyph tables, which is an inference."
+  ],
+  "before": [
+   "**Inferred.** Writes a 16-byte header at comm_curbufpos: a word at +0x0 and +0xc and halfwords at +0x4, +0x6 and +0x8 [@0xec45bb0] [@0xec45bb8] [@0xec45bc0] [@0xec45bcc] [@0xec45bd4].",
+   "It then packs two blocks with gl_mem_pack_array, at one call with element table 0xec7ef90 [call 1] and at another with element table 0xec7e410 [call 2], each with the constant 0xb4 as its fourth argument and a count taken from an entry argument register [call 1] [call 2].",
+   "The full-buffer test is against 180 bytes past the pointer [@0xec45ba8], and the final flush passes the table 0x9d020 [call 3].",
+   "Role (from facts): a font header followed by two glyph tables, which is an inference [call 1] [call 2]."
+  ],
+  "error": "cite-arg",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec45b78",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45b7c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45bb0",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 6
+    },
+    {
+     "address": "0xec45bb8",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45bc0",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 4
+    },
+    {
+     "address": "0xec45bcc",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 8
+    },
+    {
+     "address": "0xec45bd4",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 12
+    },
+    {
+     "address": "0xec45bf4",
+     "kind": "store",
+     "mn": "sh",
+     "offset": null
+    },
+    {
+     "address": "0xec45c04",
+     "kind": "store",
+     "mn": "sw",
+     "offset": null
+    },
+    {
+     "address": "0xec45c1c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45c20",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45c30",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45c38",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec45cd0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec45ba8",
+     "first": 247749456,
+     "last": 247749548,
+     "reached": true,
+     "succ": [
+      10,
+      1
+     ]
+    },
+    {
+     "branch": "0xec45bd8",
+     "first": 247749552,
+     "last": 247749596,
+     "reached": true,
+     "succ": [
+      8,
+      2
+     ]
+    },
+    {
+     "first": 247749600,
+     "last": 247749608,
+     "reached": true,
+     "succ": [
+      3
+     ]
+    },
+    {
+     "branch": "0xec45c00",
+     "first": 247749612,
+     "last": 247749636,
+     "reached": true,
+     "succ": [
+      9,
+      4
+     ]
+    },
+    {
+     "first": 247749640,
+     "last": 247749648,
+     "reached": true,
+     "succ": [
+      5
+     ]
+    },
+    {
+     "branch": "0xec45c34",
+     "first": 247749652,
+     "last": 247749688,
+     "reached": true,
+     "succ": [
+      11,
+      6
+     ]
+    },
+    {
+     "first": 247749692,
+     "last": 247749692,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    },
+    {
+     "first": 247749696,
+     "last": 247749704,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247749708,
+     "last": 247749756,
+     "reached": true,
+     "succ": [
+      3
+     ]
+    },
+    {
+     "first": 247749760,
+     "last": 247749800,
+     "reached": true,
+     "succ": [
+      5
+     ]
+    },
+    {
+     "first": 247749804,
+     "last": 247749840,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    },
+    {
+     "first": 247749844,
+     "last": 247749860,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    }
+   ],
+   "branches": {
+    "0xec45ba8": {
+     "fall": "at(=[0xecd6c48]) >= v0(=[0xecd6c4c]+180) (unsigned)",
+     "mn": "bne",
+     "taken": "at(=[0xecd6c48]) < v0(=[0xecd6c4c]+180) (unsigned)",
+     "target": "0xec45cac"
+    },
+    "0xec45bd8": {
+     "fall": "s1(=a3) == 0",
+     "mn": "bne",
+     "taken": "s1(=a3) != 0",
+     "target": "0xec45c4c"
+    },
+    "0xec45c00": {
+     "fall": "s0(=a5) == 0",
+     "mn": "bne",
+     "taken": "s0(=a5) != 0",
+     "target": "0xec45c80"
+    },
+    "0xec45c34": {
+     "fall": "t0(=([0xecd6c40] + [0xecd6c44])-24) >= a7(?) (unsigned)",
+     "mn": "bne",
+     "taken": "t0(=([0xecd6c40] + [0xecd6c44])-24) < a7(?) (unsigned)",
+     "target": "0xec45cd4"
+    }
+   },
+   "calls": {
+    "0xec45c60": {
+     "args": {
+      "0": "[0xecd6c4c]+16",
+      "1": "a3 at entry (arg3)",
+      "2": "?",
+      "3": "0xec7ef90",
+      "4": "0xb4"
+     },
+     "callee": "gl_mem_pack_array",
+     "tail": false,
+     "target": "0xec7d9b0"
+    },
+    "0xec45c90": {
+     "args": {
+      "0": "?",
+      "1": "a5 at entry (arg5)",
+      "2": "?",
+      "3": "0xec7e410",
+      "4": "0xb4"
+     },
+     "callee": "gl_mem_pack_array",
+     "tail": false,
+     "target": "0xec7d9b0"
+    },
+    "0xec45cb4": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)",
+      "6": "0x9d020"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    },
+    "0xec45cd8": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    }
+   },
+   "name": "gl_d_defrasterfont",
+   "returns": {
+    "0xec45c44": "one of ?, ret(gl_comm_flush)"
+   },
+   "text": "- `gl_d_defrasterfont` in `libgl.so` at 0xec45b50 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec45b50-0xec45ce8 (408 bytes).\n  It occupies 408 bytes.\n  2 such `lw` accesses load 4 bytes from abs 0xecd6c4c (comm_curbufpos), including `lw` at 0xec45b78, `lw` at 0xec45cd0.\n  The `lw` at 0xec45b7c loads 4 bytes from abs 0xecd6c48 (comm_endbuffer).\n  The `sh` at 0xec45bb0 stores 2 bytes to [0xecd6c4c] +0x6.\n  The `sw` at 0xec45bb8 stores 4 bytes to [0xecd6c4c] +0x0.\n  The `sh` at 0xec45bc0 stores 2 bytes to [0xecd6c4c] +0x4.\n  The `sh` at 0xec45bcc stores 2 bytes to [0xecd6c4c] +0x8.\n  The `sw` at 0xec45bd4 stores 4 bytes to [0xecd6c4c] +0xc.\n  The `sh` at 0xec45bf4 stores 2 bytes to ?.\n  The `sw` at 0xec45c04 stores 4 bytes to ?.\n  The `lw` at 0xec45c1c loads 4 bytes from abs 0xecd6c44 (comm_buffer).\n  The `lw` at 0xec45c20 loads 4 bytes from abs 0xecd6c40 (comm_stdsize).\n  The `sw` at 0xec45c30 stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `sw` at 0xec45c38 stores 4 bytes to abs 0xecd6c48 (comm_endbuffer).\n  The `jalr` at 0xec45c60 calls gl_mem_pack_array [0xec7d9b0] with a0=[0xecd6c4c]+16, a1=a3 at entry (arg3), a2=?, a3=0xec7ef90, a4=0xb4.\n  The `jalr` at 0xec45c90 calls gl_mem_pack_array [0xec7d9b0] with a0=?, a1=a5 at entry (arg5), a2=?, a3=0xec7e410, a4=0xb4.\n  The `bgezall` at 0xec45cb4 calls gl_comm_flush [0xec40750] with a0=a0 at entry (arg0), a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3), a6=0x9d020.\n  The `bgezall` at 0xec45cd8 calls gl_comm_flush [0xec40750] with a0=?, a1=?, a2=?, a3=?.\n  The `bne` branch at 0xec45ba8 targets 0xec45cac, is taken when at(=[0xecd6c48]) < v0(=[0xecd6c4c]+180) (unsigned), and falls through when at(=[0xecd6c48]) >= v0(=[0xecd6c4c]+180) (unsigned).\n  The `bne` branch at 0xec45bd8 targets 0xec45c4c, is taken when s1(=a3) != 0, and falls through when s1(=a3) == 0.\n  The `bne` branch at 0xec45c00 targets 0xec45c80, is taken when s0(=a5) != 0, and falls through when s0(=a5) == 0.\n  The `bne` branch at 0xec45c34 targets 0xec45cd4, is taken when t0(=([0xecd6c40] + [0xecd6c44])-24) < a7(?) (unsigned), and falls through when t0(=([0xecd6c40] + [0xecd6c44])-24) >= a7(?) (unsigned).\n  The `beq` branch at 0xec45c78 targets 0xec45bec and is always taken.\n  The `beq` branch at 0xec45ca4 targets 0xec45c14 and is always taken.\n  The `beq` branch at 0xec45ccc targets 0xec45bb0 and is always taken.\n  The `beq` branch at 0xec45ce0 targets 0xec45c40 and is always taken.\n  The return at 0xec45c44 has v0 = one of ?, ret(gl_comm_flush).\n"
+  }
+ },
+ "gl_d_endpick": {
+  "address": "0xec45ff0",
+  "after": [
+   "**Inferred.** Writes a 12-byte record at comm_curbufpos (word stores at +0x0, +0x4 and +0x8) and advances the pointer [@0xec4601c] [@0xec46024] [@0xec46030] [@0xec4603c].",
+   "It then reads a reply with gl_comm_read_data (a0 = 0x1, a1 = 0x29 and a2 = 0x9cb80) [call 1] and unpacks the reply with gl_mem_unpack_array [call 2].",
+   "The return value is the word at +0x4 of the reply buffer [@0xec46074].",
+   "Role (from name): the end of pick mode, with the return as a hit count, going by the request and reply pairing."
+  ],
+  "before": [
+   "**Inferred.** Writes a 12-byte record at comm_curbufpos (word stores at +0x0, +0x4 and +0x8) and advances the pointer [@0xec4601c] [@0xec46024] [@0xec46030] [@0xec4603c].",
+   "It then reads a reply with gl_comm_read_data (constant 0x1 and 0x29, table 0x9cb80) [call 1] and unpacks the reply with gl_mem_unpack_array [call 2].",
+   "The return value is the word at +0x4 of the reply buffer [@0xec46074].",
+   "Role (from name): the end of pick mode, with the return as a hit count, going by the request and reply pairing."
+  ],
+  "error": null,
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec46010",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec4601c",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46024",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 4
+    },
+    {
+     "address": "0xec46030",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 8
+    },
+    {
+     "address": "0xec4603c",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46048",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46068",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46070",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 4
+    }
+   ],
+   "blocks": [
+    {
+     "first": 247750640,
+     "last": 247750776,
+     "reached": true,
+     "succ": []
+    }
+   ],
+   "branches": {},
+   "calls": {
+    "0xec46038": {
+     "args": {
+      "0": "0x1",
+      "1": "0x29",
+      "2": "0x9cb80",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_comm_read_data",
+     "tail": false,
+     "target": "0xec40b90"
+    },
+    "0xec46054": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "[0xecd6c44]+8",
+      "2": "0xec7e4e0",
+      "3": "?"
+     },
+     "callee": "gl_mem_unpack_array",
+     "tail": false,
+     "target": "0xec7da50"
+    }
+   },
+   "name": "gl_d_endpick",
+   "returns": {
+    "0xec46074": "[[0xecd6c44]+4]"
+   },
+   "text": "- `gl_d_endpick` in `libgl.so` at 0xec45ff0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec45ff0-0xec4607c (140 bytes).\n  It occupies 140 bytes.\n  The `lw` at 0xec46010 loads 4 bytes from abs 0xecd6c4c (comm_curbufpos).\n  The `sw` at 0xec4601c stores 4 bytes to [0xecd6c4c] +0x0.\n  The `sw` at 0xec46024 stores 4 bytes to [0xecd6c4c] +0x4.\n  The `sw` at 0xec46030 stores 4 bytes to [0xecd6c4c] +0x8.\n  The `sw` at 0xec4603c stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  2 such `lw` accesses load 4 bytes from abs 0xecd6c44 (comm_buffer), including `lw` at 0xec46048, `lw` at 0xec46068.\n  The `lw` at 0xec46070 loads 4 bytes from [0xecd6c44] +0x4.\n  The `bgezall` at 0xec46038 calls gl_comm_read_data [0xec40b90] with a0=0x1, a1=0x29, a2=0x9cb80, a3=a3 at entry (arg3).\n  The `jalr` at 0xec46054 calls gl_mem_unpack_array [0xec7da50] with a0=a0 at entry (arg0), a1=[0xecd6c44]+8, a2=0xec7e4e0, a3=?.\n  The return at 0xec46074 has v0 = [[0xecd6c44]+4].\n"
+  }
+ },
+ "gl_d_gconfig": {
+  "address": "0xec46260",
+  "after": [
+   "**Inferred.** Writes a record into the comm buffer, reading the end pointer comm_endbuffer [@0xec46288].",
+   "It stores one word through the write pointer [@0xec46284] and advances the pointer [@0xec46298] before the room test, so both happen on every path.",
+   "The bne is taken when comm_endbuffer is below the advanced pointer [@0xec46294 taken], and that path calls gl_comm_flush with a0 = 0x2e and a1 = 0x9c910 [call 1, @0xec46294 taken].",
+   "Role (from name): a configuration query; the 0x2e code is inferred from the flush call shape."
+  ],
+  "before": [
+   "**Inferred.** Writes a record into the comm buffer, using the write pointer comm_curbufpos and the end pointer comm_endbuffer [@0xec46284] [@0xec46288].",
+   "When fewer than four bytes remain [@0xec46294 taken], it calls gl_comm_flush with a0 = 0x2e and a1 = 0x9c910 [call 1, @0xec46294 taken]; otherwise it stores through the write pointer and advances it [@0xec46298].",
+   "Role (from name): a configuration query; the 0x2e code is inferred from the flush call shape."
+  ],
+  "error": "cite-conditional",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec46278",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46284",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46288",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec46298",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec46294",
+     "first": 247751264,
+     "last": 247751320,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247751324,
+     "last": 247751332,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247751336,
+     "last": 247751356,
+     "reached": true,
+     "succ": [
+      1
+     ]
+    }
+   ],
+   "branches": {
+    "0xec46294": {
+     "fall": "v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+4) (unsigned)",
+     "mn": "bne",
+     "taken": "v1(=[0xecd6c48]) < at(=[0xecd6c4c]+4) (unsigned)",
+     "target": "0xec462a8"
+    }
+   },
+   "calls": {
+    "0xec462b0": {
+     "args": {
+      "0": "0x2e",
+      "1": "0x9c910",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_comm_flush",
+     "tail": false,
+     "target": "0xec40750"
+    }
+   },
+   "name": "gl_d_gconfig",
+   "returns": {
+    "0xec462a0": "one of 0xecd6c4c, ret(gl_comm_flush)"
+   },
+   "text": "- `gl_d_gconfig` in `libgl.so` at 0xec46260 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec46260-0xec462c0 (96 bytes).\n  It occupies 96 bytes.\n  The `lw` at 0xec46278 loads 4 bytes from abs 0xecd6c4c (comm_curbufpos).\n  The `sw` at 0xec46284 stores 4 bytes to [0xecd6c4c] +0x0.\n  The `lw` at 0xec46288 loads 4 bytes from abs 0xecd6c48 (comm_endbuffer).\n  The `sw` at 0xec46298 stores 4 bytes to abs 0xecd6c4c (comm_curbufpos).\n  The `bgezall` at 0xec462b0 calls gl_comm_flush [0xec40750] with a0=0x2e, a1=0x9c910, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `bne` branch at 0xec46294 targets 0xec462a8, is taken when v1(=[0xecd6c48]) < at(=[0xecd6c4c]+4) (unsigned), and falls through when v1(=[0xecd6c48]) >= at(=[0xecd6c4c]+4) (unsigned).\n  The `beq` branch at 0xec462b8 targets 0xec4629c and is always taken.\n  The return at 0xec462a0 has v0 = one of 0xecd6c4c, ret(gl_comm_flush).\n"
+  }
+ },
+ "gl_depthcue": {
+  "address": "0xec43b60",
+  "after": [
+   "**Inferred.** Switches between depth-cue fog and a normal state [@0xec43bb4], going by the callees [call 1] [call 7].",
+   "Behind the tests [@0xec43bb4] [@0xec43bf8] it calls __iglooSetEnable with a0 = 0xb60 and a1 = 0x1 [call 1] and with a0 = 0xb60 and a1 = 0x0 [call 7], and calls glFogi with a0 = 0xb65 and a1 = 0x2601 [call 2], glFogfv with a0 = 0xb66 [call 4], and glFogf with a0 = 0xb61 [call 15].",
+   "Behind the same tests [@0xec43bb4] it sets the color-index path with glIndexf [call 11] and selects the depth-cue color procedures through __iglooSetColorProcsToDepthCue [call 5].",
+   "The branches on gl_wstatep +2904 [@0xec43b88] and on the flag at 0xece8bf8 [@0xec43cb8] select the variant.",
+   "Role (from name): switches depth-cue fog on and off, going by the callees."
+  ],
+  "before": [
+   "**Inferred.** Sets up depth-cue fog.",
+   "It enables 0xb60 through __iglooSetEnable [call 1] and calls glFogi with 0xb65 and 0x2601 [call 2], glFogfv with 0xb66 [call 4], and glFogf with 0xb61 [call 15].",
+   "It sets the color-index path with glIndexf [call 11] and selects the depth-cue color procedures through __iglooSetColorProcsToDepthCue [call 5].",
+   "The branches on gl_wstatep +2904 [@0xec43b88] and on the flag at 0xece8bf8 [@0xec43cb8] select the variant.",
+   "Role (from facts): turns depth-cue fog on through glFogi and glFogfv [call 2] [call 4]."
+  ],
+  "error": "enable-only",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec43b80",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43b84",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 2904
+    },
+    {
+     "address": "0xec43bb0",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 2904
+    },
+    {
+     "address": "0xec43be0",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 2908
+    },
+    {
+     "address": "0xec43be8",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 216
+    },
+    {
+     "address": "0xec43bec",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43bf0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 20
+    },
+    {
+     "address": "0xec43bf4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 16
+    },
+    {
+     "address": "0xec43c2c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 3076
+    },
+    {
+     "address": "0xec43c78",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 2908
+    },
+    {
+     "address": "0xec43c88",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": 3000
+    },
+    {
+     "address": "0xec43c94",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12112
+    },
+    {
+     "address": "0xec43cb4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43cc0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43cc4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 20
+    },
+    {
+     "address": "0xec43cc8",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 16
+    },
+    {
+     "address": "0xec43cd4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 3076
+    },
+    {
+     "address": "0xec43cfc",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": 3000
+    },
+    {
+     "address": "0xec43d08",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12112
+    },
+    {
+     "address": "0xec43d20",
+     "kind": "load",
+     "mn": "lhu",
+     "offset": 2944
+    },
+    {
+     "address": "0xec43d24",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": 3000
+    },
+    {
+     "address": "0xec43d28",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12112
+    },
+    {
+     "address": "0xec43d40",
+     "kind": "load",
+     "mn": "lhu",
+     "offset": 2946
+    },
+    {
+     "address": "0xec43d5c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec43d78",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 276
+    },
+    {
+     "address": "0xec43d7c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 20
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec43b88",
+     "first": 247741280,
+     "last": 247741324,
+     "reached": true,
+     "succ": [
+      4,
+      1
+     ]
+    },
+    {
+     "branch": "0xec43b94",
+     "first": 247741328,
+     "last": 247741336,
+     "reached": true,
+     "succ": [
+      4,
+      2
+     ]
+    },
+    {
+     "first": 247741340,
+     "last": 247741340,
+     "reached": true,
+     "succ": [
+      3
+     ]
+    },
+    {
+     "first": 247741344,
+     "last": 247741356,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "branch": "0xec43bb4",
+     "first": 247741360,
+     "last": 247741368,
+     "reached": true,
+     "succ": [
+      10,
+      5
+     ]
+    },
+    {
+     "branch": "0xec43bf8",
+     "first": 247741372,
+     "last": 247741436,
+     "reached": true,
+     "succ": [
+      14,
+      6
+     ]
+    },
+    {
+     "first": 247741440,
+     "last": 247741464,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    },
+    {
+     "first": 247741468,
+     "last": 247741468,
+     "reached": true,
+     "succ": [
+      8
+     ]
+    },
+    {
+     "branch": "0xec43c30",
+     "first": 247741472,
+     "last": 247741492,
+     "reached": true,
+     "succ": [
+      3,
+      9
+     ]
+    },
+    {
+     "first": 247741496,
+     "last": 247741516,
+     "reached": true,
+     "succ": [
+      2
+     ]
+    },
+    {
+     "branch": "0xec43cb8",
+     "first": 247741520,
+     "last": 247741628,
+     "reached": true,
+     "succ": [
+      12,
+      11
+     ]
+    },
+    {
+     "branch": "0xec43ccc",
+     "first": 247741632,
+     "last": 247741648,
+     "reached": true,
+     "succ": [
+      16,
+      12
+     ]
+    },
+    {
+     "branch": "0xec43cd8",
+     "first": 247741652,
+     "last": 247741660,
+     "reached": true,
+     "succ": [
+      2,
+      13
+     ]
+    },
+    {
+     "first": 247741664,
+     "last": 247741676,
+     "reached": true,
+     "succ": [
+      2
+     ]
+    },
+    {
+     "branch": "0xec43d60",
+     "first": 247741680,
+     "last": 247741796,
+     "reached": true,
+     "succ": [
+      7,
+      15
+     ]
+    },
+    {
+     "first": 247741800,
+     "last": 247741812,
+     "reached": true,
+     "succ": [
+      8
+     ]
+    },
+    {
+     "branch": "0xec43d80",
+     "first": 247741816,
+     "last": 247741828,
+     "reached": true,
+     "succ": [
+      12,
+      17
+     ]
+    },
+    {
+     "first": 247741832,
+     "last": 247741844,
+     "reached": true,
+     "succ": [
+      12
+     ]
+    }
+   ],
+   "branches": {
+    "0xec43b88": {
+     "fall": "at(=[[sym(gl_wstatep)]+2904]) == a0",
+     "mn": "bne",
+     "taken": "at(=[[sym(gl_wstatep)]+2904]) != a0",
+     "target": "0xec43bb0"
+    },
+    "0xec43b94": {
+     "fall": "a1 != t8(=0x1)",
+     "mn": "beq",
+     "taken": "a1 == t8(=0x1)",
+     "target": "0xec43bb0"
+    },
+    "0xec43bb4": {
+     "fall": "a0 != 0",
+     "mn": "beq",
+     "taken": "a0 == 0",
+     "target": "0xec43c50"
+    },
+    "0xec43bf8": {
+     "fall": "t9(=[[[0x1004]+20]+16]) != 0",
+     "mn": "beq",
+     "taken": "t9(=[[[0x1004]+20]+16]) == 0",
+     "target": "0xec43cf0"
+    },
+    "0xec43c30": {
+     "fall": "v0(=[[sym(gl_wstatep)]+3076]) != 0",
+     "mn": "beq",
+     "taken": "v0(=[[sym(gl_wstatep)]+3076]) == 0",
+     "target": "0xec43ba0"
+    },
+    "0xec43cb8": {
+     "fall": "a0(=[0xece8bf8]) != 0",
+     "mn": "beq",
+     "taken": "a0(=[0xece8bf8]) == 0",
+     "target": "0xec43cd4"
+    },
+    "0xec43ccc": {
+     "fall": "a1(=[[[0x1004]+20]+16]) != 0",
+     "mn": "beq",
+     "taken": "a1(=[[[0x1004]+20]+16]) == 0",
+     "target": "0xec43d78"
+    },
+    "0xec43cd8": {
+     "fall": "a2(=[[sym(gl_wstatep)]+3076]) != 0",
+     "mn": "beq",
+     "taken": "a2(=[[sym(gl_wstatep)]+3076]) == 0",
+     "target": "0xec43b9c"
+    },
+    "0xec43d60": {
+     "fall": "a7(=[0xece8bf8]) != 0",
+     "mn": "beq",
+     "taken": "a7(=[0xece8bf8]) == 0",
+     "target": "0xec43c1c"
+    },
+    "0xec43d80": {
+     "fall": "t0(=[[[sym(gl_wstatep)]+276]+20]) == 0",
+     "mn": "bne",
+     "taken": "t0(=[[[sym(gl_wstatep)]+276]+20]) != 0",
+     "target": "0xec43cd4"
+    }
+   },
+   "calls": {
+    "0xec43bc4": {
+     "args": {
+      "0": "0xb60",
+      "1": "0x1",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec43bd4": {
+     "args": {
+      "0": "0xb65",
+      "1": "0x2601",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glFogi",
+     "tail": false,
+     "target": null
+    },
+    "0xec43c04": {
+     "args": {
+      "0": "[sym(gl_wstatep)]+2912",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glColor4fv",
+     "tail": false,
+     "target": null
+    },
+    "0xec43c14": {
+     "args": {
+      "0": "0xb66",
+      "1": "[sym(gl_wstatep)]+2928",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glFogfv",
+     "tail": false,
+     "target": null
+    },
+    "0xec43c20": {
+     "args": {
+      "0": "[sym(gl_wstatep)]",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSetColorProcsToDepthCue",
+     "tail": false,
+     "target": "0xec3e6d0"
+    },
+    "0xec43c40": {
+     "args": {
+      "0": "0xb50",
+      "1": "0x0",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec43c58": {
+     "args": {
+      "0": "0xb60",
+      "1": "0x0",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec43c64": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooRestoreUsrMat",
+     "tail": false,
+     "target": "0xec439e0"
+    },
+    "0xec43c74": {
+     "args": {
+      "0": "[sym(gl_wstatep)]",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSyncLmcolor",
+     "tail": false,
+     "target": "0xec3f130"
+    },
+    "0xec43c80": {
+     "args": {
+      "0": "[sym(gl_wstatep)]+3120",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glColor4fv",
+     "tail": false,
+     "target": null
+    },
+    "0xec43ca8": {
+     "args": {
+      "0": "[[sym(gl_wstatep)]+12112]",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glIndexf",
+     "tail": false,
+     "target": null
+    },
+    "0xec43ce0": {
+     "args": {
+      "0": "[sym(gl_wstatep)]",
+      "1": "?",
+      "2": "[[sym(gl_wstatep)]+3076]",
+      "3": "?"
+     },
+     "callee": "__iglooOglLightingOn",
+     "tail": false,
+     "target": "0xec7b830"
+    },
+    "0xec43cf4": {
+     "args": {
+      "0": "0xb01",
+      "1": "[sym(gl_wstatep)]+3000",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooGetFloatv",
+     "tail": false,
+     "target": "0xecb7ff0"
+    },
+    "0xec43d38": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?",
+      "4": "[[sym(gl_wstatep)]+12112]",
+      "6": "[[sym(gl_wstatep)]+12112]"
+     },
+     "callee": "glIndexf",
+     "tail": false,
+     "target": null
+    },
+    "0xec43d50": {
+     "args": {
+      "0": "0xb61",
+      "1": "?",
+      "2": "?",
+      "3": "?",
+      "6": "[[sym(gl_wstatep)]+2946]:2"
+     },
+     "callee": "glFogf",
+     "tail": false,
+     "target": null
+    },
+    "0xec43d68": {
+     "args": {
+      "0": "0x1d01",
+      "1": "?",
+      "2": "?",
+      "3": "?",
+      "7": "[0xece8bf8]"
+     },
+     "callee": "__iglooShadeModel",
+     "tail": false,
+     "target": "0xecb7a10"
+    },
+    "0xec43d88": {
+     "args": {
+      "0": "0x1d00",
+      "1": "[[[0x1004]+20]+16]",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooShadeModel",
+     "tail": false,
+     "target": "0xecb7a10"
+    }
+   },
+   "name": "gl_depthcue",
+   "returns": {
+    "0xec43ba8": "one of ?, [[sym(gl_wstatep)]+3076]"
+   },
+   "text": "- `gl_depthcue` in `libgl.so` at 0xec43b60 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec43b60-0xec43d98 (568 bytes).\n  It occupies 568 bytes.\n  The `lw` at 0xec43b80 loads 4 bytes from sym(gl_wstatep) +0x0.\n  The `lw` at 0xec43b84 loads 4 bytes from [sym(gl_wstatep)] +0xb58.\n  The `sw` at 0xec43bb0 stores 4 bytes to [sym(gl_wstatep)] +0xb58.\n  2 such `sw` accesses store 4 bytes to [sym(gl_wstatep)] +0xb5c, including `sw` at 0xec43be0, `sw` at 0xec43c78.\n  The `sw` at 0xec43be8 stores 4 bytes to [sym(gl_wstatep)] +0xd8.\n  2 such `lw` accesses load 4 bytes from abs 0x1004, including `lw` at 0xec43bec, `lw` at 0xec43cc0.\n  2 such `lw` accesses load 4 bytes from [0x1004] +0x14, including `lw` at 0xec43bf0, `lw` at 0xec43cc4.\n  2 such `lw` accesses load 4 bytes from [[0x1004]+20] +0x10, including `lw` at 0xec43bf4, `lw` at 0xec43cc8.\n  2 such `lw` accesses load 4 bytes from [sym(gl_wstatep)] +0xc04, including `lw` at 0xec43c2c, `lw` at 0xec43cd4.\n  2 such `lwc1` accesses load 4 bytes from [sym(gl_wstatep)] +0xbb8, including `lwc1` at 0xec43c88, `lwc1` at 0xec43cfc.\n  3 such `lw` accesses load 4 bytes from [sym(gl_wstatep)] +0x2f50, including `lw` at 0xec43c94, `lw` at 0xec43d08, `lw` at 0xec43d28.\n  2 such `lw` accesses load 4 bytes from abs 0xece8bf8 (gl_iglooGouraudCIDepthCue), including `lw` at 0xec43cb4, `lw` at 0xec43d5c.\n  The `lhu` at 0xec43d20 loads 2 bytes from [sym(gl_wstatep)] +0xb80.\n  The `swc1` at 0xec43d24 stores 4 bytes to [sym(gl_wstatep)] +0xbb8.\n  The `lhu` at 0xec43d40 loads 2 bytes from [sym(gl_wstatep)] +0xb82.\n  The `lw` at 0xec43d78 loads 4 bytes from [sym(gl_wstatep)] +0x114.\n  The `lw` at 0xec43d7c loads 4 bytes from [[sym(gl_wstatep)]+276] +0x14.\n  The `jalr` at 0xec43bc4 calls __iglooSetEnable [0xec5cb70] with a0=0xb60, a1=0x1, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `jalr` at 0xec43bd4 calls glFogi with a0=0xb65, a1=0x2601, a2=?, a3=?.\n  The `jalr` at 0xec43c04 calls glColor4fv with a0=[sym(gl_wstatep)]+2912, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43c14 calls glFogfv with a0=0xb66, a1=[sym(gl_wstatep)]+2928, a2=?, a3=?.\n  The `bgezall` at 0xec43c20 calls __iglooSetColorProcsToDepthCue [0xec3e6d0] with a0=[sym(gl_wstatep)], a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43c40 calls __iglooSetEnable [0xec5cb70] with a0=0xb50, a1=0x0, a2=?, a3=?.\n  The `jalr` at 0xec43c58 calls __iglooSetEnable [0xec5cb70] with a0=0xb60, a1=0x0, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `bgezall` at 0xec43c64 calls __iglooRestoreUsrMat [0xec439e0] with a0=?, a1=?, a2=?, a3=?.\n  The `bgezall` at 0xec43c74 calls __iglooSyncLmcolor [0xec3f130] with a0=[sym(gl_wstatep)], a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43c80 calls glColor4fv with a0=[sym(gl_wstatep)]+3120, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43ca8 calls glIndexf with a0=[[sym(gl_wstatep)]+12112], a1=?, a2=?, a3=?.\n  The `jalr` at 0xec43ce0 calls __iglooOglLightingOn [0xec7b830] with a0=[sym(gl_wstatep)], a1=?, a2=[[sym(gl_wstatep)]+3076], a3=?.\n  The `jalr` at 0xec43cf4 calls __iglooGetFloatv [0xecb7ff0] with a0=0xb01, a1=[sym(gl_wstatep)]+3000, a2=?, a3=?.\n  The `jalr` at 0xec43d38 calls glIndexf with a0=?, a1=?, a2=?, a3=?, a4=[[sym(gl_wstatep)]+12112], a6=[[sym(gl_wstatep)]+12112].\n  The `jalr` at 0xec43d50 calls glFogf with a0=0xb61, a1=?, a2=?, a3=?, a6=[[sym(gl_wstatep)]+2946]:2.\n  The `jalr` at 0xec43d68 calls __iglooShadeModel [0xecb7a10] with a0=0x1d01, a1=?, a2=?, a3=?, a7=[0xece8bf8].\n  The `jalr` at 0xec43d88 calls __iglooShadeModel [0xecb7a10] with a0=0x1d00, a1=[[[0x1004]+20]+16], a2=?, a3=?.\n  The `bne` branch at 0xec43b88 targets 0xec43bb0, is taken when at(=[[sym(gl_wstatep)]+2904]) != a0, and falls through when at(=[[sym(gl_wstatep)]+2904]) == a0.\n  The `beq` branch at 0xec43b94 targets 0xec43bb0, is taken when a1 == t8(=0x1), and falls through when a1 != t8(=0x1).\n  The `beq` branch at 0xec43bb4 targets 0xec43c50, is taken when a0 == 0, and falls through when a0 != 0.\n  The `beq` branch at 0xec43bf8 targets 0xec43cf0, is taken when t9(=[[[0x1004]+20]+16]) == 0, and falls through when t9(=[[[0x1004]+20]+16]) != 0.\n  The `beq` branch at 0xec43c30 targets 0xec43ba0, is taken when v0(=[[sym(gl_wstatep)]+3076]) == 0, and falls through when v0(=[[sym(gl_wstatep)]+3076]) != 0.\n  The `beq` branch at 0xec43c48 targets 0xec43b9c and is always taken.\n  The `beq` branch at 0xec43cb8 targets 0xec43cd4, is taken when a0(=[0xece8bf8]) == 0, and falls through when a0(=[0xece8bf8]) != 0.\n  The `beq` branch at 0xec43ccc targets 0xec43d78, is taken when a1(=[[[0x1004]+20]+16]) == 0, and falls through when a1(=[[[0x1004]+20]+16]) != 0.\n  The `beq` branch at 0xec43cd8 targets 0xec43b9c, is taken when a2(=[[sym(gl_wstatep)]+3076]) == 0, and falls through when a2(=[[sym(gl_wstatep)]+3076]) != 0.\n  The `beq` branch at 0xec43ce8 targets 0xec43b9c and is always taken.\n  The `beq` branch at 0xec43d60 targets 0xec43c1c, is taken when a7(=[0xece8bf8]) == 0, and falls through when a7(=[0xece8bf8]) != 0.\n  The `beq` branch at 0xec43d70 targets 0xec43c20 and is always taken.\n  The `bne` branch at 0xec43d80 targets 0xec43cd4, is taken when t0(=[[[sym(gl_wstatep)]+276]+20]) != 0, and falls through when t0(=[[[sym(gl_wstatep)]+276]+20]) == 0.\n  The `beq` branch at 0xec43d90 targets 0xec43cd4 and is always taken.\n  The return at 0xec43ba8 has v0 = one of ?, [[sym(gl_wstatep)]+3076].\n"
+  }
+ },
+ "gl_i_rcrvn": {
+  "address": "0xec424d0",
+  "after": [
+   "**Inferred.** It rejects a0 below 4 [@0xec42524 taken] by calling gl_ErrorHandler with code 0x3f [call 10, @0xec42524 taken].",
+   "Otherwise [@0xec42524 fall] it runs a loop of a0-3 segments [@0xec42628 taken], calls gl_findbasis [call 1, @0xec42524 fall], and drives __iglooSetEnable with enable 0xd98 [call 4, @0xec42524 fall], glMap1f [call 5, @0xec42524 fall], glMapGrid1f [call 6, @0xec42524 fall], glEvalMesh1 [call 7, @0xec42524 fall] and glFlush [call 8, @0xec42524 fall] the way gl_i_rcrv does.",
+   "The two unnamed callees are not identified [call 2] [call 3].",
+   "Role (from facts): immediate-mode curve draw [call 5] [call 7]."
+  ],
+  "before": [
+   "**Inferred.** It rejects a0 below 4 [@0xec42524 taken] by calling gl_ErrorHandler with code 0x3f [call 10, @0xec42524 taken].",
+   "Otherwise [@0xec42524 fall] it runs a loop of a0-3 segments [@0xec42628 taken], calls gl_findbasis [call 1, @0xec42524 fall], and drives __iglooSetEnable with enable 0xd98 [call 4, @0xec42524 fall], glMap1f [call 5, @0xec42524 fall], glMapGrid1f [call 6, @0xec42524 fall], glEvalMesh1 [call 7, @0xec42524 fall] and glFlush [call 8, @0xec42524 fall] the way gl_i_rcrv does.",
+   "The two unnamed callees are not identified [call 2] [call 3].",
+   "Role (from facts): immediate-mode non-rational curve draw [call 5] [call 7]."
+  ],
+  "error": "role-word",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec42528",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42534",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 11712
+    },
+    {
+     "address": "0xec42540",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 216
+    },
+    {
+     "address": "0xec42550",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 220
+    },
+    {
+     "address": "0xec425c8",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425cc",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425d4",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425d8",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425dc",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425e8",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425ec",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425f0",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec425fc",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": null
+    },
+    {
+     "address": "0xec42600",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec42604",
+     "kind": "load",
+     "mn": "lwc1",
+     "offset": null
+    },
+    {
+     "address": "0xec4261c",
+     "kind": "store",
+     "mn": "swc1",
+     "offset": null
+    },
+    {
+     "address": "0xec42660",
+     "kind": "load",
+     "mn": "lh",
+     "offset": 11716
+    },
+    {
+     "address": "0xec4266c",
+     "kind": "load",
+     "mn": "lh",
+     "offset": 11716
+    },
+    {
+     "address": "0xec42678",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42684",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 48
+    },
+    {
+     "address": "0xec4271c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec42524",
+     "first": 247735504,
+     "last": 247735592,
+     "reached": true,
+     "succ": [
+      19,
+      1
+     ]
+    },
+    {
+     "branch": "0xec42574",
+     "first": 247735596,
+     "last": 247735672,
+     "reached": true,
+     "succ": [
+      17,
+      2
+     ]
+    },
+    {
+     "first": 247735676,
+     "last": 247735704,
+     "reached": true,
+     "succ": [
+      6
+     ]
+    },
+    {
+     "first": 247735708,
+     "last": 247735708,
+     "reached": false,
+     "succ": []
+    },
+    {
+     "first": 247735712,
+     "last": 247735712,
+     "reached": true,
+     "succ": [
+      5
+     ]
+    },
+    {
+     "branch": "0xec425a8",
+     "first": 247735716,
+     "last": 247735724,
+     "reached": true,
+     "succ": [
+      16,
+      6
+     ]
+    },
+    {
+     "first": 247735728,
+     "last": 247735740,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    },
+    {
+     "first": 247735744,
+     "last": 247735748,
+     "reached": true,
+     "succ": [
+      8
+     ]
+    },
+    {
+     "branch": "0xec42618",
+     "first": 247735752,
+     "last": 247735836,
+     "reached": true,
+     "succ": [
+      8,
+      9
+     ]
+    },
+    {
+     "branch": "0xec42628",
+     "first": 247735840,
+     "last": 247735852,
+     "reached": true,
+     "succ": [
+      7,
+      10
+     ]
+    },
+    {
+     "branch": "0xec4267c",
+     "first": 247735856,
+     "last": 247735936,
+     "reached": true,
+     "succ": [
+      4,
+      11
+     ]
+    },
+    {
+     "branch": "0xec42688",
+     "first": 247735940,
+     "last": 247735948,
+     "reached": true,
+     "succ": [
+      15,
+      12
+     ]
+    },
+    {
+     "branch": "0xec42690",
+     "first": 247735952,
+     "last": 247735956,
+     "reached": true,
+     "succ": [
+      15,
+      13
+     ]
+    },
+    {
+     "branch": "0xec42698",
+     "first": 247735960,
+     "last": 247735964,
+     "reached": true,
+     "succ": [
+      15,
+      14
+     ]
+    },
+    {
+     "branch": "0xec426a4",
+     "first": 247735968,
+     "last": 247735976,
+     "reached": true,
+     "succ": [
+      4,
+      15
+     ]
+    },
+    {
+     "first": 247735980,
+     "last": 247735992,
+     "reached": true,
+     "succ": [
+      5
+     ]
+    },
+    {
+     "first": 247735996,
+     "last": 247735996,
+     "reached": true,
+     "succ": [
+      17
+     ]
+    },
+    {
+     "first": 247736000,
+     "last": 247736012,
+     "reached": true,
+     "succ": [
+      18
+     ]
+    },
+    {
+     "first": 247736016,
+     "last": 247736068,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247736072,
+     "last": 247736100,
+     "reached": true,
+     "succ": [
+      18
+     ]
+    }
+   ],
+   "branches": {
+    "0xec42524": {
+     "fall": "a0 >= 0x4 (signed)",
+     "mn": "bne",
+     "taken": "a0 < 0x4 (signed)",
+     "target": "0xec42708"
+    },
+    "0xec42574": {
+     "fall": "s4(=a0-3) > 0 (signed)",
+     "mn": "blez",
+     "taken": "s4(=a0-3) <= 0 (signed)",
+     "target": "0xec426c0"
+    },
+    "0xec425a8": {
+     "fall": "s4(?) != 0",
+     "mn": "beq",
+     "taken": "s4(?) == 0",
+     "target": "0xec426bc"
+    },
+    "0xec42618": {
+     "fall": "a0(?) == s0(?)",
+     "mn": "bne",
+     "taken": "a0(?) != s0(?)",
+     "target": "0xec425c8"
+    },
+    "0xec42628": {
+     "fall": "a7(?) == s2(=0x4)",
+     "mn": "bne",
+     "taken": "a7(?) != s2(=0x4)",
+     "target": "0xec425c0"
+    },
+    "0xec4267c": {
+     "fall": "a1(=[0x1004]) != 0",
+     "mn": "beq",
+     "taken": "a1(=[0x1004]) == 0",
+     "target": "0xec425a0"
+    },
+    "0xec42688": {
+     "fall": "s6(=0x404) != a0(=[[0x1004]+48])",
+     "mn": "beq",
+     "taken": "s6(=0x404) == a0(=[[0x1004]+48])",
+     "target": "0xec426ac"
+    },
+    "0xec42690": {
+     "fall": "s7(=0x400) != a0(=[[0x1004]+48])",
+     "mn": "beq",
+     "taken": "s7(=0x400) == a0(=[[0x1004]+48])",
+     "target": "0xec426ac"
+    },
+    "0xec42698": {
+     "fall": "s8(=0x401) != a0(=[[0x1004]+48])",
+     "mn": "beq",
+     "taken": "s8(=0x401) == a0(=[[0x1004]+48])",
+     "target": "0xec426ac"
+    },
+    "0xec426a4": {
+     "fall": "t8(=0x408) == a0(=[[0x1004]+48])",
+     "mn": "bne",
+     "taken": "t8(=0x408) != a0(=[[0x1004]+48])",
+     "target": "0xec425a0"
+    }
+   },
+   "calls": {
+    "0xec42538": {
+     "args": {
+      "0": "[[sym(gl_wstatep)]+11712]",
+      "1": "0x1",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_findbasis",
+     "tail": false,
+     "target": "0xec428d0"
+    },
+    "0xec42548": {
+     "args": {
+      "0": "0x1",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "(unknown callee)",
+     "tail": false,
+     "target": null
+    },
+    "0xec42554": {
+     "args": {
+      "0": "?",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "(unknown callee)",
+     "tail": false,
+     "target": null
+    },
+    "0xec42564": {
+     "args": {
+      "0": "0xd98",
+      "1": "0x1",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec42648": {
+     "args": {
+      "0": "0xd98",
+      "1": "?",
+      "2": "?",
+      "3": "0x4",
+      "4": "0x4",
+      "5": "sp-176"
+     },
+     "callee": "glMap1f",
+     "tail": false,
+     "target": null
+    },
+    "0xec4265c": {
+     "args": {
+      "0": "[[sym(gl_wstatep)]+11716]:2",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glMapGrid1f",
+     "tail": false,
+     "target": null
+    },
+    "0xec42670": {
+     "args": {
+      "0": "0x1b01",
+      "1": "0x0",
+      "2": "[[sym(gl_wstatep)]+11716]:2",
+      "3": "?"
+     },
+     "callee": "glEvalMesh1",
+     "tail": false,
+     "target": null
+    },
+    "0xec426ac": {
+     "args": {
+      "0": "[[0x1004]+48]",
+      "1": "[0x1004]",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "glFlush",
+     "tail": false,
+     "target": null
+    },
+    "0xec426c4": {
+     "args": {
+      "0": "0xd98",
+      "1": "0x0",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "__iglooSetEnable",
+     "tail": false,
+     "target": "0xec5cb70"
+    },
+    "0xec42718": {
+     "args": {
+      "0": "0x3f",
+      "1": "0x2",
+      "2": "[0xecd7164]",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "gl_ErrorHandler",
+     "tail": false,
+     "target": "0xec5d440"
+    }
+   },
+   "name": "gl_i_rcrvn",
+   "returns": {
+    "0xec42700": "one of ret(__iglooSetEnable), ret(gl_ErrorHandler)"
+   },
+   "text": "- `gl_i_rcrvn` in `libgl.so` at 0xec424d0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec424d0-0xec42728 (600 bytes).\n  It occupies 600 bytes.\n  The `lw` at 0xec42528 loads 4 bytes from sym(gl_wstatep) +0x0.\n  The `lw` at 0xec42534 loads 4 bytes from [sym(gl_wstatep)] +0x2dc0.\n  The `lw` at 0xec42540 loads 4 bytes from [sym(gl_wstatep)] +0xd8.\n  The `lw` at 0xec42550 loads 4 bytes from [sym(gl_wstatep)] +0xdc.\n  8 such `lwc1` accesses load 4 bytes from ?, including `lwc1` at 0xec425c8, `lwc1` at 0xec425cc, `lwc1` at 0xec425d8.\n  4 such `swc1` accesses store 4 bytes to ?, including `swc1` at 0xec425d4, `swc1` at 0xec425e8, `swc1` at 0xec425fc.\n  2 such `lh` accesses load 2 bytes from [sym(gl_wstatep)] +0x2dc4, including `lh` at 0xec42660, `lh` at 0xec4266c.\n  The `lw` at 0xec42678 loads 4 bytes from abs 0x1004.\n  The `lw` at 0xec42684 loads 4 bytes from [0x1004] +0x30.\n  The `lw` at 0xec4271c loads 4 bytes from abs 0xecd7164.\n  The `bgezall` at 0xec42538 calls gl_findbasis [0xec428d0] with a0=[[sym(gl_wstatep)]+11712], a1=0x1, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `jalr` at 0xec42548 calls (unknown callee) with a0=0x1, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec42554 calls (unknown callee) with a0=?, a1=?, a2=?, a3=?.\n  The `jalr` at 0xec42564 calls __iglooSetEnable [0xec5cb70] with a0=0xd98, a1=0x1, a2=?, a3=?.\n  The `jalr` at 0xec42648 calls glMap1f with a0=0xd98, a1=?, a2=?, a3=0x4, a4=0x4, a5=sp-176; fp f13=f20, f14=0x3f800000.\n  The `jalr` at 0xec4265c calls glMapGrid1f with a0=[[sym(gl_wstatep)]+11716]:2, a1=?, a2=?, a3=?; fp f13=f20, f14=0x3f800000.\n  The `jalr` at 0xec42670 calls glEvalMesh1 with a0=0x1b01, a1=0x0, a2=[[sym(gl_wstatep)]+11716]:2, a3=?.\n  The `jalr` at 0xec426ac calls glFlush with a0=[[0x1004]+48], a1=[0x1004], a2=?, a3=?.\n  The `jalr` at 0xec426c4 calls __iglooSetEnable [0xec5cb70] with a0=0xd98, a1=0x0, a2=?, a3=?.\n  The `jalr` at 0xec42718 calls gl_ErrorHandler [0xec5d440] with a0=0x3f, a1=0x2, a2=[0xecd7164], a3=a3 at entry (arg3).\n  The `bne` branch at 0xec42524 targets 0xec42708, is taken when a0 < 0x4 (signed), and falls through when a0 >= 0x4 (signed).\n  The `blez` branch at 0xec42574 targets 0xec426c0, is taken when s4(=a0-3) <= 0 (signed), and falls through when s4(=a0-3) > 0 (signed).\n  The `beq` branch at 0xec42594 targets 0xec425b0 and is always taken.\n  The `beq` branch at 0xec425a8 targets 0xec426bc, is taken when s4(?) == 0, and falls through when s4(?) != 0.\n  The `bne` branch at 0xec42618 targets 0xec425c8, is taken when a0(?) != s0(?), and falls through when a0(?) == s0(?).\n  The `bne` branch at 0xec42628 targets 0xec425c0, is taken when a7(?) != s2(=0x4), and falls through when a7(?) == s2(=0x4).\n  The `beq` branch at 0xec4267c targets 0xec425a0, is taken when a1(=[0x1004]) == 0, and falls through when a1(=[0x1004]) != 0.\n  The `beq` branch at 0xec42688 targets 0xec426ac, is taken when s6(=0x404) == a0(=[[0x1004]+48]), and falls through when s6(=0x404) != a0(=[[0x1004]+48]).\n  The `beq` branch at 0xec42690 targets 0xec426ac, is taken when s7(=0x400) == a0(=[[0x1004]+48]), and falls through when s7(=0x400) != a0(=[[0x1004]+48]).\n  The `beq` branch at 0xec42698 targets 0xec426ac, is taken when s8(=0x401) == a0(=[[0x1004]+48]), and falls through when s8(=0x401) != a0(=[[0x1004]+48]).\n  The `bne` branch at 0xec426a4 targets 0xec425a0, is taken when t8(=0x408) != a0(=[[0x1004]+48]), and falls through when t8(=0x408) == a0(=[[0x1004]+48]).\n  The `beq` branch at 0xec426b4 targets 0xec425a4 and is always taken.\n  The `beq` branch at 0xec42720 targets 0xec426d0 and is always taken.\n  The return at 0xec42700 has v0 = one of ret(__iglooSetEnable), ret(gl_ErrorHandler).\n  The instructions from 0xec4259c to 0xec4259c are not reached by any path from the entry, and their branches are not listed.\n"
+  }
+ },
+ "gl_n_patchprecision": {
+  "address": "0xec42e70",
+  "after": [
+   "**Inferred.** Checks the flag at 0xece8bf0 [@0xec42e8c] and, when it is set [@0xec42e8c fall nonzero], calls __iglooNCloseMoveDraw first [call 1, @0xec42e8c fall]; a clear flag skips that call [@0xec42e8c taken].",
+   "It then stores two halfwords into the state at gl_wstatep +0x2dd0 and +0x2dd2 [@0xec42eb8] [@0xec42ed0], using the words loaded from the argument at +0x0 and +0x4.",
+   "It returns a0+8 [@0xec42ecc].",
+   "Role (from name): a patch-state setter in the normal-vector family; the facts do not show what the two stored halfwords mean."
+  ],
+  "before": [
+   "**Inferred.** Checks the flag at 0xece8bf0 [@0xec42e8c] and, when it is clear [@0xec42e8c fall zero], calls __iglooNCloseMoveDraw first [call 1, @0xec42e8c fall].",
+   "It then stores two halfwords into the state at gl_wstatep +0x2dd0 and +0x2dd2 [@0xec42eb8] [@0xec42ed0], using the words loaded from the argument at +0x0 and +0x4.",
+   "It returns a0+8 [@0xec42ecc].",
+   "Role (from facts): a patch-state setter in the normal-vector family [@0xec42eb8]."
+  ],
+  "error": "cite-branch",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec42e88",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42eb0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42eb4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42eb8",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 11728
+    },
+    {
+     "address": "0xec42ebc",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec42ec4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 4
+    },
+    {
+     "address": "0xec42ed0",
+     "kind": "store",
+     "mn": "sh",
+     "offset": 11730
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec42e8c",
+     "first": 247737968,
+     "last": 247738000,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247738004,
+     "last": 247738016,
+     "reached": true,
+     "succ": [
+      2
+     ]
+    },
+    {
+     "first": 247738020,
+     "last": 247738064,
+     "reached": true,
+     "succ": []
+    }
+   ],
+   "branches": {
+    "0xec42e8c": {
+     "fall": "at(=[0xece8bf0]) != 0",
+     "mn": "beq",
+     "taken": "at(=[0xece8bf0]) == 0",
+     "target": "0xec42ea4"
+    }
+   },
+   "calls": {
+    "0xec42e98": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "__iglooNCloseMoveDraw",
+     "tail": false,
+     "target": "0xec92d80"
+    }
+   },
+   "name": "gl_n_patchprecision",
+   "returns": {
+    "0xec42ecc": "a0+8"
+   },
+   "text": "- `gl_n_patchprecision` in `libgl.so` at 0xec42e70 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec42e70-0xec42ed4 (100 bytes).\n  It occupies 100 bytes.\n  The `lw` at 0xec42e88 loads 4 bytes from abs 0xece8bf0 (gl_inMoveDraw).\n  2 such `lw` accesses load 4 bytes from sym(gl_wstatep) +0x0, including `lw` at 0xec42eb0, `lw` at 0xec42ebc.\n  The `lw` at 0xec42eb4 loads 4 bytes from a0 (arg0 at entry) +0x0.\n  The `sh` at 0xec42eb8 stores 2 bytes to [sym(gl_wstatep)] +0x2dd0.\n  The `lw` at 0xec42ec4 loads 4 bytes from a0 (arg0 at entry) +0x4.\n  The `sh` at 0xec42ed0 stores 2 bytes to [sym(gl_wstatep)] +0x2dd2.\n  The `jalr` at 0xec42e98 calls __iglooNCloseMoveDraw [0xec92d80] with a0=a0 at entry (arg0), a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `beq` branch at 0xec42e8c targets 0xec42ea4, is taken when at(=[0xece8bf0]) == 0, and falls through when at(=[0xece8bf0]) != 0.\n  The return at 0xec42ecc has v0 = a0+8.\n"
+  }
+ },
+ "gl_shademodel": {
+  "address": "0xec34dc0",
+  "after": [
+   "**Inferred.** Reads state through gl_wstatep and the globals at 0xece8bf8 and 0x1004 [@0xec34de0] [@0xec34e08] [@0xec34e14], then calls __iglooShadeModel from three call sites [call 1] [call 2] [call 3], each behind a test of the state [@0xec34de8] [@0xec34e0c] [@0xec34e2c], and each path reaches at most one of them.",
+   "The call passes 0x1d01 [call 1, @0xec34de8 fall] and the calls pass 0x1d00 [call 2, @0xec34e2c fall] [call 3, @0xec34e0c taken].",
+   "The exact conditions stay partly open.",
+   "Role (from facts): sets the shade model through __iglooShadeModel [call 1] [call 2] [call 3]."
+  ],
+  "before": [
+   "**Inferred.** Reads state through gl_wstatep and the globals at 0xece8bf8 and 0x1004 [@0xec34de0] [@0xec34e08] [@0xec34e14], then calls __iglooShadeModel up to three times [call 1] [call 2] [call 3].",
+   "The first call passes 0x1d01 [call 1] and the later calls pass 0x1d00 [call 2] [call 3].",
+   "Each call is guarded by a test of the state [@0xec34de8] [@0xec34e0c], so the exact conditions stay partly open.",
+   "Role (from facts): sets the shade model to smooth or flat through __iglooShadeModel [call 1] [call 2] [call 3]."
+  ],
+  "error": "condition-missing",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0xec34de0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec34e08",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec34e14",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0xec34e18",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 20
+    },
+    {
+     "address": "0xec34e1c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 16
+    },
+    {
+     "address": "0xec34e28",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 2904
+    },
+    {
+     "address": "0xec34e48",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 276
+    },
+    {
+     "address": "0xec34e58",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 20
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0xec34de8",
+     "first": 247680448,
+     "last": 247680492,
+     "reached": true,
+     "succ": [
+      2,
+      1
+     ]
+    },
+    {
+     "first": 247680496,
+     "last": 247680512,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    },
+    {
+     "branch": "0xec34e0c",
+     "first": 247680516,
+     "last": 247680528,
+     "reached": true,
+     "succ": [
+      8,
+      3
+     ]
+    },
+    {
+     "branch": "0xec34e20",
+     "first": 247680532,
+     "last": 247680548,
+     "reached": true,
+     "succ": [
+      5,
+      4
+     ]
+    },
+    {
+     "branch": "0xec34e2c",
+     "first": 247680552,
+     "last": 247680560,
+     "reached": true,
+     "succ": [
+      6,
+      5
+     ]
+    },
+    {
+     "first": 247680564,
+     "last": 247680568,
+     "reached": true,
+     "succ": [
+      6
+     ]
+    },
+    {
+     "first": 247680572,
+     "last": 247680572,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    },
+    {
+     "first": 247680576,
+     "last": 247680600,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 247680604,
+     "last": 247680620,
+     "reached": true,
+     "succ": [
+      7
+     ]
+    }
+   ],
+   "branches": {
+    "0xec34de8": {
+     "fall": "a0 != 0",
+     "mn": "beq",
+     "taken": "a0 == 0",
+     "target": "0xec34e04"
+    },
+    "0xec34e0c": {
+     "fall": "a0(=[0xece8bf8]) != 0",
+     "mn": "beq",
+     "taken": "a0(=[0xece8bf8]) == 0",
+     "target": "0xec34e5c"
+    },
+    "0xec34e20": {
+     "fall": "a1(=[[[0x1004]+20]+16]) == 0",
+     "mn": "bne",
+     "taken": "a1(=[[[0x1004]+20]+16]) != 0",
+     "target": "0xec34e34"
+    },
+    "0xec34e2c": {
+     "fall": "a2(=[[sym(gl_wstatep)]+2904]) != a3(=0x1)",
+     "mn": "beq",
+     "taken": "a2(=[[sym(gl_wstatep)]+2904]) == a3(=0x1)",
+     "target": "0xec34e3c"
+    }
+   },
+   "calls": {
+    "0xec34df4": {
+     "args": {
+      "0": "0x1d01",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "0x1"
+     },
+     "callee": "__iglooShadeModel",
+     "tail": false,
+     "target": "0xecb7a10"
+    },
+    "0xec34e34": {
+     "args": {
+      "0": "0x1d00",
+      "1": "[[[0x1004]+20]+16]",
+      "2": "?",
+      "3": "0x1"
+     },
+     "callee": "__iglooShadeModel",
+     "tail": false,
+     "target": "0xecb7a10"
+    },
+    "0xec34e60": {
+     "args": {
+      "0": "0x1d00",
+      "1": "a1 at entry (arg1)",
+      "2": "[sym(gl_wstatep)]",
+      "3": "0x1"
+     },
+     "callee": "__iglooShadeModel",
+     "tail": false,
+     "target": "0xecb7a10"
+    }
+   },
+   "name": "gl_shademodel",
+   "returns": {
+    "0xec34e54": "one of ret(__iglooShadeModel), ?"
+   },
+   "text": "- `gl_shademodel` in `libgl.so` at 0xec34dc0 (n32).\n  Evidence grade: inferred.\n  Exact binary: `libgl.so`.\n  Range: 0xec34dc0-0xec34e70 (176 bytes).\n  It occupies 176 bytes.\n  The `lw` at 0xec34de0 loads 4 bytes from sym(gl_wstatep) +0x0.\n  The `lw` at 0xec34e08 loads 4 bytes from abs 0xece8bf8 (gl_iglooGouraudCIDepthCue).\n  The `lw` at 0xec34e14 loads 4 bytes from abs 0x1004.\n  The `lw` at 0xec34e18 loads 4 bytes from [0x1004] +0x14.\n  The `lw` at 0xec34e1c loads 4 bytes from [[0x1004]+20] +0x10.\n  The `lw` at 0xec34e28 loads 4 bytes from [sym(gl_wstatep)] +0xb58.\n  The `lw` at 0xec34e48 loads 4 bytes from [sym(gl_wstatep)] +0x114.\n  The `sw` at 0xec34e58 stores 4 bytes to [[sym(gl_wstatep)]+276] +0x14.\n  The `jalr` at 0xec34df4 calls __iglooShadeModel [0xecb7a10] with a0=0x1d01, a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=0x1.\n  The `jalr` at 0xec34e34 calls __iglooShadeModel [0xecb7a10] with a0=0x1d00, a1=[[[0x1004]+20]+16], a2=?, a3=0x1.\n  The `jalr` at 0xec34e60 calls __iglooShadeModel [0xecb7a10] with a0=0x1d00, a1=a1 at entry (arg1), a2=[sym(gl_wstatep)], a3=0x1.\n  The `beq` branch at 0xec34de8 targets 0xec34e04, is taken when a0 == 0, and falls through when a0 != 0.\n  The `beq` branch at 0xec34dfc targets 0xec34e40 and is always taken.\n  The `beq` branch at 0xec34e0c targets 0xec34e5c, is taken when a0(=[0xece8bf8]) == 0, and falls through when a0(=[0xece8bf8]) != 0.\n  The `bne` branch at 0xec34e20 targets 0xec34e34, is taken when a1(=[[[0x1004]+20]+16]) != 0, and falls through when a1(=[[[0x1004]+20]+16]) == 0.\n  The `beq` branch at 0xec34e2c targets 0xec34e3c, is taken when a2(=[[sym(gl_wstatep)]+2904]) == a3(=0x1), and falls through when a2(=[[sym(gl_wstatep)]+2904]) != a3(=0x1).\n  The `beq` branch at 0xec34e68 targets 0xec34e40 and is always taken.\n  The return at 0xec34e54 has v0 = one of ret(__iglooShadeModel), ?.\n"
+  }
+ },
+ "jt_set_global_instruction": {
+  "address": "0x10166e60",
+  "after": [
+   "**Inferred.** Before the loop it copies arg1 with strdup [call 1], canonizes the copy through jt_canonize [call 2] and builds a vector with jt_new_inst_vector [call 3].",
+   "The loop runs over entries counted by the word at +0x8 of its argument (count test [@0x10166edc taken], back-edge [@0x10167110 taken]).",
+   "It compares against the copy with strcmp [call 4, @0x10166edc fall] and calls jt_unpack_vector [call 5, @0x10166edc fall].",
+   "After the loop it packs the vector with jt_pack_vector [call 6], sends it through jt_send_instruction [call 7], frees the copy [call 8] and disposes of the vector [call 9].",
+   "Role (from facts): looks up an instruction by name in a list and sends it [call 4] [call 7].",
+   "The facts do not show what the sent vector tests."
+  ],
+  "before": [
+   "**Inferred.** Walks a list of instruction entries, counted by the word at +0x8 of its argument (the count test [@0x10166edc] and the loop closes [@0x10167110 taken]).",
+   "For each one it copies the name from arg1 with strdup [call 1], canonizes it through jt_canonize [call 2], and compares it with strcmp [call 4].",
+   "It then builds a vector with jt_new_inst_vector [call 3], packs it with jt_pack_vector [call 6], sends it through jt_send_instruction [call 7], and disposes of it [call 9].",
+   "Role (from facts): looks up an instruction by name in a list and sends it [call 4] [call 7].",
+   "The facts do not show what the sent vector tests."
+  ],
+  "error": "cite-order",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0x10166ecc",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 8
+    },
+    {
+     "address": "0x10166ee8",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12
+    },
+    {
+     "address": "0x10166f00",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0x10166f14",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12
+    },
+    {
+     "address": "0x10166f2c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0x10166f30",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0x10166f5c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12
+    },
+    {
+     "address": "0x10166f74",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0x10166f78",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0x10166f88",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0x10167024",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12
+    },
+    {
+     "address": "0x1016703c",
+     "kind": "store",
+     "mn": "sw",
+     "offset": null
+    },
+    {
+     "address": "0x10167044",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12
+    },
+    {
+     "address": "0x1016705c",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0x10167060",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0x10167070",
+     "kind": "load",
+     "mn": "lw",
+     "offset": null
+    },
+    {
+     "address": "0x10167088",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12
+    },
+    {
+     "address": "0x101670a0",
+     "kind": "store",
+     "mn": "sw",
+     "offset": null
+    },
+    {
+     "address": "0x101670cc",
+     "kind": "store",
+     "mn": "sb",
+     "offset": null
+    },
+    {
+     "address": "0x101670d8",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 12
+    },
+    {
+     "address": "0x101670f0",
+     "kind": "store",
+     "mn": "sw",
+     "offset": null
+    },
+    {
+     "address": "0x10167120",
+     "kind": "store",
+     "mn": "sw",
+     "offset": 24
+    },
+    {
+     "address": "0x10167130",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 20
+    },
+    {
+     "address": "0x10167144",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 20
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0x10166edc",
+     "first": 269905504,
+     "last": 269905632,
+     "reached": true,
+     "succ": [
+      9,
+      1
+     ]
+    },
+    {
+     "branch": "0x10166f08",
+     "first": 269905636,
+     "last": 269905676,
+     "reached": true,
+     "succ": [
+      7,
+      2
+     ]
+    },
+    {
+     "branch": "0x10166f50",
+     "first": 269905680,
+     "last": 269905748,
+     "reached": true,
+     "succ": [
+      5,
+      3
+     ]
+    },
+    {
+     "branch": "0x10166fa0",
+     "first": 269905752,
+     "last": 269905828,
+     "reached": true,
+     "succ": [
+      6,
+      4
+     ]
+    },
+    {
+     "branch": "0x10166fc8",
+     "first": 269905832,
+     "last": 269905868,
+     "reached": true,
+     "succ": [
+      3,
+      5
+     ]
+    },
+    {
+     "first": 269905872,
+     "last": 269905888,
+     "reached": true,
+     "succ": [
+      6
+     ]
+    },
+    {
+     "first": 269905892,
+     "last": 269906088,
+     "reached": true,
+     "succ": [
+      8
+     ]
+    },
+    {
+     "first": 269906092,
+     "last": 269906172,
+     "reached": true,
+     "succ": [
+      8
+     ]
+    },
+    {
+     "branch": "0x10167110",
+     "first": 269906176,
+     "last": 269906196,
+     "reached": true,
+     "succ": [
+      1,
+      9
+     ]
+    },
+    {
+     "first": 269906200,
+     "last": 269906308,
+     "reached": true,
+     "succ": [
+      11
+     ]
+    },
+    {
+     "first": 269906312,
+     "last": 269906352,
+     "reached": false,
+     "succ": []
+    },
+    {
+     "first": 269906356,
+     "last": 269906376,
+     "reached": true,
+     "succ": []
+    }
+   ],
+   "branches": {
+    "0x10166edc": {
+     "fall": "v0(=[a0+8]-1) >= 0 (signed)",
+     "mn": "bltz",
+     "taken": "v0(=[a0+8]-1) < 0 (signed)",
+     "target": "0x10167118"
+    },
+    "0x10166f08": {
+     "fall": "a0(?) == a1(=0x1)",
+     "mn": "bne",
+     "taken": "a0(?) != a1(=0x1)",
+     "target": "0x101670ac"
+    },
+    "0x10166f50": {
+     "fall": "a1(=0x0) < a2(?) (signed)",
+     "mn": "beq",
+     "taken": "a1(=0x0) >= a2(?) (signed)",
+     "target": "0x10166fd0"
+    },
+    "0x10166fa0": {
+     "fall": "v0(=ret(strcmp)) != 0",
+     "mn": "beq",
+     "taken": "v0(=ret(strcmp)) == 0",
+     "target": "0x10166fe4"
+    },
+    "0x10166fc8": {
+     "fall": "a1(?) >= a2(?) (signed)",
+     "mn": "bne",
+     "taken": "a1(?) < a2(?) (signed)",
+     "target": "0x10166f58"
+    },
+    "0x10167110": {
+     "fall": "v1(?) < 0 (signed)",
+     "mn": "bgez",
+     "taken": "v1(?) >= 0 (signed)",
+     "target": "0x10166ee4"
+    }
+   },
+   "calls": {
+    "0x10166e88": {
+     "args": {
+      "0": "a1 at entry (arg1)",
+      "1": "a1 at entry (arg1)",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "strdup",
+     "tail": false,
+     "target": null
+    },
+    "0x10166ea0": {
+     "args": {
+      "0": "ret(strdup)",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "jt_canonize",
+     "tail": false,
+     "target": "0x1016bdf0"
+    },
+    "0x10166eb0": {
+     "args": {
+      "0": "a0 at entry (arg0)",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "jt_new_inst_vector",
+     "tail": false,
+     "target": "0x10164e50"
+    },
+    "0x10166f94": {
+     "args": {
+      "0": "?",
+      "1": "ret(strdup)",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "strcmp",
+     "tail": false,
+     "target": null
+    },
+    "0x10167004": {
+     "args": {
+      "0": "?",
+      "1": "sp-52",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "jt_unpack_vector",
+     "tail": false,
+     "target": "0x10164c30"
+    },
+    "0x10167138": {
+     "args": {
+      "0": "ret(jt_new_inst_vector)",
+      "1": "ret(jt_new_inst_vector)",
+      "2": "[a0+20]",
+      "3": "?",
+      "4": "a0 at entry (arg0)"
+     },
+     "callee": "jt_pack_vector",
+     "tail": false,
+     "target": "0x10164aa0"
+    },
+    "0x10167154": {
+     "args": {
+      "0": "[a0+20]",
+      "1": "ret(jt_new_inst_vector)",
+      "2": "0x0",
+      "3": "?"
+     },
+     "callee": "jt_send_instruction",
+     "tail": false,
+     "target": "0x10168680"
+    },
+    "0x10167164": {
+     "args": {
+      "0": "ret(strdup)",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "free",
+     "tail": false,
+     "target": null
+    },
+    "0x10167174": {
+     "args": {
+      "0": "ret(jt_new_inst_vector)",
+      "1": "?",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "jt_dispose_vector",
+     "tail": false,
+     "target": "0x10164ef0"
+    }
+   },
+   "name": "jt_set_global_instruction",
+   "returns": {
+    "0x101671c4": "0x0"
+   },
+   "text": "- `jt_set_global_instruction` in `irsaudit` at 0x10166e60 (n32).\n  Evidence grade: inferred.\n  Exact binary: `irsaudit`.\n  Range: 0x10166e60-0x101671cc (876 bytes).\n  It occupies 876 bytes.\n  The `lw` at 0x10166ecc loads 4 bytes from a0 (arg0 at entry) +0x8.\n  7 such `lw` accesses load 4 bytes from a0 (arg0 at entry) +0xc, including `lw` at 0x10166ee8, `lw` at 0x10166f14, `lw` at 0x10166f5c.\n  9 such `lw` accesses load 4 bytes from ?, including `lw` at 0x10166f00, `lw` at 0x10166f2c, `lw` at 0x10166f30.\n  3 such `sw` accesses store 4 bytes to ?, including `sw` at 0x1016703c, `sw` at 0x101670a0, `sw` at 0x101670f0.\n  The `sb` at 0x101670cc stores 1 byte to ?.\n  The `sw` at 0x10167120 stores 4 bytes to a0 (arg0 at entry) +0x18.\n  2 such `lw` accesses load 4 bytes from a0 (arg0 at entry) +0x14, including `lw` at 0x10167130, `lw` at 0x10167144.\n  The `jalr` at 0x10166e88 calls strdup with a0=a1 at entry (arg1), a1=a1 at entry (arg1), a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `jal` at 0x10166ea0 calls jt_canonize [0x1016bdf0] with a0=ret(strdup), a1=?, a2=?, a3=?.\n  The `jal` at 0x10166eb0 calls jt_new_inst_vector [0x10164e50] with a0=a0 at entry (arg0), a1=?, a2=?, a3=?.\n  The `jalr` at 0x10166f94 calls strcmp with a0=?, a1=ret(strdup), a2=?, a3=?.\n  The `jal` at 0x10167004 calls jt_unpack_vector [0x10164c30] with a0=?, a1=sp-52, a2=?, a3=?.\n  The `jal` at 0x10167138 calls jt_pack_vector [0x10164aa0] with a0=ret(jt_new_inst_vector), a1=ret(jt_new_inst_vector), a2=[a0+20], a3=?, a4=a0 at entry (arg0).\n  The `jal` at 0x10167154 calls jt_send_instruction [0x10168680] with a0=[a0+20], a1=ret(jt_new_inst_vector), a2=0x0, a3=?.\n  The `jalr` at 0x10167164 calls free with a0=ret(strdup), a1=?, a2=?, a3=?.\n  The `jal` at 0x10167174 calls jt_dispose_vector [0x10164ef0] with a0=ret(jt_new_inst_vector), a1=?, a2=?, a3=?.\n  The `bltz` branch at 0x10166edc targets 0x10167118, is taken when v0(=[a0+8]-1) < 0 (signed), and falls through when v0(=[a0+8]-1) >= 0 (signed).\n  The `bne` branch at 0x10166f08 targets 0x101670ac, is taken when a0(?) != a1(=0x1), and falls through when a0(?) == a1(=0x1).\n  The `beq` branch at 0x10166f50 targets 0x10166fd0, is taken when a1(=0x0) >= a2(?) (signed), and falls through when a1(=0x0) < a2(?) (signed).\n  The `beq` branch at 0x10166fa0 targets 0x10166fe4, is taken when v0(=ret(strcmp)) == 0, and falls through when v0(=ret(strcmp)) != 0.\n  The `bne` branch at 0x10166fc8 targets 0x10166f58, is taken when a1(?) < a2(?) (signed), and falls through when a1(?) >= a2(?) (signed).\n  The `beq` branch at 0x10166fdc targets 0x10166fe4 and is always taken.\n  The `beq` branch at 0x101670a4 targets 0x10167100 and is always taken.\n  The `bgez` branch at 0x10167110 targets 0x10166ee4, is taken when v1(?) >= 0 (signed), and falls through when v1(?) < 0 (signed).\n  The `beq` branch at 0x10167180 targets 0x101671b4 and is always taken.\n  The return at 0x101671c4 has v0 = 0x0.\n  The instructions from 0x10167188 to 0x101671b0 are not reached by any path from the entry, and their branches are not listed.\n"
+  }
+ },
+ "set_ge11_bypass_pointer": {
+  "address": "0x100377c4",
+  "after": [
+   "**Inferred.** Writes a bypass setting into a host register block through ged_host_reg_write [call 1].",
+   "It has four call sites [call 1] [call 2] [call 3] [call 4], and each invocation reaches three of them: the first with a0 = 0x235 and a1 = 0x40038 [call 1], and the third with a0 = 0x235 and a1 = a0 at entry [call 3], always.",
+   "When the field at KONAINFO +0x74 is below 5 (unsigned) [@0x10037820 taken] it makes the call with a0 = 0x233 and a1 = 0x8e1 [call 4, @0x10037820 taken].",
+   "Otherwise [@0x10037820 fall] it makes the call with a0 = 0x233 and a1 = 0xce1 [call 2, @0x10037820 fall].",
+   "Role (from facts): writes host register IDs 0x235 and 0x233 through ged_host_reg_write [call 1] [call 2].",
+   "Role (from name): the bypass pointer; the facts do not show what the register IDs or the chosen path mean."
+  ],
+  "before": [
+   "**Inferred.** Writes a bypass setting into a host register block through ged_host_reg_write [call 1].",
+   "It makes up to four calls with register IDs 0x235 and 0x233 and values 0x40038, 0xce1, a0 and 0x8e1 [call 1] [call 2] [call 3] [call 4].",
+   "The branch chooses a path by whether the field at KONAINFO +0x74 is below 5 (unsigned) [@0x10037820].",
+   "Role (from facts): sets a bypass register block through four ged_host_reg_write calls [call 1] [call 2] [call 3] [call 4].",
+   "Role (from name): the bypass pointer; the facts do not show what the register IDs or the chosen path mean."
+  ],
+  "error": "cite-count",
+  "sheet": {
+   "abi": "n32",
+   "accesses": [
+    {
+     "address": "0x100377f0",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0x100377f4",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0x100377fc",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 0
+    },
+    {
+     "address": "0x10037818",
+     "kind": "load",
+     "mn": "lw",
+     "offset": 116
+    }
+   ],
+   "blocks": [
+    {
+     "branch": "0x10037820",
+     "first": 268662724,
+     "last": 268662820,
+     "reached": true,
+     "succ": [
+      3,
+      1
+     ]
+    },
+    {
+     "first": 268662824,
+     "last": 268662836,
+     "reached": true,
+     "succ": [
+      2
+     ]
+    },
+    {
+     "first": 268662840,
+     "last": 268662872,
+     "reached": true,
+     "succ": []
+    },
+    {
+     "first": 268662876,
+     "last": 268662896,
+     "reached": true,
+     "succ": [
+      2
+     ]
+    }
+   ],
+   "branches": {
+    "0x10037820": {
+     "fall": "s3(=[[sym(KONAINFO)]+116]) >= 0x5 (unsigned)",
+     "mn": "bne",
+     "taken": "s3(=[[sym(KONAINFO)]+116]) < 0x5 (unsigned)",
+     "target": "0x1003785c"
+    }
+   },
+   "calls": {
+    "0x10037814": {
+     "args": {
+      "0": "0x235",
+      "1": "0x40038",
+      "2": "a2 at entry (arg2)",
+      "3": "a3 at entry (arg3)"
+     },
+     "callee": "ged_host_reg_write",
+     "tail": false,
+     "target": "0x100372d4"
+    },
+    "0x1003782c": {
+     "args": {
+      "0": "0x233",
+      "1": "0xce1",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "ged_host_reg_write",
+     "tail": false,
+     "target": "0x100372d4"
+    },
+    "0x10037840": {
+     "args": {
+      "0": "0x235",
+      "1": "a0 at entry (arg0)",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "ged_host_reg_write",
+     "tail": false,
+     "target": "0x100372d4"
+    },
+    "0x10037864": {
+     "args": {
+      "0": "0x233",
+      "1": "0x8e1",
+      "2": "?",
+      "3": "?"
+     },
+     "callee": "ged_host_reg_write",
+     "tail": false,
+     "target": "0x100372d4"
+    }
+   },
+   "name": "set_ge11_bypass_pointer",
+   "returns": {
+    "0x10037854": "ret(ged_host_reg_write)"
+   },
+   "text": "- `set_ge11_bypass_pointer` in `irsaudit` at 0x100377c4 (n32).\n  Evidence grade: inferred.\n  Exact binary: `irsaudit`.\n  Range: 0x100377c4-0x10037874 (176 bytes).\n  It occupies 176 bytes.\n  The `lw` at 0x100377f0 loads 4 bytes from abs 0x102bd650.\n  The `lw` at 0x100377f4 loads 4 bytes from abs 0x102be1e0.\n  The `lw` at 0x100377fc loads 4 bytes from sym(KONAINFO) +0x0.\n  The `lw` at 0x10037818 loads 4 bytes from [sym(KONAINFO)] +0x74.\n  The `jal` at 0x10037814 calls ged_host_reg_write [0x100372d4] with a0=0x235, a1=0x40038, a2=a2 at entry (arg2), a3=a3 at entry (arg3).\n  The `jal` at 0x1003782c calls ged_host_reg_write [0x100372d4] with a0=0x233, a1=0xce1, a2=?, a3=?.\n  The `jal` at 0x10037840 calls ged_host_reg_write [0x100372d4] with a0=0x235, a1=a0 at entry (arg0), a2=?, a3=?.\n  The `jal` at 0x10037864 calls ged_host_reg_write [0x100372d4] with a0=0x233, a1=0x8e1, a2=?, a3=?.\n  The `bne` branch at 0x10037820 targets 0x1003785c, is taken when s3(=[[sym(KONAINFO)]+116]) < 0x5 (unsigned), and falls through when s3(=[[sym(KONAINFO)]+116]) >= 0x5 (unsigned).\n  The `beq` branch at 0x1003786c targets 0x10037838 and is always taken.\n  The return at 0x10037854 has v0 = ret(ged_host_reg_write).\n"
+  }
+ }
+}
