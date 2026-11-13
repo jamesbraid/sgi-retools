@@ -4471,6 +4471,13 @@ def record_status(docs, v, cfg):
     return docs.best([h for h in docs.decs.get(v, []) if ctx_match(h.ctx, words)])
 
 
+def audits_link(lay):
+    """The markdown link from the coverage page to the audits table, its path written once and relative
+    to the page (the label and the target are the same text)."""
+    rel = os.path.relpath(lay.audits_file, os.path.dirname(lay.coverage_file))
+    return '[%s](%s)' % (rel, rel)
+
+
 def read_audits(path):
     """The latest independent audit of each table, from the inventory directory's audits.tsv: the sampled rows
     graded real, shallow or wrong by someone who did not write them. The last row of a table with the
@@ -4568,9 +4575,9 @@ def update_coverage(cfg, srows, imgs, kind, resolved, unres, by_win, sib, inputs
     if audited:
         lines += ['', '### Audited', '',
                   'The share of understood rows that an independent audit found real when it re-derived a '
-                  'random sample from the binaries ([%s](%s); the '
+                  'random sample from the binaries (%s; the '
                   'sample is small, so read the sample size). The percentages above are what the entries claim; '
-                  'this is how often the claim held up.' % (lay.audits_file, os.path.relpath(lay.audits_file, os.path.dirname(lay.coverage_file))), '',
+                  'this is how often the claim held up.' % audits_link(lay), '',
                   '| Table | Audited real | Sample | Date |', '|---|---:|---:|---|']
         for r in audited:
             lines.append('| %s | %s%% | %s | %s |' % (r['table'], r['audited_real_pct'], r['audited_sample'],
