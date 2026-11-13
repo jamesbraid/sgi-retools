@@ -4568,7 +4568,7 @@ def update_coverage(cfg, srows, imgs, kind, resolved, unres, by_win, sib, inputs
     if audited:
         lines += ['', '### Audited', '',
                   'The share of understood rows that an independent audit found real when it re-derived a '
-                  'random sample from the binaries ([%s/audits.tsv](%s/audits.tsv); the '
+                  'random sample from the binaries ([%s](%s); the '
                   'sample is small, so read the sample size). The percentages above are what the entries claim; '
                   'this is how often the claim held up.' % (lay.audits_file, os.path.relpath(lay.audits_file, os.path.dirname(lay.coverage_file))), '',
                   '| Table | Audited real | Sample | Date |', '|---|---:|---:|---|']
