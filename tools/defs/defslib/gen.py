@@ -21,6 +21,18 @@ MARK = "generated from "
 DOC_RE = re.compile(r"^(registers|format)(-extra|\.[a-z][a-z0-9_]*)?\.md$")
 
 
+def owned(lay, rel):
+    """True when defs-gen owns the file: it sits in one of the directories the generator fills and has the
+    extension it writes there, so a file it no longer produces (the output of a removed unit, a JSON file
+    that cannot carry a banner) is safe to remove. Anything else in generated/ (a README, cargo's target/,
+    a stray file) is not its to delete."""
+    for kind, ext in (("c", ".h"), ("py", ".py"), ("json", ".json"), ("xml", ".xml")):
+        if os.path.dirname(rel) == lay.gen_dir(kind) and rel.endswith(ext):
+            return True
+    rust = lay.gen_dir("rust")
+    return rel == rust + "/Cargo.toml" or (os.path.dirname(rel) == rust + "/src" and rel.endswith(".rs"))
+
+
 def render(repo, profile=None):
     """Return ({relative path: text}, [errors]) for the whole repo.
 
@@ -100,8 +112,9 @@ def stale(repo, files):
 
 
 def write(repo, files):
-    """Write every file, and remove leftovers in the generated tree that carry the generator banner.
-    Returns (written, removed, kept_unrecognised)."""
+    """Write every file, and remove leftovers: any file of a directory the generator owns (see owned), and
+    any other file in the generated tree that carries the generator banner. Returns
+    (written, removed, kept_unrecognised)."""
     written, removed, kept = [], [], []
     for rel, text in sorted(files.items()):
         path = os.path.join(repo.root, rel)
@@ -124,7 +137,7 @@ def write(repo, files):
                 head = f.read(400)
         except (OSError, UnicodeDecodeError):
             head = ""
-        if MARK in head and "defs-gen" in head:
+        if owned(repo.layout, rel) or (MARK in head and "defs-gen" in head):
             os.remove(path)
             removed.append(rel)
         else:
