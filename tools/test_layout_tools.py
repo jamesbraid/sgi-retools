@@ -58,6 +58,16 @@ class Workspace(unittest.TestCase):
 
 
 class InventoryTests(Workspace):
+    def test_coverage_links_the_audits_table_once(self):
+        self.write(self.LAYOUT["inventory"] + "/audits.tsv",
+                   "table\tdate\tsample\treal\tshallow\twrong\nfunctions\t2026-01-01\t10\t9\t1\t0\n")
+        r = self.run_tool("inventory.py", "--repo", self.ws)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        cov = self.read(self.LAYOUT["coverage"])
+        self.assertIn("### Audited", cov)
+        self.assertIn("[inventory/audits.tsv](inventory/audits.tsv)", cov)
+        self.assertNotIn("audits.tsv/audits.tsv", cov)
+
     def test_tables_and_coverage_land_where_the_workspace_keeps_them(self):
         r = self.run_tool("inventory.py", "--repo", self.ws)
         self.assertEqual(r.returncode, 0, r.stderr)
