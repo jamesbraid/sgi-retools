@@ -7,11 +7,11 @@ sources, check them, write the outputs and prove the outputs build.
 
 | Tool | Does |
 |---|---|
-| `defs-check [--build]` | loads `defs/`, runs every check, confirms `gen/` is fresh; `--build` also compiles and runs the outputs |
-| `defs-gen [--check]` | writes `gen/` and the forwarding headers; `--check` writes nothing and fails on a stale tree |
-| `defs-import` | converts a repo's annotated headers (`*_DECODE.h`, census headers) to `defs/` sources |
+| `defs-check [--build]` | loads the register maps, runs every check, confirms the generated tree is fresh and that no register is defined in two sibling repositories; `--build` also compiles and runs the outputs |
+| `defs-gen [--check]` | writes the generated tree and the register tables; `--check` writes nothing and fails on a stale tree |
+| `defs-import` | converts a repo's annotated headers (`*_DECODE.h`, census headers) to register-map sources |
 | `defs-compare` | compares an old header with its replacement macro by macro with the C compiler |
-| `ci-check` | the one command CI runs: `defs-check --build` when `defs/` exists, the older decode-header path otherwise |
+| `ci-check` | the one command CI runs: `defs-check --build` when the repo has register maps, the older decode-header path otherwise |
 | `forgejo-workflow.yml` | template for `.forgejo/workflows/re-check.yml` |
 | `test_defslib_*.py`, `test_defs.py` | tests (`python3 -m unittest discover -s retools/tools/defs -p 'test_*.py'`) |
 
@@ -20,7 +20,7 @@ generating. Building the outputs needs a C compiler; the Rust crate builds with
 `rustc` alone, with or without cargo. Run from the repo root:
 
 ```sh
-retools/tools/defs/defs-check [--root DIR] [--unit U ...] [--no-fresh] [--build] [--verbose]
+retools/tools/defs/defs-check [--root DIR] [--unit U ...] [--no-fresh] [--build] [--sibling NAME=PATH ...] [--skip-siblings] [--verbose]
 retools/tools/defs/defs-gen   [--root DIR] [--check]
 ```
 
@@ -30,17 +30,39 @@ problem (a source file does not load, a prose document or plugin is missing).
 ## Layout of a repo
 
 ```
-defs/
-  <unit>.toml          one hardware block, word family or table of constants
-  <unit>.<rev>.toml    optional revision overlay on <unit>
-  <unit>_helpers.h     optional hand-written C helpers the generated header includes
-  check.toml           the repo's check settings
-  legacy-dropped.txt   during a migration: old macros dropped on purpose (NAME, tab, reason)
-gen/                   generated and committed; CI fails when it is stale
-  c/<unit>.h           gen/rust/ (Cargo.toml, src/)      py/<unit>.py
-  json/<unit>.json     genxml/<unit>.xml                 docs/<unit>.md
-<old header path>      a forwarding header, for each unit that names one
+devices/<unit>/
+  registers.toml          one hardware block, word family or table of constants
+  registers.<rev>.toml    optional revision overlay on <unit>
+  registers-extra.toml    optional second unit kept beside it (its own `unit` name)
+  helpers.h               optional hand-written C helpers the generated header includes
+                          (helpers.<rev>.h and helpers-extra.h for the others)
+  registers.md            generated reference table (registers.<rev>.md, registers-extra.md);
+                          first line says it is generated
+  README.md               hand-written: how the hardware works
+formats/<name>/
+  format.toml             a software data structure, the same schema (format.md is generated)
+generated/              generated and committed; CI fails when it is stale
+  c/<unit>.h              rust/ (Cargo.toml, src/)      python/<unit>.py
+  json/<unit>.json        xml/<unit>.xml
+tools/config/
+  defs-check.toml         the repo's check settings
+  defs-legacy-dropped.txt during a migration: old macros dropped on purpose (NAME, tab, reason)
+<old header path>         a forwarding header, for each unit that still names one
 ```
+
+The directory is named like the unit in `registers.toml` (hyphens read as underscores). The
+repo's layout is decided by `tools/_layout.py`, which every tool uses. A repo that has not
+moved keeps the older shape, which is read and written exactly as before:
+
+```
+defs/<unit>.toml, defs/<unit>.<rev>.toml, defs/<unit>_helpers.h, defs/check.toml, defs/legacy-dropped.txt
+gen/c/<unit>.h, gen/rust/, gen/py/<unit>.py, gen/json/<unit>.json, gen/genxml/<unit>.xml, gen/docs/<unit>.md
+```
+
+Register maps under `devices/` or `formats/` win when both exist, and the tools then
+ignore `defs/` and `gen/`. Everything below names the current paths; read `defs/<unit>.toml`
+for `devices/<unit>/registers.toml`, `gen/py` for `generated/python` and `gen/genxml` for
+`generated/xml` on a repo that has not moved.
 
 Generated files carry a banner naming their source and are never edited. Output is
 deterministic, so staleness is a byte comparison.
@@ -104,7 +126,7 @@ error.
 
 ### Revision overlays
 
-`defs/<unit>.<rev>.toml` builds a second unit from the first without copying it.
+`devices/<unit>/registers.<rev>.toml` builds a second unit from the first without copying it.
 The result is named `<unit>_<rev>` with prefix `<PREFIX>_<REV>` unless `override`
 says otherwise, and it does not inherit the base's old header path or old names.
 
@@ -125,7 +147,9 @@ grade = "inferred"
 A base file stays untouched, so a layer of corrections (for example, what a driver
 shows about a register a vendor guide documents) lives in its own file.
 
-## defs/check.toml
+## tools/config/defs-check.toml
+
+(`defs/check.toml` on a repo that has not moved.)
 
 What `defs.toml` held, minus the header list. Everything is optional but `[project]`.
 
@@ -191,12 +215,18 @@ old name from `[c.aliases]`.
 2. Leaks. The built-in rules of the older form below (vendor paths, file and routine
    names, board tokens, binary offsets, tool names, ...) plus `[[banned.extra]]` are
    run over the public rendering of every generated file and over every
-   `defs/<unit>_helpers.h`. Generated Rust must not name the project at all.
+   `devices/<unit>/helpers.h`. Generated Rust must not name the project at all.
 3. Prose: `[[claims]]`, vectors against `notes_corpus`, `no_addresses`, and (for a
    unit with registers) no register offset spelled out in `doc` text.
 4. Plugins.
-5. Freshness: `gen/` and the forwarding headers are what `defs-gen` would write, with
-   no file missing and none left over.
+5. Freshness: `generated/`, the register tables and the forwarding headers are what
+   `defs-gen` would write, with no file missing and none left over.
+6. Siblings: the repositories named in `tools/config/inventory-siblings.json` are
+   looked for at `--sibling NAME=PATH`, the `siblings` map of the inventory config,
+   `../NAME` and `.cache/siblings/NAME`. Each register with the same unit name, address
+   space and offset in this repo and in a sibling fails, whatever its name: a register
+   lives in one repository. A sibling that is not present or does not load is a note on
+   stderr and does not fail; `--skip-siblings` turns the check off.
 
 `--build` then builds what is committed: every C header and forwarding header
 compiles with `-Wall -Wextra -Werror` and a generated program decodes each vector
@@ -210,7 +240,7 @@ tests pass (skipped with a note when there is no `rustc`).
 A repo plugin still works. It may define `CLAIMS`, `check_header(ctx, hdr)`,
 `check_group(ctx, group, hdrs)` and `check_final(ctx)` as in the older form. `ctx` and
 `hdr` have the old shapes, built from the model: `hdr.file` is the old header path
-(or `gen/c/<unit>.h`), `hdr.text` is the generated C, then the unit's helpers, then the unit
+(or `generated/c/<unit>.h`), `hdr.text` is the generated C, then the unit's helpers, then the unit
 regenerated in the old comment grammar (`/* REG: ... */`, `FIELD`, `ENUM`, `WORD`, and
 ` * TESTVEC:` lines), so a plugin that reads those lines keeps working,
 `hdr.regs`, `hdr.fields`, `hdr.widths`, `hdr.enums`, `hdr.defs` (every generated
@@ -232,12 +262,12 @@ check always runs on the public rendering, so switching profiles needs no new fi
 
 | Output | Contents |
 |---|---|
-| `gen/c/<unit>.h` | `<BLOCK>_<REG>_OFFSET`, `_COUNT`, `_STRIDE`; `<BLOCK>_<REG>_<FIELD>_SHIFT`, `_MASK`, `_INPLACE`; `<PREFIX>_<WORD>_WIDTH` and word fields the same way; `<field macro>_<LABEL>` for a field's own enum values and `<PREFIX>_<ENUM>_<LABEL>` for shared ones; `<PREFIX>_<NAME>` for constants. Every macro carries its grade. `[c] offset_macro = "bare"` drops `_OFFSET`. |
-| `gen/rust/` | a crate (`Cargo.toml`, `src/lib.rs`, a module per unit): typed field accessors, an enum with an `Other` variant per field that has values, constants, a test per vector |
-| `gen/py/<unit>.py` | the layout as tables plus `decode`, `encode`, `describe` and `selftest`, no imports |
-| `gen/json/<unit>.json` | one flat row per register, word, field, enum value and constant |
-| `gen/genxml/<unit>.xml` | the genxml dialect Asahi and Panfrost use: `<struct>` per word and register, `<field start size type>`, top-level `<enum>`; grade, source, offset, access, test vectors and constants ride in extra attributes and elements |
-| `gen/docs/<unit>.md` | a reference page: every register, word, field, enum value, constant and vector with its grade and source |
+| `generated/c/<unit>.h` | `<BLOCK>_<REG>_OFFSET`, `_COUNT`, `_STRIDE`; `<BLOCK>_<REG>_<FIELD>_SHIFT`, `_MASK`, `_INPLACE`; `<PREFIX>_<WORD>_WIDTH` and word fields the same way; `<field macro>_<LABEL>` for a field's own enum values and `<PREFIX>_<ENUM>_<LABEL>` for shared ones; `<PREFIX>_<NAME>` for constants. Every macro carries its grade. `[c] offset_macro = "bare"` drops `_OFFSET`. |
+| `generated/rust/` | a crate (`Cargo.toml`, `src/lib.rs`, a module per unit): typed field accessors, an enum with an `Other` variant per field that has values, constants, a test per vector |
+| `generated/python/<unit>.py` | the layout as tables plus `decode`, `encode`, `describe` and `selftest`, no imports |
+| `generated/json/<unit>.json` | one flat row per register, word, field, enum value and constant |
+| `generated/xml/<unit>.xml` | the genxml dialect Asahi and Panfrost use: `<struct>` per word and register, `<field start size type>`, top-level `<enum>`; grade, source, offset, access, test vectors and constants ride in extra attributes and elements |
+| `devices/<unit>/registers.md` | a reference page, generated comment on its first line: every register, word, field, enum value, constant and vector with its grade and source |
 
 The genxml export is proved by `tools/defs/vendor/genxml/gen_pack.py`, an unmodified
 copy of Mesa's Asahi pack generator (MIT; see `vendor/genxml/SOURCE` and `LICENSE`).
@@ -256,12 +286,12 @@ legacy_guard = "BUZZ_DECODE_H"
 BUZZ_HDR_W4_SIZEFLD_SHIFT = "BUZZ_HDR_W4_SIZE_FIELD_SHIFT"
 ```
 
-`defs-gen` writes a header at that path that includes `gen/c/<unit>.h` and defines
+`defs-gen` writes a header at that path that includes `generated/c/<unit>.h` and defines
 the aliases, so QEMU and iris keep building unchanged for one transition period.
 Remove `legacy_header` (and the file) when the consumers use the new path.
 
 Helper macros and any C that is code rather than data (a table, a `static inline`
-function) go in `defs/<unit>_helpers.h`; the generated header includes it last.
+function) go in `devices/<unit>/helpers.h`; the generated header includes it last.
 Hand-written code may use the generated names but not the old aliases, which are
 defined after it.
 
@@ -271,21 +301,27 @@ One repo at a time, in one change. From the repo root, with this repository chec
 out as `retools/`:
 
 ```sh
-retools/tools/defs/defs-import                      # writes defs/, never edits a header; prints the report
-# read the report (also in defs/import-report.txt) and settle each item in defs/*.toml:
-#   constants with no grade   -> give each a grade, or list it in defs/legacy-dropped.txt
+retools/tools/defs/defs-import                      # writes devices/ and tools/config/, never edits a header; prints the report
+# read the report (also in tools/config/import-report.txt) and settle each item in devices/*/registers.toml:
+#   constants with no grade   -> give each a grade, or list it in tools/config/defs-legacy-dropped.txt
 #   old macros with no counterpart -> add a field or constant, alias it under [c.aliases], or drop it
 #   grades defaulted          -> confirm, or correct
 #   set the real source in `from` (the importer wrote a placeholder, dropped from public output)
-retools/tools/defs/defs-gen                         # writes gen/ and overwrites each old header with its forwarding header
+retools/tools/defs/defs-gen                         # writes generated/ and overwrites each old header with its forwarding header
 retools/tools/defs/defs-compare                     # old headers from git HEAD against the forwarding headers: must report 0 different, 0 missing
-retools/tools/defs/defs-check --build               # layout, leaks, claims, plugin, freshness, builds
-git rm defs.toml generated/ ...                     # the old config and Rust output, once defs/check.toml and gen/ replace them
-rm defs/import-report.txt
+retools/tools/defs/defs-check --build               # layout, leaks, claims, plugin, freshness, siblings, builds
+git rm defs.toml generated/ ...                     # the old config and Rust output, once defs-check.toml and generated/ replace them
+rm tools/config/import-report.txt
 ```
 
-Commit `defs/`, `gen/`, the forwarding headers and the removals together, add the
-workflow (below), and switch QEMU and iris to `gen/c/` paths in their own changes.
+`defs-import` writes the current layout when the repo already shows it (any of
+`tools/config`, `evidence`, `devices`, ...) and the old `defs/` shape otherwise;
+`--layout current|old` forces one and `--out DIR` writes the old flat shape into DIR.
+
+Commit the register maps, `generated/`, the forwarding headers and the removals
+together, add the workflow (below), and switch QEMU and iris to `generated/c/` paths
+in their own changes. Once the consumers have moved, delete `legacy_header` from each
+unit and the forwarding headers with it.
 `defs-compare --old-rev REV` compares against another revision; `defs-compare --old
 FILE --new FILE` compares two files.
 
@@ -315,7 +351,7 @@ retools submodule (`git submodule update --init --depth 1 retools`). Never use
 `--recursive`: some workspaces carry vendor-source submodules that must not be
 fetched. The workflow uses no secrets beyond the read-only retools token.
 
-`ci-check` runs `defs-check --build` when a `defs/` directory exists. With only a
+`ci-check` runs `defs-check --build` when the repo has register maps (`devices/` or `formats/`, or the old `defs/`). With only a
 `defs.toml` it takes the older path below, so repos move one at a time. With neither
 it prints `no decode headers`.
 
