@@ -17,6 +17,13 @@ one place and goes when the last repository has moved.
     evidence/coverage.md                 docs/coverage.md
     evidence/routines/                   docs/routines/
     evidence/instruction-readings-*.md   docs/instruction-readings-*.md
+    software/ucode/                      ucode/
+    software/kernel/                     kona_kernel/ (kona), mgras_kernel/ (gr4)
+    software/opengl/                     libglcore/
+    software/xsgi/                       ddx/
+    software/irisgl/, software/diags/    irisgl/, diags/
+    software/<component>/<page>          docs/<page>
+    tools/ghidra/                        ghidra/
 
 Reading takes the current path when it exists and the old one otherwise. A path that does not exist
 yet (an output a tool is about to create) is the current one, unless the workspace is plainly on the
@@ -40,11 +47,17 @@ OLD_MARKERS = ('defs', 'gen', 'docs', 'scripts')
 SOURCE_RE = re.compile(r'^(?P<stem>registers|format)(?:(?P<extra>-extra)|\.(?P<rev>[a-z][a-z0-9_]*))?\.toml$')
 
 # generated/ subdirectory names by output kind, for each layout
+GENERATED_PAGE = re.compile(r'^(registers|format)(-extra|\.[a-z][a-z0-9_]*)?\.md$')
+
 GEN_DIRS = {
     'new': {'c': 'c', 'rust': 'rust', 'py': 'python', 'json': 'json', 'xml': 'xml'},
     'old': {'c': 'c', 'rust': 'rust', 'py': 'py', 'json': 'json', 'xml': 'genxml'},
 }
 GEN_ROOT = {'new': 'generated', 'old': 'gen'}
+
+# Old top-level component directory -> the software/ component that took its files.
+SOFTWARE_OLD = {'ucode': 'ucode', 'kona_kernel': 'kernel', 'mgras_kernel': 'kernel', 'libglcore': 'opengl',
+                'ddx': 'xsgi', 'irisgl': 'irisgl', 'diags': 'diags'}
 
 
 class Source:
@@ -131,6 +144,47 @@ class Layout:
     @property
     def legacy_dropped_file(self):
         return self.pick('%s/defs-legacy-dropped.txt' % CONFIG_DIR, 'defs/legacy-dropped.txt')
+
+    # ------------------------------------------------------------ software components
+    def software(self, rel):
+        """A path written for the old layout (ucode/KONA/arm1.u, kona_kernel/disasm, libglcore/asm/...)
+        as it is in this workspace: under software/<component>/ when that exists, else as written."""
+        head, sep, rest = rel.partition('/')
+        comp = SOFTWARE_OLD.get(head)
+        if comp is None:
+            return rel
+        base = self.pick('software/' + comp, head)
+        return base + sep + rest
+
+    def page(self, name, component):
+        """A documentation page or data file that lived in docs/ and now sits with its component."""
+        return self.pick('software/%s/%s' % (component, name), 'docs/' + name)
+
+    def header(self, name):
+        """A hand-written header: devices/<unit>/NAME in the current layout, NAME at the top of the old one."""
+        for p in sorted(glob.glob(self.path('devices/*/' + name))):
+            return os.path.relpath(p, self.root)
+        return name if self.exists(name) or not self.moved else 'devices/%s/%s' % (name.split('.')[0].lower(), name)
+
+    @property
+    def ge_header(self):
+        """The geometry-engine header of the Kona repository."""
+        return self.header('GE.h')
+
+    def ghidra(self, rel):
+        """A path inside the Ghidra tree: tools/ghidra/ in the current layout, ghidra/ in the old one."""
+        return self.pick('tools/ghidra/' + rel, 'ghidra/' + rel)
+
+    def doc_pages(self):
+        """Every prose page of the workspace: the component and device pages of the current layout,
+        else docs/*.md."""
+        pages = []
+        for pat in ('software/*/*.md', 'devices/*/*.md', 'formats/*/*.md', 'evidence/*.md', 'questions/*.md'):
+            pages.extend(glob.glob(self.path(pat)))
+        # registers.md, registers.<rev>.md, registers-extra.md and format.md are generated from the
+        # register maps, as gen/docs/ was; they were never among docs/*.md
+        pages = [p for p in pages if not GENERATED_PAGE.match(os.path.basename(p))]
+        return sorted(pages) or sorted(glob.glob(self.path('docs/*.md')))
 
     # ------------------------------------------------------------------ evidence
     @property
@@ -243,3 +297,28 @@ def of(root=None):
         from _workspace import find_workspace
         root = find_workspace()
     return Layout(root)
+
+
+def sw(rel):
+    """Layout.software for the workspace the tools find: sw('ucode/KONA/arm1.u')."""
+    return of().software(rel)
+
+
+def header(name):
+    """Layout.header for the workspace the tools find."""
+    return of().header(name)
+
+
+def ge_header():
+    """Layout.ge_header for the workspace the tools find."""
+    return of().ge_header
+
+
+if __name__ == '__main__':
+    # `_layout.py sw PATH...` prints each old-layout path as this workspace has it, for shell scripts.
+    import sys
+    if len(sys.argv) > 2 and sys.argv[1] == 'sw':
+        for a in sys.argv[2:]:
+            print(sw(a))
+    else:
+        sys.exit('usage: _layout.py sw PATH...')
