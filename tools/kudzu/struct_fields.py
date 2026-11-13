@@ -38,8 +38,10 @@ import sys
 # The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
 TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, TOOLS)
+from _layout import Layout  # noqa: E402
 from _workspace import find_workspace  # noqa: E402
 REPO = find_workspace()
+LAYOUT = Layout(REPO)
 
 DIE_RE = re.compile(r'^<\s*(\d+)><0x([0-9a-fA-F]+)>\s+DW_TAG_(\w+)\s*$')
 ATTR_RE = re.compile(r'^\s+DW_AT_(\w+)\s*(.*?)\s*$')
@@ -261,9 +263,9 @@ def objects():
 
 def in_scope_names():
     import json
-    scope = json.load(open(os.path.join(REPO, 'scripts', 'scope.json')))
+    scope = json.load(open(os.path.join(REPO, LAYOUT.scope_file)))
     spre = re.compile('(?:%s)' % '|'.join(scope['structure_prefixes']))
-    path = os.path.join(REPO, 'docs', 'inventory', 'structs.tsv')
+    path = os.path.join(REPO, LAYOUT.inventory_dir, 'structs.tsv')
     with open(path, encoding='utf-8') as f:
         heads = f.readline().rstrip('\n').split('\t')
         rows = [ln.rstrip('\n').split('\t') for ln in f]
@@ -343,7 +345,7 @@ def main():
     for k in imgs:
         label = os.path.relpath(k, os.path.join(REPO, 'root'))
         per_image.append((label, definitions(k)))
-    outdir = os.path.join(REPO, 'docs', 'structs')
+    outdir = os.path.join(REPO, LAYOUT.page('structs', 'kernel'))
     names = in_scope_names()
     linked = {name: choose(name, per_image) for name in names}
     # Only a name the linked kernels leave alone (no definition, or one kernel) is tried against objects.
@@ -381,12 +383,12 @@ def main():
         with open(path, 'w', encoding='utf-8') as f:
             f.write(page)
         written += 1
-        print('wrote docs/structs/%s.md (%s)' % (name, ', '.join(agreed)))
+        print('wrote %s/%s.md (%s)' % (os.path.relpath(outdir, REPO), name, ', '.join(agreed)))
     if not list_only and os.path.isdir(outdir):
         for p in sorted(glob.glob(os.path.join(outdir, '*.md'))):
             n = os.path.basename(p)[:-3]
             if n not in wanted:
-                print('stale: docs/structs/%s.md no longer qualifies; left in place' % n)
+                print('stale: %s/%s.md no longer qualifies; left in place' % (os.path.relpath(outdir, REPO), n))
     print('done %d, pending %d' % (written, len([n for n in wanted if not os.path.exists(os.path.join(outdir, n + '.md'))])))
 
 

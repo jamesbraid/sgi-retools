@@ -32,11 +32,12 @@ from elftools.elf.elffile import ELFFile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 import toolchain  # noqa: E402
+from _layout import of  # noqa: E402
 
 HINV = 'root/6.5.30/sbin/hinv'
 HEADER = 'root/6.5.30/usr/include/sys/invent.h'
 KERNELS = ['root/6.5.30/unix.IP27', 'root/6.5.30/unix.IP30', 'root/6.5.30/unix.IP35']
-OUT = 'docs/hinv-codes.tsv'
+OUT = of().pick('evidence/hinv-codes.tsv', 'docs/hinv-codes.tsv')
 CLASS_TABLE = 0x10011380   # hinv classes[]: name pointers, class = index + 1
 TYPE_TABLE = 0x100113f0    # hinv type keywords: name pointer, class, type
 CLASS_COUNT = 27
