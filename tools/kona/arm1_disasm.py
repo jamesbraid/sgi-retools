@@ -40,6 +40,8 @@ name there; other call targets print as fn_<address>.
 import os
 import struct
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 COND = ['eq', 'ne', 'cs', 'cc', 'mi', 'pl', 'vs', 'vc',
         'hi', 'ls', 'ge', 'lt', 'gt', 'le', '', 'nv']
@@ -292,11 +294,11 @@ def tport(path, out, arm1):
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == '--tport':
         a = sys.argv[2:]
-        tport(a[0] if a else 'ucode/KONA/tport.bin', a[1] if len(a) > 1 else 'ucode',
-              a[2] if len(a) > 2 else 'ucode/KONA/arm1.u')
+        tport(a[0] if a else sw('ucode/KONA/tport.bin'), a[1] if len(a) > 1 else 'ucode',
+              a[2] if len(a) > 2 else sw('ucode/KONA/arm1.u'))
         return
-    path = sys.argv[1] if len(sys.argv) > 1 else 'ucode/KONA/arm1.u'
-    out = sys.argv[2] if len(sys.argv) > 2 else 'ucode'
+    path = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/KONA/arm1.u')
+    out = sys.argv[2] if len(sys.argv) > 2 else sw('ucode')
     mem, syms, base, ro, dbase, rw = load(path)
     byaddr = {}
     for v, f, n in syms:
@@ -365,7 +367,7 @@ def main():
     # left by 4 (a zero word and an ARM handler address, in practice).
     p = byname['vector_end']
     names = {}
-    kpm = 'diags/kpm/hp_commands.tsv'
+    kpm = sw('diags/kpm/hp_commands.tsv')
     if os.path.exists(kpm):
         for line in open(kpm):
             if line[0] in '#v':
@@ -388,7 +390,7 @@ def main():
         fh.write('# Host-token map built by arm1.u init_hip from the static table at vector_end\n')
         fh.write('# (IRIX 6.5.30m). entry = the 32-bit value init_hip stores for the token.\n')
         fh.write('# ARM rows: entry = handler << 4 | low word; the handler is the arm1.u function\n')
-        fh.write('# the token runs. Routed rows (bit 0 set): fields per ucode/arm1.md. count is the\n')
+        fh.write('# the token runs. Routed rows (bit 0 set): fields per software/ucode/arm1.md. count is the\n')
         fh.write('# word-count field: bits 6-8 in the geometry form (bit 31 set), bits 6-10 otherwise.\n')
         fh.write('token\tname\tentry\troute\tkind\tchain\tcount\tbits15_23\tbits27_28\tbits29_30\tarm_handler\n')
         for tok in range(512):

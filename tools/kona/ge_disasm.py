@@ -27,9 +27,11 @@ import collections
 import os
 import struct
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
-src = sys.argv[1] if len(sys.argv) > 1 else 'ucode/KONA'
-out = sys.argv[2] if len(sys.argv) > 2 else 'ucode'
+src = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/KONA')
+out = sys.argv[2] if len(sys.argv) > 2 else sw('ucode')
 
 # Display groups over the 256-bit record, high bit first. The boundaries
 # follow the wiring table (runs of record bits fed by consecutive W bits in
@@ -172,7 +174,7 @@ def main():
     for fname, addrs in per_file.items():
         with open(os.path.join(ldir, fname + '.lst'), 'w') as fh:
             fh.write('# %s: geometry-engine instructions attributed to this source by the ge.u line table\n' % fname)
-            fh.write('# (unlisted words follow the previous attributed one). Fields per ucode/ge_isa.md.\n')
+            fh.write('# (unlisted words follow the previous attributed one). Fields per software/ucode/ge_isa.md.\n')
             for a in addrs:
                 w, r = words[a], recs[a]
                 for n in syms.get(a, []):

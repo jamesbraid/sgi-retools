@@ -38,12 +38,15 @@ import csv
 import re
 import struct
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
-ged = sys.argv[1] if len(sys.argv) > 1 else 'ucode/KONA/ged1b.u'
-hw = sys.argv[2] if len(sys.argv) > 2 else 'ucode/hw_route.tsv'
-rel = sys.argv[3] if len(sys.argv) > 3 else 'ucode/ged_relocs.tsv'
-out_route = sys.argv[4] if len(sys.argv) > 4 else 'ucode/ged_route.tsv'
-out_banks = sys.argv[5] if len(sys.argv) > 5 else 'ucode/ged_banks.tsv'
+ged = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/KONA/ged1b.u')
+hw = sys.argv[2] if len(sys.argv) > 2 else sw('ucode/hw_route.tsv')
+rel = sys.argv[3] if len(sys.argv) > 3 else sw('ucode/ged_relocs.tsv')
+out_route = sys.argv[4] if len(sys.argv) > 4 else sw('ucode/ged_route.tsv')
+out_banks = sys.argv[5] if len(sys.argv) > 5 else sw('ucode/ged_banks.tsv')
 
 b = open(ged, 'rb').read()
 hdr = struct.unpack('>11I', b[:44])
@@ -96,11 +99,11 @@ with open(out_banks, 'w') as f:
 
 with open(out_route, 'w') as f:
     f.write('# Hardware-routed host tokens and the distributor table words their numbers reach.\n')
-    f.write('# entry = table B word at index n. ucode/ged.md lays table B out by primitive class and\n')
+    f.write('# entry = table B word at index n. software/ucode/ged.md lays table B out by primitive class and\n')
     f.write('# vertex state, so this is where n falls in that layout, not the program the token runs.\n')
     f.write('# idle_entry = B[k], the entry for entry number k = n & 63 in the idle class (ged.md);\n')
     f.write('# which index the hardware uses inside a primitive, and for the pass and register forms,\n')
-    f.write('# is open in ged.md. bound = yes when the handler table fixes the handler (ucode/arm1.md),\n')
+    f.write('# is open in ged.md. bound = yes when the handler table fixes the handler (software/ucode/arm1.md),\n')
     f.write('# never for the geometry form. span = words from the entry to the next entry point of any\n')
     f.write('# command number; handlers = relocated slot words inside the span. Produced by\n')
     f.write('# retools/tools/kona/ged_route.py.\n')

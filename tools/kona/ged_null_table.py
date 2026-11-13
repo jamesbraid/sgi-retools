@@ -29,11 +29,14 @@ writes anything.
 import collections
 import re
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
-LISTING = sys.argv[1] if len(sys.argv) > 1 else 'ucode/ged_listing.txt'
-BANKS = sys.argv[2] if len(sys.argv) > 2 else 'ucode/ged_banks.tsv'
-ROUTE = sys.argv[3] if len(sys.argv) > 3 else 'ucode/ged_route.tsv'
-OUT = sys.argv[4] if len(sys.argv) > 4 else 'ucode/ged_null_entries.md'
+LISTING = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/ged_listing.txt')
+BANKS = sys.argv[2] if len(sys.argv) > 2 else sw('ucode/ged_banks.tsv')
+ROUTE = sys.argv[3] if len(sys.argv) > 3 else sw('ucode/ged_route.tsv')
+OUT = sys.argv[4] if len(sys.argv) > 4 else sw('ucode/ged_null_entries.md')
 
 CLASS_NAME = {0: 'idle', 1: 'points', 2: 'lines', 4: 'triangles', 5: 'line strip', 6: 'line loop',
               7: 'quads', 8: 'quad strip', 9: 'triangle strip', 10: 'fan or polygon', 12: 'subdivision'}

@@ -32,6 +32,7 @@ import sys
 # The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
 TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, TOOLS)
+from _layout import Layout  # noqa: E402
 from _workspace import find_workspace  # noqa: E402
 REPO = find_workspace()
 
@@ -445,7 +446,7 @@ def build(root):
 
 
 def main(argv):
-    root, out, check = os.path.join(REPO, 'root'), os.path.join(REPO, 'docs/display-formats.md'), False
+    root, out, check = os.path.join(REPO, 'root'), os.path.join(REPO, Layout(REPO).page('display-formats.md', 'video')), False
     it = iter(argv)
     for a in it:
         if a == '--root':

@@ -44,6 +44,8 @@ generated comment is replaced on each run; change ROLES, not GE.h.
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import ge_header, sw  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from inventory import line_items  # noqa: E402  (the inventory's own item count)
@@ -851,13 +853,13 @@ def shadow_text(tok, kpm, sh, gloss, writers, rec):
 def shadow_writers():
     """kpm row -> [(function, address)] of the arm1.u code that loads the
     address word (0x110 + i) << 16 | register for shadow word i."""
-    sh = rows('ucode/befshadow.tsv')
+    sh = rows(sw('ucode/befshadow.tsv'))
     want = {}
     for i, w in sh.items():
         want[(0x110 + int(i)) << 16 | (int(w['addr'], 16) & 0x7fff)] = '0x%03x' % (0x210 + int(i))
     out = {}
     func = None
-    for ln in open('ucode/arm1.s'):
+    for ln in open(sw('ucode/arm1.s')):
         m = re.match(r'^([A-Za-z_]\w*):$', ln.strip())
         if m:
             func = m.group(1)
@@ -872,14 +874,14 @@ def shadow_writers():
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     overwrite = '--overwrite-hand-edits' in sys.argv[1:]
-    path = args[0] if args else 'GE.h'
-    icu = rows('ucode/icu_map.tsv')
-    arm = rows('ucode/arm1_handlers.tsv')
-    ged = rows('ucode/ged_route.tsv')
-    hw = rows('ucode/hw_route.tsv')
-    pay = rows('libglcore/payloads.tsv')
+    path = args[0] if args else ge_header()
+    icu = rows(sw('ucode/icu_map.tsv'))
+    arm = rows(sw('ucode/arm1_handlers.tsv'))
+    ged = rows(sw('ucode/ged_route.tsv'))
+    hw = rows(sw('ucode/hw_route.tsv'))
+    pay = rows(sw('libglcore/payloads.tsv'))
     kpm, rec = {}, {}
-    for ln in open('diags/kpm/hp_commands.tsv'):
+    for ln in open(sw('diags/kpm/hp_commands.tsv')):
         f = ln.rstrip('\n').split('\t')
         if len(f) >= 3 and f[1].startswith('0x'):
             kpm[f[1]] = f[2]

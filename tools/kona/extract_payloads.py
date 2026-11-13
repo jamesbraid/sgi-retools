@@ -10,12 +10,15 @@ word), ii = sd (two words, high word first), d = sdc1 (one double, two
 words). The token name comes from kpm's command table.
 """
 import re,sys,glob,collections
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 hp={}
-for l in open((sys.argv[1] if len(sys.argv) > 1 else 'diags/kpm/hp_commands.tsv')):
+for l in open((sys.argv[1] if len(sys.argv) > 1 else sw('diags/kpm/hp_commands.tsv'))):
     if l.startswith('0x'):
         va,t,n=l.rstrip('\n').split('\t'); hp[int(t,16)]=n
 rows=[]
-for f in sorted(glob.glob((sys.argv[2] if len(sys.argv) > 2 else 'libglcore/asm')+'/*/*.s')):
+for f in sorted(glob.glob((sys.argv[2] if len(sys.argv) > 2 else sw('libglcore/asm'))+'/*/*.s')):
     fn=None; body=[]
     for l in open(f):
         m=re.match(r'# Function: (\S+)',l)

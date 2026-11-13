@@ -29,14 +29,16 @@ from collections import defaultdict
 
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.abbrevtable import AbbrevTable
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from tools.resolve_got import build_got_map
 from tools.toolchain import objdump
 
 JTBL_BASE = int(os.environ['JTBL_BASE'], 0) if os.environ.get('JTBL_BASE') else None
-TARGET_ELF = sys.argv[1] if len(sys.argv) > 1 else 'libglcore/libGLcore.so'
-OUT_DIR = sys.argv[2] if len(sys.argv) > 2 else 'libglcore'
+TARGET_ELF = sys.argv[1] if len(sys.argv) > 1 else sw('libglcore/libGLcore.so')
+OUT_DIR = sys.argv[2] if len(sys.argv) > 2 else sw('libglcore')
 
 def category_for(name):
     """Group by the source's leading directory, else its filename prefix."""

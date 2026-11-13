@@ -21,6 +21,8 @@ import os
 import re
 import struct
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import arm1_disasm as A  # noqa: E402
@@ -69,10 +71,10 @@ def group_of(name):
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else 'ucode/KONA/arm1.u'
-    geif = sys.argv[2] if len(sys.argv) > 2 else 'ucode/KONA/geif.u'
-    symf = sys.argv[3] if len(sys.argv) > 3 else 'ucode/KONA/ge_symbols'
-    out = sys.argv[4] if len(sys.argv) > 4 else 'ucode'
+    path = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/KONA/arm1.u')
+    geif = sys.argv[2] if len(sys.argv) > 2 else sw('ucode/KONA/geif.u')
+    symf = sys.argv[3] if len(sys.argv) > 3 else sw('ucode/KONA/ge_symbols')
+    out = sys.argv[4] if len(sys.argv) > 4 else sw('ucode')
 
     mem, syms, base, ro, dbase, rw = A.load(path)
     code = {}
@@ -311,8 +313,8 @@ def main():
         fh.write('# Hardware-routed host tokens (bit 0 of the token-map entry set) with the command number in bits 15-23.\n')
         fh.write('# index = number & 63; bound = the handler init_ged writes at that index of the handler table\n')
         fh.write('# (ged_bound_table.tsv), blank if init_ged writes none, and blank for the geometry form (bit 31 set),\n')
-        fh.write('# which does not use the handler table (ucode/arm1.md). form = geometry, pass (bit 5 clear) or\n')
-        fh.write('# register (bit 5 set), per ucode/ged.md. See ucode/arm1.md for what is established.\n')
+        fh.write('# which does not use the handler table (software/ucode/arm1.md). form = geometry, pass (bit 5 clear) or\n')
+        fh.write('# register (bit 5 set), per software/ucode/ged.md. See software/ucode/arm1.md for what is established.\n')
         fh.write('token\tname\tcommand\tgroup\tindex\tbound\tform\n')
         for tok in sorted(icu):
             f = icu[tok]

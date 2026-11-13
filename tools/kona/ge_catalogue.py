@@ -32,6 +32,8 @@ import os
 import re
 import struct
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import arm1_disasm as A  # noqa: E402
@@ -41,9 +43,9 @@ PACKED = 0x48
 
 
 def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else 'ucode/KONA'
-    lst = sys.argv[2] if len(sys.argv) > 2 else 'ucode/ge_listing'
-    out = sys.argv[3] if len(sys.argv) > 3 else 'ucode/ge_xref.tsv'
+    src = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/KONA')
+    lst = sys.argv[2] if len(sys.argv) > 2 else sw('ucode/ge_listing')
+    out = sys.argv[3] if len(sys.argv) > 3 else sw('ucode/ge_xref.tsv')
 
     labels = []
     for line in open(os.path.join(src, 'ge_symbols')):
@@ -141,18 +143,18 @@ def main():
                     arm[b].add(fn)
 
     tok = collections.defaultdict(set)
-    for line in open('ucode/arm1_handlers.tsv'):
+    for line in open(sw('ucode/arm1_handlers.tsv')):
         if line[0] == '#' or line.startswith('token'):
             continue
         f = line.rstrip('\n').split('\t')
         tok[f[2]].add(f[1])
     ged = collections.defaultdict(set)
-    for line in open('ucode/ged_bound_table.tsv'):
+    for line in open(sw('ucode/ged_bound_table.tsv')):
         if line[0] == '#' or line.startswith('index'):
             continue
         i, h = line.split()
         ged[h].add('table %s' % i)
-    for line in open('ucode/ged_relocs.tsv'):
+    for line in open(sw('ucode/ged_relocs.tsv')):
         if line[0] == '#' or line.startswith('ged_word'):
             continue
         f = line.rstrip('\n').split('\t')
@@ -160,7 +162,7 @@ def main():
 
     with open(out, 'w') as fh:
         fh.write('# Every ge_symbols label of ge.u (IRIX 6.5.30m) with what reaches it. Produced by\n')
-        fh.write('# retools/tools/kona/ge_catalogue.py; explained in ucode/ge_handlers.md.\n')
+        fh.write('# retools/tools/kona/ge_catalogue.py; explained in software/ucode/ge_handlers.md.\n')
         fh.write('address\tlabel\tsource\tline\tspan\tslots\tarm\ttokens\tged\tfrom\tconsts\n')
         for a, n in labels:
             s, ln = where.get(n, ('', 0))
@@ -372,7 +374,7 @@ def facts(name, addr, lines, nxt):
     return body, end, cl
 
 
-def write_md(xref, body=None, nextlab=None, md='ucode/ge_handlers.md', roles='ucode/ge_modules.tsv'):
+def write_md(xref, body=None, nextlab=None, md=sw('ucode/ge_handlers.md'), roles=sw('ucode/ge_modules.tsv')):
     if body:
         LABELS.update(int(l.split('\t')[0], 16) for l in open(xref)
                       if l[0] != '#' and not l.startswith('address\t'))

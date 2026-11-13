@@ -16,6 +16,8 @@ Processes all objects in KERNEL_DIR/*.o:
 
 import os
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import re
 import glob
@@ -231,7 +233,7 @@ def disassemble_module(obj_path, out_dir):
 
     print(f"[+] [{mod_name}] Disassembled {len(insns)} instructions -> {out_s}")
 
-KERNEL_DIR = 'kona_kernel'
+KERNEL_DIR = sw('kona_kernel')
 
 
 def main():

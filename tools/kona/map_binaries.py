@@ -10,7 +10,7 @@ every ELF file, its sections, function symbols and DWARF compilation units.
 Non-ELF files (microcode, tables) are listed by size.
 
 Outputs:
-  - binaries_manifest.json
+  - tools/config/binaries_manifest.json (binaries_manifest.json in the old layout)
   - Detailed terminal report
 """
 
@@ -23,6 +23,8 @@ from collections import defaultdict
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.abbrevtable import AbbrevTable
 import io
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import of, sw  # noqa: E402
 
 def get_dwarf_cus(elf):
     if not elf.has_dwarf_info():
@@ -131,7 +133,7 @@ def main():
     print(f"{BOARD_NAME} Binary Cataloging & Analysis")
     print("======================================================================")
     
-    categories = {cat: sorted(walk(cat)) for cat in CATEGORIES}
+    categories = {cat: sorted(walk(sw(cat))) for cat in CATEGORIES}
 
     full_manifest = {}
 
@@ -154,7 +156,7 @@ def main():
 
         full_manifest[cat] = cat_data
 
-    manifest_file = 'binaries_manifest.json'
+    manifest_file = of().binaries_manifest
     with open(manifest_file, 'w') as f:
         json.dump(full_manifest, f, indent=2)
     print(f"\n[+] Saved detailed manifest to {manifest_file}")

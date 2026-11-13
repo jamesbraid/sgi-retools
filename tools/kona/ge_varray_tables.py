@@ -10,6 +10,9 @@ HP_VARRAY_SET_CMDS key can be read from the tokens they select.
 import re
 import struct
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import ge_header, sw  # noqa: E402
 
 TABLES = [  # (name, address, types) from ucode/arm1_symbols.tsv
     ('vertex_table', 0x0405102c, 12), ('normal_table', 0x0405111c, 12),
@@ -20,12 +23,12 @@ TABLES = [  # (name, address, types) from ucode/arm1_symbols.tsv
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else 'ucode/KONA/arm1.u'
+    path = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/KONA/arm1.u')
     img = open(path, 'rb').read()
     h = struct.unpack('>32I', img[:128])
     ro_size, rw_size, base, data_base = h[5], h[6], h[10], h[13]
     names = {int(v, 16): n for n, v in
-             re.findall(r'KONA_HP_(\w+)\s+= (0x[0-9a-f]+)', open('GE.h').read())}
+             re.findall(r'KONA_HP_(\w+)\s+= (0x[0-9a-f]+)', open(ge_header()).read())}
 
     def word(a):
         if base <= a < base + ro_size:

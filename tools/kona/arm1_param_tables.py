@@ -23,10 +23,13 @@ stops if one differs, so a row is only written for code that was read.
 """
 import re
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
-DISASM = sys.argv[1] if len(sys.argv) > 1 else 'ucode/arm1.s'
-HANDLERS = sys.argv[2] if len(sys.argv) > 2 else 'ucode/arm1_handlers.tsv'
-OUT = sys.argv[3] if len(sys.argv) > 3 else 'ucode/arm1_param_handlers.md'
+DISASM = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/arm1.s')
+HANDLERS = sys.argv[2] if len(sys.argv) > 2 else sw('ucode/arm1_handlers.tsv')
+OUT = sys.argv[3] if len(sys.argv) > 3 else sw('ucode/arm1_param_handlers.md')
 BADCMD = 0x0c0017f4
 
 funcs, order, cur = {}, [], None

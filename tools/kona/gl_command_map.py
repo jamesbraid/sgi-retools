@@ -41,14 +41,16 @@ os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
+from _layout import Layout  # noqa: E402
 from _workspace import find_workspace  # noqa: E402
 ROOT = find_workspace()
+LAYOUT = Layout(ROOT)
 
 import facts  # noqa: E402  the same file in every workspace
 
 DEFAULT_BINARY = os.path.join(ROOT, 'root/usr/gfx/arch/IP27KONA32/libGLcore.so')
-DEFAULT_OUT = os.path.join(ROOT, 'docs/gl-command-map.tsv')
-DEFAULT_GE = os.path.join(ROOT, 'GE.h')
+DEFAULT_OUT = os.path.join(ROOT, LAYOUT.page('gl-command-map.tsv', 'opengl'))
+DEFAULT_GE = os.path.join(ROOT, LAYOUT.ge_header)
 
 TABLE_SYMBOL = '__glkonim_dispatchState'
 TABLE_SIZE = 1888          # 472 slots of 4 bytes, the size the symbol table gives

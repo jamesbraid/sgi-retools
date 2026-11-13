@@ -134,6 +134,34 @@ class OldSiblingConfigTests(SiblingConfigTests):
     LAYOUT = OLD
 
 
+class ComponentToolTests(Workspace):
+    """The per-repository tools find a component's files under software/ and devices/, or at the top of an
+    old workspace, with no path on the command line."""
+    KERNEL = "software/kernel"
+    HEADER = "devices/ge/GE.h"
+
+    def test_kernel_commands_reads_the_default_paths(self):
+        self.write(self.HEADER, "KONA_HP_CLEAR = 0x161,\n")
+        self.write(self.KERNEL + "/disasm/m/m.text.s",
+                   "glabel f\n ld $a0,2304($s0)\n li $a1,0x161\n jal gfx_pio_write_32\n nop\n")
+        r = self.run_tool("kona/kernel_commands.py")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("m\tf\t0x161\tKONA_HP_CLEAR\t1", r.stdout)
+
+    def test_coverage_page_and_scripts_are_not_needed(self):
+        # a workspace with the component directory but no other file of either layout
+        self.write(self.HEADER, "")
+        self.write(self.KERNEL + "/disasm/m/m.text.s", "")
+        r = self.run_tool("kona/kernel_commands.py")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class OldComponentToolTests(ComponentToolTests):
+    KERNEL = "kona_kernel"
+    HEADER = "GE.h"
+    LAYOUT = OLD
+
+
 class ReadingToolTests(Workspace):
     def test_firmware_config_is_read_from_the_config_directory(self):
         cfg = firmware_layout.read_config(self.ws)

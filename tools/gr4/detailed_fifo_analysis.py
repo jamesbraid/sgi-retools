@@ -1,6 +1,10 @@
 import glob, re
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
-files = sorted(glob.glob('libglcore/asm/EXPRESS/*.s'))
+files = sorted(glob.glob(sw('libglcore/asm/EXPRESS/*.s')))
 
 # Scan each file to find function names and instructions
 ent_re = re.compile(r'^\s*\.ent\s+([a-zA-Z0-9_]+)')

@@ -37,12 +37,14 @@ from collections import defaultdict
 
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.abbrevtable import AbbrevTable
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from tools.resolve_got import build_got_map
 
-TARGET_ELF = 'irisgl/libgl.so'
-OUT_DIR = 'irisgl'
+TARGET_ELF = sw('irisgl/libgl.so')
+OUT_DIR = sw('irisgl')
 
 CATEGORIES = [
     'igloo',

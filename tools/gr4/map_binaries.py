@@ -24,6 +24,8 @@ from collections import defaultdict
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.abbrevtable import AbbrevTable
 import io
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import of, sw  # noqa: E402
 
 def get_dwarf_cus(elf):
     if not elf.has_dwarf_info():
@@ -112,12 +114,13 @@ def main():
     print("======================================================================")
     
     categories = {
-        'mgras_kernel': sorted(glob.glob('mgras_kernel/*.o')),
-        'libglcore': sorted(glob.glob('libglcore/*.so')),
-        'ddx': sorted(glob.glob('ddx/*.so')),
-        'irisgl': sorted(glob.glob('irisgl/*.so')),
-        'ge11dump': sorted(glob.glob('ge11dump/*')),
-        'ucode': sorted(glob.glob('ucode/*'))
+        'mgras_kernel': sorted(glob.glob(sw('mgras_kernel/*.o'))),
+        'libglcore': sorted(glob.glob(sw('libglcore/*.so'))),
+        'ddx': sorted(glob.glob(sw('ddx/*.so'))),
+        'irisgl': sorted(glob.glob(sw('irisgl/*.so'))),
+        # tools/ge11dump is the file itself; the old layout kept it in a directory of that name.
+        'ge11dump': sorted(glob.glob('tools/ge11dump' if of().exists('tools/ge11dump') else 'ge11dump/*')),
+        'ucode': sorted(glob.glob(sw('ucode/*')))
     }
     
     full_manifest = {}
@@ -141,7 +144,7 @@ def main():
             
         full_manifest[cat] = cat_data
 
-    manifest_file = 'binaries_manifest.json'
+    manifest_file = of().binaries_manifest
     with open(manifest_file, 'w') as f:
         json.dump(full_manifest, f, indent=2)
     print(f"\n[+] Saved detailed manifest to {manifest_file}")

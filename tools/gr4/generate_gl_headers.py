@@ -10,10 +10,13 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from _layout import Layout  # noqa: E402
 from _workspace import find_workspace  # noqa: E402
 REPO_ROOT = Path(find_workspace())
-GL_XML = REPO_ROOT / "OpenGL-Registry" / "xml" / "gl.xml"
-OUTPUT_DIR = REPO_ROOT / "libglcore" / "include"
+_LAYOUT = Layout(str(REPO_ROOT))
+# The Khronos registry sits in references/code/ now, and at the top of the old layout.
+GL_XML = REPO_ROOT / _LAYOUT.pick("references/code/opengl-registry", "OpenGL-Registry") / "xml" / "gl.xml"
+OUTPUT_DIR = REPO_ROOT / _LAYOUT.software("libglcore") / "include"
 
 # SGI IRIX 6.5.0 libGLcore.so exported extensions
 IRIX_EXTENSIONS = [

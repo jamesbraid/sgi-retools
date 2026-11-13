@@ -21,10 +21,12 @@ import collections
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import header, of, sw  # noqa: E402
 
-root = sys.argv[1] if len(sys.argv) > 1 else 'kona_kernel/disasm'
+root = sys.argv[1] if len(sys.argv) > 1 else sw('kona_kernel/disasm')
 names = {}
-for line in open('HIP.h'):
+for line in open(header('HIP.h')):
     m = re.match(r'#define KONA_(?:HIP[12]_)?(HH_\w+)\s+(0x[0-9a-f]+)', line)
     if m:
         names.setdefault(int(m.group(2), 16), []).append(m.group(1))
@@ -143,7 +145,7 @@ for (member, func, off, d), n in sorted(rows.items()):
         v = int(off, 16)
         nm = ','.join(sorted(set(names.get(v & 0xfff, []))) if v >= 0x800000 else [])
         win = ('host-interface window' if v >= 0x800000 and v < 0xc00000 else
-               'host-interface alias 0xc00000' if v >= 0xc00000 else 'pipe base offset (XG widget registers, docs/xg.md)')
+               'host-interface alias 0xc00000' if v >= 0xc00000 else 'pipe base offset (XG widget registers, %s)' % of().pick('devices/xg/README.md', 'docs/xg.md'))
     else:
-        win = 'address from a data structure or reached by a branch (see docs/kernel.md)'
+        win = 'address from a data structure or reached by a branch (see %s)' % of().page('kernel.md', 'kernel')
     print('\t'.join([member, func, off, d, str(n), win, nm]))

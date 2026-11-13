@@ -14,6 +14,9 @@ bits) matches a register index.
 """
 import struct
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 RO_SIZE, DATA_BASE = 0x40248, 0x4040260  # AIF header words 5 and 13
 N = 0x59
@@ -25,9 +28,9 @@ def words(d, a):
 
 
 def main():
-    arm = sys.argv[1] if len(sys.argv) > 1 else 'ucode/KONA/arm1.u'
-    rtab = sys.argv[2] if len(sys.argv) > 2 else 'diags/kpm/raster_registers.tsv'
-    out = sys.argv[3] if len(sys.argv) > 3 else 'ucode/befshadow.tsv'
+    arm = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/KONA/arm1.u')
+    rtab = sys.argv[2] if len(sys.argv) > 2 else sw('diags/kpm/raster_registers.tsv')
+    out = sys.argv[3] if len(sys.argv) > 3 else sw('ucode/befshadow.tsv')
     d = open(arm, 'rb').read()
     addrs, init = words(d, 0x04067c0c), words(d, 0x04067d70)
     names = {}

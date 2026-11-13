@@ -27,13 +27,15 @@ import struct
 import subprocess
 from collections import defaultdict
 from elftools.elf.elffile import ELFFile
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from tools.resolve_got import build_got_map
 from tools.toolchain import objdump
 
-TARGET_SO = sys.argv[1] if len(sys.argv) > 1 else 'ddx/kona.so'
-OUT_DIR = sys.argv[2] if len(sys.argv) > 2 else 'ddx'
+TARGET_SO = sys.argv[1] if len(sys.argv) > 1 else sw('ddx/kona.so')
+OUT_DIR = sys.argv[2] if len(sys.argv) > 2 else sw('ddx')
 MODULE = os.path.splitext(os.path.basename(TARGET_SO))[0]
 
 def sanitize_ident(name):

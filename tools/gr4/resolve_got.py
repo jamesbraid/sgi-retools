@@ -6,6 +6,9 @@ tools/resolve_got.py - Dynamic GOT and symbol resolver for IRIX MIPS ELF binarie
 import sys
 import struct
 from elftools.elf.elffile import ELFFile
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 def build_got_map(elf_path):
     with open(elf_path, 'rb') as f:
@@ -57,6 +60,6 @@ def build_got_map(elf_path):
         return got_map
 
 if __name__ == '__main__':
-    elf = sys.argv[1] if len(sys.argv) > 1 else 'libglcore/libGLcore.so'
+    elf = sys.argv[1] if len(sys.argv) > 1 else sw('libglcore/libGLcore.so')
     got_map = build_got_map(elf)
     print(f"Loaded {len(got_map)} GOT entries for {elf}.")
