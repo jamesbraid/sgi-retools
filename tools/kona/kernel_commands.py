@@ -18,10 +18,12 @@ import collections
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import ge_header, sw  # noqa: E402
 
-root = sys.argv[1] if len(sys.argv) > 1 else 'kona_kernel/disasm'
+root = sys.argv[1] if len(sys.argv) > 1 else sw('kona_kernel/disasm')
 names = {}
-for line in open('GE.h'):
+for line in open(ge_header()):
     m = re.match(r'\s*(KONA_HP_\w+)\s*=\s*(0x[0-9a-f]+)', line)
     if m:
         names[int(m.group(2), 16)] = m.group(1)

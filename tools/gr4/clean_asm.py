@@ -1,6 +1,8 @@
 import os
 import sys
 import re
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from tools.resolve_got import build_got_map
 
@@ -33,5 +35,5 @@ def clean_file(in_path, out_path, got_map):
 
 if __name__ == '__main__':
     got_map = build_got_map(TARGET_ELF)
-    clean_file('libglcore/asm/EXPRESS/gr2_attrib.s', 'scratch_gr2_attrib_clean.s', got_map)
+    clean_file(sw('libglcore/asm/EXPRESS/gr2_attrib.s'), 'scratch_gr2_attrib_clean.s', got_map)
     print("Done generating scratch_gr2_attrib_clean.s")

@@ -19,6 +19,8 @@ import struct
 import subprocess
 from collections import defaultdict
 from elftools.elf.elffile import ELFFile
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 REGS = [
     'zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3',
@@ -235,8 +237,8 @@ def disassemble_module(obj_path, out_dir):
     print(f"[+] [{mod_name}] Disassembled {len(insns)} instructions -> {out_s}")
 
 def main():
-    kernel_objs = sorted(glob.glob('mgras_kernel/*.o'))
-    out_dir = 'mgras_kernel/disasm'
+    kernel_objs = sorted(glob.glob(sw('mgras_kernel/*.o')))
+    out_dir = sw('mgras_kernel/disasm')
     print(f"[*] Disassembling {len(kernel_objs)} kernel modules into {out_dir}...")
     for obj in kernel_objs:
         disassemble_module(obj, out_dir)

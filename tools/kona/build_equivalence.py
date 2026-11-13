@@ -39,6 +39,7 @@ import sys
 
 # The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import Layout  # noqa: E402
 from _workspace import find_workspace  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -46,6 +47,7 @@ import toolchain  # noqa: E402
 from resolve_got import build_got_map  # noqa: E402
 
 ROOT = find_workspace()
+LAYOUT = Layout(ROOT)
 BUILDS = {
     'o32': 'usr/gfx/arch/IP27KONA/libGLcore.so',
     'n32': 'usr/gfx/arch/IP27KONA32/libGLcore.so',
@@ -56,14 +58,16 @@ FIFO = re.compile(r'^(?:.*,)?16384\(zero\)$')
 IMM_OPS = {'li', 'ori', 'andi', 'xori', 'slti', 'sltiu', 'addiu', 'daddiu'}
 
 
-DRIVER_DOCS = ('docs/libglcore-driver-functions.md', 'docs/libglcore-functions.md',
-               'docs/libglcore-get-functions.md')
+# The functions table names a page by its path, which depends on the layout it was written under.
+DRIVER_DOCS = tuple(prefix + name for prefix in ('software/opengl/', 'docs/')
+                    for name in ('libglcore-driver-functions.md', 'libglcore-functions.md',
+                                 'libglcore-get-functions.md'))
 
 
 def n32_scope():
     """Names of the N32 routines that the driver chapters already explain."""
     out = set()
-    with open(os.path.join(ROOT, 'docs/inventory/functions.tsv'), newline='') as f:
+    with open(os.path.join(ROOT, LAYOUT.functions_table), newline='') as f:
         for r in csv.DictReader(f, delimiter='\t'):
             if r['binary'] == BUILDS['n32'] and r['status'] == 'understood' and \
                     r['doc'].split('#')[0] in DRIVER_DOCS:
@@ -74,7 +78,7 @@ def n32_scope():
 def load_functions(path):
     """name -> (address, size) for names unique in the binary and not rejected."""
     rows = []
-    with open(os.path.join(ROOT, 'docs/inventory/functions.tsv'), newline='') as f:
+    with open(os.path.join(ROOT, LAYOUT.functions_table), newline='') as f:
         for r in csv.DictReader(f, delimiter='\t'):
             if r['binary'] == path:
                 rows.append(r)
@@ -226,7 +230,7 @@ def main():
         w.writerow([name, '0x%x' % a, s, '0x%x' % a2, s2, 'yes' if same else 'no',
                     fmt_callees(fp[0]), fp[1], ' '.join('0x%x' % c for c in fp[2][:6])])
     if args.check_doc:
-        doc = open(os.path.join(ROOT, 'docs/libglcore-driver-builds.md')).read()
+        doc = open(os.path.join(ROOT, LAYOUT.page('libglcore-driver-builds.md', 'opengl'))).read()
         sect = 'O32 build' if args.build == 'o32' else '64-bit build'
         i = doc.index('### ' + sect)
         j = doc.find('\n### ', i + 5)

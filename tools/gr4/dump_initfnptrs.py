@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 import re
 from tools.resolve_got import build_got_map
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 got_map = build_got_map('root/usr/gfx/arch/IP12GR232/libGLcore.so')
 
 in_init = False
 stores = {}
-with open('libglcore/asm/EXPRESS/gr2_context.s') as f:
+with open(sw('libglcore/asm/EXPRESS/gr2_context.s')) as f:
     reg_val = {}
     for line in f:
         if '.ent InitFnPtrs' in line:

@@ -23,9 +23,11 @@ import collections
 import os
 import struct
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
-src = sys.argv[1] if len(sys.argv) > 1 else 'ucode/KONA'
-out = sys.argv[2] if len(sys.argv) > 2 else 'ucode'
+src = sys.argv[1] if len(sys.argv) > 1 else sw('ucode/KONA')
+out = sys.argv[2] if len(sys.argv) > 2 else sw('ucode')
 
 
 def bits(v, hi, lo):
@@ -100,8 +102,8 @@ for a in words:
 with open(os.path.join(out, 'ge_optuples.tsv'), 'w') as fh:
     fh.write('# Operation-selector tuples of the geometry-engine program (ge.u records, IRIX 6.5.30m),\n')
     fh.write('# the 400 most common. M = R121-111, r110 = R110-100, r99 = R99-96, r148 = R148-139,\n')
-    fh.write('# r128 = R128-122: the decoded record groups no single W bit feeds (ucode/ge_isa.md).\n')
-    fh.write('# Meanings are unknown except where ucode/ge_ops.md says; A = W66-62 is the most common first operand.\n')
+    fh.write('# r128 = R128-122: the decoded record groups no single W bit feeds (software/ucode/ge_isa.md).\n')
+    fh.write('# Meanings are unknown except where software/ucode/ge_ops.md says; A = W66-62 is the most common first operand.\n')
     fh.write('form\tM\tr110\tr99\tr148\tr128\tcount\ttop_A\texample_addr\tfile:line\tusers\n')
     for key, n in cnt.most_common(400):
         a = ex[key]
@@ -184,7 +186,7 @@ put('compare_idiom_with_constant_loaded_to_C1e', sum(consts.values()), 'a form-1
 for v, n in sorted(consts.items()):
     put('compare_constant_0x%x' % v, n, '')
 with open(os.path.join(out, 'ge_idioms.tsv'), 'w') as fh:
-    fh.write('# Counts behind ucode/ge_ops.md (ge.hex, ge.u and ge_symbols of IRIX 6.5.30m). Produced by retools/tools/kona/ge_ops.py.\n')
+    fh.write('# Counts behind software/ucode/ge_ops.md (ge.hex, ge.u and ge_symbols of IRIX 6.5.30m). Produced by retools/tools/kona/ge_ops.py.\n')
     fh.write('name\tvalue\tnote\n')
     for r in rows:
         fh.write('%s\t%s\t%s\n' % r)

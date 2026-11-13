@@ -18,9 +18,11 @@ import os
 import re
 import subprocess
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
-data = sys.argv[1] if len(sys.argv) > 1 else 'diags/IR/data'
-out = sys.argv[2] if len(sys.argv) > 2 else 'diags/netmap_chips.tsv'
+data = sys.argv[1] if len(sys.argv) > 1 else sw('diags/IR/data')
+out = sys.argv[2] if len(sys.argv) > 2 else sw('diags/netmap_chips.tsv')
 
 with open(out, 'w') as fh:
     fh.write('# Chips and pin widths in the IR diagnostic netlists (IRIX 6.5.30m /usr/diags/IR/data).\n')

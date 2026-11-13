@@ -33,12 +33,14 @@ import struct
 import subprocess
 from collections import defaultdict
 from elftools.elf.elffile import ELFFile
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from tools.resolve_got import build_got_map
 
-TARGET_SO = 'ddx/impactpc.so'
-OUT_DIR = 'ddx'
+TARGET_SO = sw('ddx/impactpc.so')
+OUT_DIR = sw('ddx')
 
 def sanitize_ident(name):
     s = name.replace('*', '_').replace('..', '__').replace('.', '_').replace('$', '_')

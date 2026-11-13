@@ -25,6 +25,7 @@ import sys
 
 # The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import Layout  # noqa: E402
 from _workspace import find_workspace  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -32,6 +33,7 @@ import toolchain  # noqa: E402
 from elftools.elf.elffile import ELFFile  # noqa: E402
 
 ROOT = find_workspace()
+LAYOUT = Layout(ROOT)
 PATH = 'usr/gfx/arch/IP27KONA64/libGLcore.so'
 LIB = os.path.join(ROOT, 'root', PATH)
 ELF = ELFFile(open(LIB, 'rb'))
@@ -40,7 +42,7 @@ GP = ELF.get_section_by_name('.got')['sh_addr'] + 0x7ff0
 
 
 def routine():
-    with open(os.path.join(ROOT, 'docs/inventory/functions.tsv'), newline='') as f:
+    with open(os.path.join(ROOT, LAYOUT.functions_table), newline='') as f:
         for r in csv.DictReader(f, delimiter='\t'):
             if r['binary'] == PATH and r['name'] == 'changebasis':
                 return int(r['address'], 16), int(r['size'])

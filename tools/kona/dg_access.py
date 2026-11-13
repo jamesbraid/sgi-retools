@@ -24,6 +24,9 @@ its first message string. docs/dg.md carries that table.
 """
 import re
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 LO, HI = 0x00600000, 0x00700000
 INSN = re.compile(r'^([0-9a-f]{8}): ([0-9a-f]{8})  (\S+)\s*(.*)$')
@@ -183,4 +186,4 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--functions':
         functions(sys.argv[2], sys.argv[3])
     else:
-        main(sys.argv[1] if len(sys.argv) > 1 else 'ucode/arm1.s')
+        main(sys.argv[1] if len(sys.argv) > 1 else sw('ucode/arm1.s'))

@@ -24,6 +24,8 @@ Fields and forms are those of ucode/ge_isa.md (retools/tools/kona/ge_disasm.py).
 import os
 import struct
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ge_disasm import field, form, is_padding, load_hex, load_u  # noqa: E402
@@ -52,9 +54,9 @@ def elf_symbol(path, name):
 
 
 def main():
-    irsaudit = sys.argv[1] if len(sys.argv) > 1 else 'diags/IR/bin/irsaudit'
-    src = sys.argv[2] if len(sys.argv) > 2 else 'diags/IR/ucode'
-    out = sys.argv[3] if len(sys.argv) > 3 else 'ucode/ge_inst_results.tsv'
+    irsaudit = sys.argv[1] if len(sys.argv) > 1 else sw('diags/IR/bin/irsaudit')
+    src = sys.argv[2] if len(sys.argv) > 2 else sw('diags/IR/ucode')
+    out = sys.argv[3] if len(sys.argv) > 3 else sw('ucode/ge_inst_results.tsv')
 
     raw = elf_symbol(irsaudit, 'expected_token')
     expected = struct.unpack('>%dI' % (len(raw) // 4), raw)
@@ -80,9 +82,9 @@ def main():
         raise SystemExit('found %d output instructions in ge_inst.s, not %d' % (len(outputs), N))
 
     with open(out, 'w') as fh:
-        fh.write('# The IR diagnostic engine test (ge_inst.s in diags/IR/ucode/ge.u) and the words\n')
+        fh.write('# The IR diagnostic engine test (ge_inst.s in software/diags/IR/ucode/ge.u) and the words\n')
         fh.write('# irsaudit expects from it (expected_token, IRIX 6.5.30m); retools/tools/kona/ge_inst_results.py.\n')
-        fh.write('# One row per output instruction, in address order; see ucode/ge_ops.md.\n')
+        fh.write('# One row per output instruction, in address order; see software/ucode/ge_ops.md.\n')
         fh.write('index\taddress\tline\tform\tM\tr110\tr148\texpected\tas_float\n')
         for i, (a, ln, f, m, r110, r148) in enumerate(outputs):
             e = expected[i]

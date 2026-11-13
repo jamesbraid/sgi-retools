@@ -25,9 +25,11 @@ import struct
 import sys
 
 from elftools.elf.elffile import ELFFile
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
-kpm = sys.argv[1] if len(sys.argv) > 1 else 'diags/KONA_bin/kpm'
-out = sys.argv[2] if len(sys.argv) > 2 else 'diags/kpm'
+kpm = sys.argv[1] if len(sys.argv) > 1 else sw('diags/KONA_bin/kpm')
+out = sys.argv[2] if len(sys.argv) > 2 else sw('diags/kpm')
 
 with open(kpm, 'rb') as fp:
     elf = ELFFile(fp)

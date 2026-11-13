@@ -1,7 +1,11 @@
 import glob
 import re
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from _layout import sw  # noqa: E402
 
-files = sorted(glob.glob('libglcore/asm/EXPRESS/*.s'))
+files = sorted(glob.glob(sw('libglcore/asm/EXPRESS/*.s')))
 
 # Matches lui $reg, 0xNN
 lui_re = re.compile(r'^\s*lui\s+(\$[a-z0-9]+)\s*,\s*0x([0-9a-fA-F]+)')
