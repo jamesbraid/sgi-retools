@@ -19,6 +19,10 @@ jobs:
         uses: https://code.forgejo.org/actions/checkout@v4
       - name: Run the workspace layout tests
         run: python3 tools/test_layout.py
+      - name: Run the layout tool tests
+        run: python3 tools/test_layout_tools.py
+      - name: Run the reading round tests
+        run: python3 tools/test_reading_round.py
       - name: Run the decode-header tests
         run: python3 tools/defs/test_defs.py
       - name: Run the hardware-definition tests

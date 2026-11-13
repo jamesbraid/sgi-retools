@@ -99,7 +99,8 @@ def segment_at(cfg, root, key):
 
 def read_config(workspace):
     """The inventory config of a workspace, or {} when it has none."""
-    path = os.path.join(workspace, 'scripts', 'inventory-config.json')
+    from _layout import Layout
+    path = os.path.join(workspace, Layout(workspace).inventory_config)
     if not os.path.isfile(path):
         return {}
     with open(path, encoding='utf-8') as handle:

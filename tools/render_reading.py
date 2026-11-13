@@ -288,7 +288,7 @@ def main(argv=None):
     parser.add_argument("--root", metavar="DIR", help="the binary root a firmware segment is read from "
                         "(BINARY is then `path(member)` under it, as the inventory keys it)")
     parser.add_argument("--config", metavar="FILE", help="inventory config whose layout groups cut the "
-                        "segments (default scripts/inventory-config.json of the current directory)")
+                        "segments (default tools/config/inventory-config.json, else scripts/, of the current directory)")
     args = parser.parse_args(argv)
 
     if args.json_in:

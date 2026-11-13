@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Re-render facts-only reading entries that no longer match hostfacts.
 
-Run from an RE workspace (the directory holding `root/` and `docs/`). Every
-docs/instruction-readings-*.md is graded with grade_readings in process, every
+Run from an RE workspace (the directory holding `root/` and `evidence/`, or `docs/` on the old
+layout). Every instruction-readings-*.md is graded with grade_readings in process, every
 entry. An entry that grades MISMATCH or UNPARSED is rendered again with
 render_reading from the binary, member, address and install path in its header
 (and the stated size, only when it differs from the symbol's size) and the whole
@@ -146,11 +146,16 @@ def rerender_doc(doc, root, pool=None, grade=None, render=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--root", default="root", help="directory containing the cited binaries")
-    parser.add_argument("--docs", default="docs", help="directory holding the reading documents")
+    parser.add_argument("--docs", help="directory holding the reading documents (default: evidence, "
+                        "or docs on the old layout)")
     parser.add_argument("--only", nargs="+", metavar="DOC", help="process just these documents")
     parser.add_argument("--jobs", type=int, default=4, help="grading processes")
     parser.add_argument("--conflicts", default="rerender-conflicts.tsv", help="conflicts tsv to write")
     args = parser.parse_args(argv)
+    if args.docs is None:
+        from _layout import Layout
+        from _workspace import find_workspace
+        args.docs = Layout(find_workspace()).readings_dir
 
     if args.only:
         docs = [os.path.join(args.docs, d) if os.sep not in d else d for d in args.only]
