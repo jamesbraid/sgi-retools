@@ -81,9 +81,52 @@ public class KonaTypes extends GhidraScript {
 
 	// ------------------------------------------------------------- records
 
+	/** A workspace path written for the old layout, as this workspace has it: component directories
+	 * sit under software/, the Ghidra tree under tools/, and the headers under devices/. */
+	Path res(Path repo, String rel) {
+		String head = rel.contains("/") ? rel.substring(0, rel.indexOf('/')) : rel;
+		String rest = rel.substring(head.length());
+		String comp = null;
+		switch (head) {
+		case "ucode": comp = "ucode"; break;
+		case "kona_kernel": comp = "kernel"; break;
+		case "libglcore": comp = "opengl"; break;
+		case "ddx": comp = "xsgi"; break;
+		case "irisgl": comp = "irisgl"; break;
+		case "diags": comp = "diags"; break;
+		default: break;
+		}
+		if (comp != null && Files.exists(repo.resolve("software/" + comp))) {
+			return repo.resolve("software/" + comp + rest);
+		}
+		if (head.equals("ghidra") && Files.exists(repo.resolve("tools/ghidra"))) {
+			return repo.resolve("tools/" + rel);
+		}
+		return repo.resolve(rel);
+	}
+
+	/** A header at the top of the old layout, or under devices/<unit>/ in the current one. */
+	Path header(String name) throws IOException {
+		Path old = repo.resolve(name);
+		if (Files.exists(old)) {
+			return old;
+		}
+		Path devices = repo.resolve("devices");
+		if (Files.isDirectory(devices)) {
+			try (java.util.stream.Stream<Path> w = Files.walk(devices, 2)) {
+				for (Path q : (Iterable<Path>) w::iterator) {
+					if (q.getFileName().toString().equals(name)) {
+						return q;
+					}
+				}
+			}
+		}
+		return old;
+	}
+
 	List<String[]> tsv(String rel) throws IOException {
 		List<String[]> out = new ArrayList<>();
-		for (String l : Files.readAllLines(repo.resolve(rel))) {
+		for (String l : Files.readAllLines(res(repo, rel))) {
 			if (l.isEmpty() || l.startsWith("#") || l.startsWith("offset\t")) {
 				continue;
 			}
@@ -216,7 +259,7 @@ public class KonaTypes extends GhidraScript {
 	EnumDataType enumFromHeader(String hdr, String name, String re, String need, long add, int size) throws Exception {
 		EnumDataType e = new EnumDataType(CAT, name, size, dtm);
 		Pattern p = Pattern.compile("^#define\\s+" + re + "\\s+(0x[0-9a-fA-F]+)\\b");
-		for (String l : Files.readAllLines(repo.resolve(hdr))) {
+		for (String l : Files.readAllLines(header(hdr))) {
 			Matcher m = p.matcher(l);
 			if (m.find() && !m.group(1).endsWith("_MASK") && (need == null || l.contains(need))) {
 				long v = Long.decode(m.group(2)) + add;

@@ -15,6 +15,8 @@ import os
 import re
 import subprocess
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', 'tools'))
+from _layout import sw  # noqa: E402
 
 D = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '.cache/kona-ged')
 RETOOLS_TOOLS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', 'tools')
@@ -22,7 +24,7 @@ sys.path.insert(0, RETOOLS_TOOLS)
 import _workspace  # noqa: E402
 os.chdir(_workspace.find_workspace())
 ref = os.path.join(D, 'ged_listing.txt')
-subprocess.run([sys.executable, os.path.join(RETOOLS_TOOLS, 'kona', 'ged_disasm.py'), 'ucode/KONA/ged1b.u', ref], check=True)
+subprocess.run([sys.executable, os.path.join(RETOOLS_TOOLS, 'kona', 'ged_disasm.py'), sw('ucode/KONA/ged1b.u'), ref], check=True)
 
 
 def norm_tok(t):

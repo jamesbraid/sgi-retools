@@ -13,6 +13,8 @@
 #   diag.listing, diag.functions               the 6.5.7 diagnostic program
 # and ghidra/processors/ge11/tests/check.py then compares them.
 set -eu
+# A path written for the old layout, as this workspace has it (software/ucode/..., see tools/_layout.py).
+sw() { python3 "$(dirname "$(readlink -f "$0")")/../../../../tools/_layout.py" sw "$1" 2>/dev/null || echo "$1"; }
 MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/ge11}
 DIAG=root/irix-6.5.7-src/stand/arcs/ide/isddevices/graphics/MGRAS
@@ -45,7 +47,7 @@ headless() {
 }
 
 # Production program with its records: functions, a few routines, every word.
-headless -import ucode/mgras_ge.u -loader BinaryLoader -processor GE11:BE:32:default \
+headless -import $(sw ucode/mgras_ge.u) -loader BinaryLoader -processor GE11:BE:32:default \
     -preScript GE11Import.java \
     -postScript DumpFunctions.java "$OUT/prod.functions" \
     -postScript DecompileAt.java "$OUT/decomp" 0x0e58 0x114e 0x298f \
@@ -53,10 +55,10 @@ headless -import ucode/mgras_ge.u -loader BinaryLoader -processor GE11:BE:32:def
 
 # The same program from its words alone, through the decode table: the hex
 # away from its .u, and the raw image the kernel loads.
-cp ucode/mgras_ge.hex "$lone/mgras_ge.hex"
+cp $(sw ucode/mgras_ge.hex) "$lone/mgras_ge.hex"
 headless -import "$lone/mgras_ge.hex" -loader BinaryLoader -processor GE11:BE:32:default \
     -preScript GE11Import.java -postScript DumpListing.java "$OUT/hex.listing"
-headless -import ucode/ge11.bin -loader BinaryLoader -processor GE11:BE:32:default \
+headless -import $(sw ucode/ge11.bin) -loader BinaryLoader -processor GE11:BE:32:default \
     -preScript GE11Import.java -postScript DumpListing.java "$OUT/bin.listing"
 
 # The 6.5.7 diagnostic program, with its label table.

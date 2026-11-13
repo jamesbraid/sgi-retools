@@ -10,6 +10,8 @@
 # and ghidra/processors/kona-ge/tests/check.py then compares them with the Python
 # disassembler and the documents.
 set -eu
+# A path written for the old layout, as this workspace has it (software/ucode/..., see tools/_layout.py).
+sw() { python3 "$(dirname "$(readlink -f "$0")")/../../../../tools/_layout.py" sw "$1" 2>/dev/null || echo "$1"; }
 MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/kona-ge}
 mkdir -p "$OUT"
@@ -38,20 +40,20 @@ headless() {
 }
 
 # Production program: functions first, then the routines, then every word.
-headless -import ucode/KONA/ge.u -loader BinaryLoader \
+headless -import $(sw ucode/KONA/ge.u) -loader BinaryLoader \
     -processor KONA-GE:BE:32:default -preScript KonaGEImport.java \
     -postScript DumpFunctions.java "$OUT/prod.functions" \
     -postScript DecompileAt.java "$OUT/decomp" 0x1633 0x0e62 0x0eb0 0xf1dc \
     -postScript DumpListing.java "$OUT/prod.listing"
 
 # The diagnostic program that irsaudit's instruction test runs.
-headless -import diags/IR/ucode/ge.u -loader BinaryLoader \
+headless -import $(sw diags/IR/ucode/ge.u) -loader BinaryLoader \
     -processor KONA-GE:BE:32:default -preScript KonaGEImport.java \
     -postScript DumpListing.java "$OUT/diag.listing"
 
 # The same production program from its other two encodings, and the
 # diagnostic set-up program: the import must give the same words.
-for f in ucode/KONA/ge11.u ucode/KONA/ge.hex diags/IR/ucode/ge_diag_init.hex; do
+for f in $(sw ucode/KONA/ge11.u) $(sw ucode/KONA/ge.hex) $(sw diags/IR/ucode/ge_diag_init.hex); do
     headless -import "$f" -loader BinaryLoader \
         -processor KONA-GE:BE:32:default -preScript KonaGEImport.java \
         -postScript DumpListing.java "$OUT/$(basename "$f").listing"

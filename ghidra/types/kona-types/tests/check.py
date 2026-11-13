@@ -20,6 +20,9 @@ import collections
 import os
 import re
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', 'tools'))
+import _layout  # noqa: E402
+from _layout import sw  # noqa: E402
 
 D = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '.cache/kona-types')
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', 'tools'))
@@ -51,7 +54,7 @@ for r in tsv(os.path.join(D, 'arm1.u.dump')):
 if S != '/KONA/types/kona_arm_state':
     fail(f'arm1.u: SRAM 0 holds {S}, not kona_arm_state')
 want = collections.Counter()
-for r in tsv('ucode/icu_map.tsv'):
+for r in tsv(sw('ucode/icu_map.tsv')):
     if not r[0].startswith('0x') or r[3] != 'hw':
         continue
     e = int(r[2], 16)
@@ -75,7 +78,7 @@ for r in tsv(os.path.join(D, 'kernel.dump')):
     if r[0] == 'F':
         funcs.add(r[2])
 checked = 0
-for r in tsv('docs/inventory/mmio.tsv'):
+for r in tsv(_layout.of().inventory_dir + '/mmio.tsv'):
     if r[0] != 'hip':
         continue
     off = int(r[1], 16)

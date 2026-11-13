@@ -83,9 +83,33 @@ public class KonaArmImport extends GhidraScript {
 		return ram.getAddress(v & 0xffffffffL);
 	}
 
+	/** A workspace path written for the old layout, as this workspace has it: component directories
+	 * sit under software/, the Ghidra tree under tools/, and the headers under devices/. */
+	Path res(Path repo, String rel) {
+		String head = rel.contains("/") ? rel.substring(0, rel.indexOf('/')) : rel;
+		String rest = rel.substring(head.length());
+		String comp = null;
+		switch (head) {
+		case "ucode": comp = "ucode"; break;
+		case "kona_kernel": comp = "kernel"; break;
+		case "libglcore": comp = "opengl"; break;
+		case "ddx": comp = "xsgi"; break;
+		case "irisgl": comp = "irisgl"; break;
+		case "diags": comp = "diags"; break;
+		default: break;
+		}
+		if (comp != null && Files.exists(repo.resolve("software/" + comp))) {
+			return repo.resolve("software/" + comp + rest);
+		}
+		if (head.equals("ghidra") && Files.exists(repo.resolve("tools/ghidra"))) {
+			return repo.resolve("tools/" + rel);
+		}
+		return repo.resolve(rel);
+	}
+
 	List<String[]> tsv(String rel) throws IOException {
 		List<String[]> out = new ArrayList<>();
-		Path p = repo.resolve(rel);
+		Path p = res(repo, rel);
 		if (!Files.exists(p)) {
 			println("missing " + rel + ": skipped");
 			return out;
@@ -448,7 +472,7 @@ public class KonaArmImport extends GhidraScript {
 	// Labels of ucode/tport.md's "Unnamed functions" table, for the call
 	// targets the arm1.u match leaves as fn_<address>.
 	void tportLabels() throws IOException {
-		Path md = repo.resolve("ucode/tport.md");
+		Path md = res(repo, "ucode/tport.md");
 		if (!Files.exists(md)) {
 			return;
 		}
