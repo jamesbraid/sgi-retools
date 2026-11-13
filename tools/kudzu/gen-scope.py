@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Write the binaries and scope sections of scripts/inventory-config.json from scripts/scope.json.
+"""Write the binaries and scope sections of tools/config/inventory-config.json from tools/config/scope.json
+(scripts/ on the old layout).
 
 Usage: retools/tools/kudzu/gen-scope.py [--check]
 
@@ -14,7 +15,7 @@ excluded: the run refuses. scope.json lists such routines under `keep`, as
 {"binary": GLOB, "names": [...], "why": "..."}; every file the glob matches (relative to root/; the
 glob of an archive member, `x.a(m.o)`, matches the whole archive) gets its own rule that leaves those
 names in scope; these rules come after the group rules, so the rule numbers that the functions table
-reports for the rest do not change when a keep entry is added. With docs/inventory/functions.tsv present, a kept name that no matching binary defines
+reports for the rest do not change when a keep entry is added. With the inventory functions table present, a kept name that no matching binary defines
 fails the script, so a stale entry cannot hide.
 """
 import collections
@@ -31,7 +32,9 @@ import sys
 TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, TOOLS)
 from _workspace import find_workspace  # noqa: E402
+from _layout import Layout  # noqa: E402
 REPO = find_workspace()
+LAYOUT = Layout(REPO)
 ROOT = os.path.join(REPO, 'root')
 
 
@@ -140,12 +143,12 @@ def check_keep(scope, functions_tsv):
 
 
 def main():
-    scope = json.load(open(os.path.join(REPO, 'scripts', 'scope.json')))
-    cfgp = os.path.join(REPO, 'scripts', 'inventory-config.json')
+    scope = json.load(open(os.path.join(REPO, LAYOUT.scope_file)))
+    cfgp = os.path.join(REPO, LAYOUT.inventory_config)
     cfg = json.load(open(cfgp))
-    problems = check_keep(scope, os.path.join(REPO, 'docs', 'inventory', 'functions.tsv'))
+    problems = check_keep(scope, os.path.join(REPO, LAYOUT.functions_table))
     if problems:
-        sys.exit('scripts/scope.json: ' + '; '.join(problems))
+        sys.exit('%s: ' % LAYOUT.scope_file + '; '.join(problems))
     def sha(path):
         with open(os.path.join(ROOT, path), 'rb') as f:
             return hashlib.sha256(f.read()).hexdigest()
@@ -155,7 +158,7 @@ def main():
     text = json.dumps(cfg, indent=2) + '\n'
     if '--check' in sys.argv[1:]:
         if open(cfgp).read() != text:
-            sys.exit('scripts/inventory-config.json is out of date: run retools/tools/kudzu/gen-scope.py')
+            sys.exit('%s is out of date: run retools/tools/kudzu/gen-scope.py' % LAYOUT.inventory_config)
         print('config matches scope.json')
         return
     open(cfgp, 'w').write(text)

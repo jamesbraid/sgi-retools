@@ -163,6 +163,41 @@ class Overlay(unittest.TestCase):
         self.assertEqual(list(ov['add']['registers']), ['170'])
 
 
+class CurrentLayout(unittest.TestCase):
+    """A workspace that has moved: census tables under devices/, register maps written beside them."""
+
+    def setUp(self):
+        old = os.getcwd()
+        self.addCleanup(os.chdir, old)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        os.chdir(tmp.name)
+        row = lambda v, off, acc, sites: [v, off, '0', '', acc, '4', '4', sites, '1', 'ip27-kernel']
+        write('devices/bridge/census/census.tsv', ROW, [row('bridge', '0x0', 'r', '5'), row('xbridge', '0x0', 'r', '3'),
+                                                        row('xbridge', '0x170', 'r', '2')])
+        write('devices/bridge/census/census-sites.tsv', SITE, [])
+        write('devices/bridge/census/fields.tsv', ['variant', 'register', 'kind', 'bits_or_value', 'source', 'sites'], [])
+
+    def test_census_is_read_from_devices_and_the_unit_has_no_forwarding_header(self):
+        self.assertTrue(gen_headers.current())
+        rows, _ = gen_headers.load('bridge', 'bridge')
+        self.assertEqual(len(rows), 1)
+        unit, _ = gen_headers.gen('bridge', gen_headers.CHIPS['bridge'])
+        self.assertNotIn('legacy_header', unit['c'])
+
+    def test_main_writes_register_maps_under_devices(self):
+        gen_headers.main()
+        self.assertTrue(os.path.isfile('devices/bridge/registers.toml'))
+        self.assertTrue(os.path.isfile('devices/bridge/registers.xbridge.toml'))
+        self.assertFalse(os.path.exists('devices/xbridge/registers.toml'))
+        self.assertFalse(os.path.exists('defs'))
+        # the synthetic census has no register names, so the maps do not load; the layout is what is tested
+        found = [(x.rel, x.kind) for x in loader.Layout('.').register_sources() if x.dir == 'devices/bridge']
+        self.assertEqual(found, [('devices/bridge/registers.toml', 'base'), ('devices/bridge/registers.xbridge.toml', 'overlay')])
+        with open('devices/bridge/registers.xbridge.toml') as f:
+            self.assertIn('It patches devices/bridge/registers.toml.', f.read())
+
+
 class BootSpace(unittest.TestCase):
     """Boot-space accesses keep their own rows, and the header keeps old names as aliases."""
 
