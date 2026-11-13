@@ -853,6 +853,9 @@ class Entry:
         return self.keys
 
 
+# A path as a document writes it may start with ./, / or any number of ../ (a page in a deeper directory
+# links into root/ with more of them); all of those are dropped before it is compared with a binary's path.
+PATH_PREFIX = re.compile(r'^(?:\.\./|\./|/)+')
 PATHTOK = re.compile(r'[\w.+@$-]+(?:/[\w.+@$-]+)*(?:\([\w.+@$-]+\))?')
 
 
@@ -4159,7 +4162,7 @@ def build(cfg, a, tmp):
             mine |= image_keys(l)
 
         def accept(path, lab=lab, mine=mine):
-            path = re.sub(r'^(?:\./|/)+', '', path.strip('.,;:'))
+            path = PATH_PREFIX.sub('', path.strip('.,;:'))
             path = path[5:] if path.startswith('root/') else path
             return path in mine and token_images.get(path) == {lab}
         st = docs.by_file([img['member'] or base] + ([base] if img['member'] else []), accept)
@@ -4258,7 +4261,7 @@ def cites_binary(toks, img, owners):
     other path keys that no other image shares (a root/ or ./ prefix is dropped)."""
     labels = [img['label']] + img['copies']
     for t in toks:
-        t = re.sub(r'^(?:\./|/)+', '', t)
+        t = PATH_PREFIX.sub('', t)
         t = t[5:] if t.startswith('root/') else t
         if t in labels or (any(t in image_keys(l) for l in labels) and owners.get(t) == {img['label']}):
             return True
@@ -4287,7 +4290,7 @@ def cited_groups(ent, name, name_rows, token_images, cache):
     if k not in cache:
         rows_of, out = name_rows[name], set()
         for t in ent.tokens():
-            t = re.sub(r'^(?:\./|/)+', '', t.strip('.,;:'))
+            t = PATH_PREFIX.sub('', t.strip('.,;:'))
             t = t[5:] if t.startswith('root/') else t
             got = {rows_of[b] for b in token_images.get(t, ()) if b in rows_of}
             if len(got) == 1:
@@ -4343,7 +4346,7 @@ def header_site(ent, name, owners):
     build = m.group(1) if m else ''
     named, shared = set(), set()
     for m in PATHTOK.finditer((head + ' ' + build).replace('`', ' ')):
-        t = re.sub(r'^(?:\./|/)+', '', m.group(0).strip('.,;:'))
+        t = PATH_PREFIX.sub('', m.group(0).strip('.,;:'))
         got = owners.get(t[5:] if t.startswith('root/') else t, set())
         (named if len(got) == 1 else shared).update(got)
     if not addrs or not (named or shared):
