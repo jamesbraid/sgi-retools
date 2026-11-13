@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Check a repo's hardware definitions (devices/ and formats/, or defs/) and the generated tree.
 
-    defs-check [--root DIR] [--unit U ...] [--no-fresh] [--build] [--verbose]
+    defs-check [--root DIR] [--unit U ...] [--no-fresh] [--build] [--sibling NAME=PATH ...]
+               [--skip-siblings] [--verbose]
 
 Checks: the layout of every unit (overlap, width, enum fit, vectors, grades,
 sources), leaks in the public rendering of every generated file, prose claims
 against the notes, vectors against the notes corpus, descriptors that must carry
-no address, repo plugins, and that the generated tree matches what defs-gen would write.
+no address, repo plugins, that the generated tree matches what defs-gen would write, and
+that no register is defined in two sibling repositories.
 
 Exit 0 clean, 1 a check failed (each offending item printed), 2 a setup problem.
 Needs Python 3.11 or newer.
@@ -26,12 +28,17 @@ def main(argv=None):
     ap.add_argument("--no-fresh", action="store_true", help="do not compare the generated tree with the sources")
     ap.add_argument("--build", action="store_true",
                     help="also build the committed outputs: compile C, run the Python and genxml checks, build the Rust crate")
+    ap.add_argument("--sibling", action="append", default=[], metavar="NAME=PATH",
+                    help="where the sibling repository NAME is checked out (default: the inventory config's path, ../NAME, .cache/siblings/NAME)")
+    ap.add_argument("--skip-siblings", action="store_true", help="do not compare registers with the sibling repositories")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args(argv)
     if not loader.has_defs(args.root):
         print("error: %s has no register maps (devices/*/registers.toml, formats/*/format.toml or defs/)" % args.root, file=sys.stderr)
         return 2
-    status = checks.run(args.root, args.verbose, not args.no_fresh, set(args.unit) if args.unit else None)
+    given = dict(kv.split("=", 1) for kv in args.sibling)
+    status = checks.run(args.root, args.verbose, not args.no_fresh, set(args.unit) if args.unit else None,
+                        not args.skip_siblings, given)
     if args.build and status != 2:
         notes = []
         fails = build.verify(loader.load_repo(args.root), notes)

@@ -18,7 +18,7 @@ sys.path.insert(0, HERE)
 import publish_check as pc  # noqa: E402
 from defs_common import Report  # noqa: E402
 
-from . import gen, loader, modelcheck  # noqa: E402
+from . import gen, loader, modelcheck, siblings as siblings_mod  # noqa: E402
 from .genutil import GenError  # noqa: E402
 from .model import block_of, decode, enum_values, fwidth, mask  # noqa: E402
 
@@ -138,6 +138,7 @@ class Run:
         self.rep = Report()
         self.files, self.render_errors = {}, []
         self.c_names = {}
+        self.notes = []
 
     @property
     def settings(self):
@@ -295,8 +296,9 @@ def _vector_rules(run, unit):
                         rep.fail("%s %s test 0x%x" % (unit.path, n, t["value"]), "vector names address field %s" % fn)
 
 
-def run_checks(repo, verbose=False, fresh=True, only=None):
-    """Run every check; return (exit_status, Run)."""
+def run_checks(repo, verbose=False, fresh=True, only=None, siblings=True, sibling_paths=None):
+    """Run every check; return (exit_status, Run). `siblings` also compares the registers with the
+    sibling repositories that are present (a missing one is a note in run.notes, not a failure)."""
     run = Run(repo, verbose)
     rep = run.rep
     if repo.errors:
@@ -420,6 +422,11 @@ def run_checks(repo, verbose=False, fresh=True, only=None):
         for p in gen.stale(repo, files):
             rep.fail("generated", p)
 
+    # 8. no register is defined in two sibling repositories
+    if siblings and not only:
+        fails, run.notes = siblings_mod.check(repo, sibling_paths)
+        for p in fails:
+            rep.fail("siblings", p)
     return (1 if rep.fails else 0), run
 
 
@@ -433,17 +440,19 @@ def _c_names(unit, repo):
     return gen_c.gen_c(m, unit.path, helpers)
 
 
-def run(root, verbose=False, fresh=True, only=None):
+def run(root, verbose=False, fresh=True, only=None, siblings=True, sibling_paths=None):
     """Load and check the repo at root; return the exit status."""
     repo = loader.load_repo(root)
     try:
-        status, r = run_checks(repo, verbose, fresh, only)
+        status, r = run_checks(repo, verbose, fresh, only, siblings, sibling_paths)
     except Setup as e:
         print("error: %s" % e, file=sys.stderr)
         return 2
     except GenError as e:
         print("error: %s" % e, file=sys.stderr)
         return 2
+    for n in r.notes:
+        print("note: %s" % n, file=sys.stderr)
     if r.rep.fails:
         print("%d failure(s)" % len(r.rep.fails))
     else:
