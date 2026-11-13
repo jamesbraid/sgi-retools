@@ -102,7 +102,7 @@ class Ctx:
         self.root = root
         self.rep = rep
         self.verbose = verbose
-        self.hdrs = {}            # file path as configured -> Hdr
+        self.hdrs = HdrMap()      # file path as configured, or unit name -> Hdr
         self.allregs = {}         # every REG of every block header
         self.lib = sys.modules[__name__]
         chk = cfg.get('checks', {})
@@ -120,6 +120,32 @@ class Ctx:
         except OSError as e:
             print('error: cannot read %s: %s' % (path, e), file=sys.stderr)
             sys.exit(2)
+
+
+class HdrMap(dict):
+    """ctx.hdrs: Hdr objects keyed by the file path of the header, which depends on the layout
+    (generated/c/NAME.h or gen/c/NAME.h) and on a unit's legacy header. A key that is not a file path
+    is looked up as a unit name, so a plugin can write ctx.hdrs["token"] and keep working when the
+    repository moves. Iteration, len and `in` see the file keys only."""
+
+    def by_unit(self, name):
+        for h in self.values():
+            u = getattr(h, 'unit', None)
+            if u is not None and u.name == name:
+                return h
+        return None
+
+    def __missing__(self, key):
+        h = self.by_unit(key)
+        if h is None:
+            raise KeyError(key)
+        return h
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
 
 class Hdr:

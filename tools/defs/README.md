@@ -247,7 +247,10 @@ regenerated in the old comment grammar (`/* REG: ... */`, `FIELD`, `ENUM`, `WORD
 ` * TESTVEC:` lines), so a plugin that reads those lines keeps working,
 `hdr.regs`, `hdr.fields`, `hdr.widths`, `hdr.enums`, `hdr.defs` (every generated
 macro and every alias that evaluates) and `hdr.vecs` are the dictionaries the old
-checker built, and `hdr.unit` is the loaded unit. A plugin that reads other annotations or the
+checker built, and `hdr.unit` is the loaded unit. `ctx.hdrs` maps a header's file path to its `hdr`, and also takes a unit name:
+`ctx.hdrs["token"]` finds the header of unit `token` whatever layout the repository is on and
+whether or not the unit names a legacy header, so a plugin should use it in place of a
+hard-coded `generated/c/token.h` (which is `gen/c/token.h` before the move). A plugin that reads other annotations or the
 layout of the old comments (a command table, say) needs them to survive the migration: the
 importer keeps comment lines like ` * CALC: ...` verbatim in the helpers file, but it cannot
 carry free-form comments, so such a plugin is ported to read the model (`hdr.regs`,
