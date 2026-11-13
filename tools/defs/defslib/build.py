@@ -1,11 +1,14 @@
 """Build the committed outputs: the proof that they compile, import and agree with the vectors.
 
-  C           every gen/c header and forwarding header compiles with -Wall -Wextra -Werror,
+  C           every generated C header and forwarding header compiles with -Wall -Wextra -Werror,
               and a generated program decodes every vector with the header's own macros
-  Python      every gen/py module runs its self-test
+  Python      every generated Python module runs its self-test
   genxml      the vendored upstream pack generator accepts every export; what it
               writes compiles, and every vector unpacks and repacks through it
   Rust        the crate builds with warnings denied and its tests pass (rustc is optional)
+
+The paths are the repository's own: generated/{c,python,xml,rust} in the current layout,
+gen/{c,py,genxml,rust} in the old one.
 """
 import os
 import shutil
@@ -36,17 +39,19 @@ def verify(repo, notes=None):
     cc = shutil.which("cc") or shutil.which("gcc")
     rustc = shutil.which("rustc")
     root = repo.root
+    lay = repo.layout
     models = {n: (u.model if repo.profile == "internal" else publish_profile(u.model)) for n, u in repo.units.items()}
     with tempfile.TemporaryDirectory() as td:
         for name, m in sorted(models.items()):
-            hdr = os.path.join(root, "gen", "c", "%s.h" % name)
+            c_rel = lay.gen_file("c", name)
+            hdr = os.path.join(root, c_rel)
             if not os.path.isfile(hdr):
-                fails.append("gen/c/%s.h: missing" % name)
+                fails.append("%s: missing" % c_rel)
                 continue
             if cc:
                 r = _run([cc, "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-std=c99", "-x", "c", hdr])
                 if r.returncode:
-                    fails.append("gen/c/%s.h: C compile failed: %s" % (name, " | ".join(_tail(r))))
+                    fails.append("%s: C compile failed: %s" % (c_rel, " | ".join(_tail(r))))
                     continue
                 src = os.path.join(td, "t_%s.c" % name)
                 with open(src, "w", encoding="utf-8") as f:
@@ -54,24 +59,26 @@ def verify(repo, notes=None):
                 exe = os.path.join(td, "t_%s" % name)
                 r = _run([cc, "-std=c99", "-Wall", "-Werror", "-o", exe, src])
                 if r.returncode:
-                    fails.append("gen/c/%s.h: self-test compile failed: %s" % (name, " | ".join(_tail(r))))
+                    fails.append("%s: self-test compile failed: %s" % (c_rel, " | ".join(_tail(r))))
                 elif _run([exe]).returncode:
-                    fails.append("gen/c/%s.h: a vector disagrees with the generated macros" % name)
+                    fails.append("%s: a vector disagrees with the generated macros" % c_rel)
                 legacy = m["c"].get("legacy_header")
                 if legacy and os.path.isfile(os.path.join(root, legacy)):
                     r = _run([cc, "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-std=c99", "-x", "c", os.path.join(root, legacy)])
                     if r.returncode:
                         fails.append("%s: forwarding header does not compile: %s" % (legacy, " | ".join(_tail(r))))
-            py = os.path.join(root, "gen", "py", "%s.py" % name)
+            py_rel = lay.gen_file("py", name)
+            py = os.path.join(root, py_rel)
             if os.path.isfile(py):
                 r = _run([sys.executable, "-I", py])
                 if r.returncode:
-                    fails.append("gen/py/%s.py: self-test failed: %s" % (name, " | ".join(_tail(r))))
-            xml = os.path.join(root, "gen", "genxml", "%s.xml" % name)
+                    fails.append("%s: self-test failed: %s" % (py_rel, " | ".join(_tail(r))))
+            xml_rel = lay.gen_file("xml", name)
+            xml = os.path.join(root, xml_rel)
             if os.path.isfile(xml):
                 r = _run([sys.executable, "-I", VENDOR, xml, PRELUDE])
                 if r.returncode:
-                    fails.append("gen/genxml/%s.xml: upstream pack generator refused it: %s" % (name, " | ".join(_tail(r))))
+                    fails.append("%s: upstream pack generator refused it: %s" % (xml_rel, " | ".join(_tail(r))))
                 elif cc:
                     packed = os.path.join(td, "%s_pack.h" % name)
                     with open(packed, "w", encoding="utf-8") as f:
@@ -82,29 +89,30 @@ def verify(repo, notes=None):
                     exe = os.path.join(td, "x_%s" % name)
                     c = _run([cc, "-std=gnu11", "-Wno-unused-function", "-o", exe, src])
                     if c.returncode:
-                        fails.append("gen/genxml/%s.xml: upstream output does not compile: %s" % (name, " | ".join(_tail(c))))
+                        fails.append("%s: upstream output does not compile: %s" % (xml_rel, " | ".join(_tail(c))))
                     else:
                         t = _run([exe])
                         if t.returncode:
-                            fails.append("gen/genxml/%s.xml: a vector does not roundtrip through the upstream pack code: %s"
-                                         % (name, " | ".join(_tail(t))))
+                            fails.append("%s: a vector does not roundtrip through the upstream pack code: %s"
+                                         % (xml_rel, " | ".join(_tail(t))))
         if not cc:
             notes.append("no C compiler: skipped the C and genxml builds")
-        crate = os.path.join(root, "gen", "rust", "src", "lib.rs")
+        crate_rel = "%s/src/lib.rs" % lay.gen_dir("rust")
+        crate = os.path.join(root, crate_rel)
         if not os.path.isfile(crate):
             if models:
-                fails.append("gen/rust/src/lib.rs: missing")
+                fails.append("%s: missing" % crate_rel)
         elif not rustc:
             notes.append("no rustc: skipped the Rust build (run it in the rust container)")
         else:
             exe = os.path.join(td, "rust_tests")
             r = _run([rustc, "--edition", "2021", "--test", "-D", "warnings", "-o", exe, crate])
             if r.returncode:
-                fails.append("gen/rust: build failed: %s" % " | ".join(_tail(r)))
+                fails.append("%s: build failed: %s" % (lay.gen_dir("rust"), " | ".join(_tail(r))))
             else:
                 r = _run([exe])
                 if r.returncode:
-                    fails.append("gen/rust: tests failed: %s" % " | ".join(_tail(r)))
+                    fails.append("%s: tests failed: %s" % (lay.gen_dir("rust"), " | ".join(_tail(r))))
     return fails
 
 

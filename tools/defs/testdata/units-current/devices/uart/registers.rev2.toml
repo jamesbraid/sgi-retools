@@ -1,0 +1,17 @@
+# Second revision: a wider divisor and one added register.
+[override]
+title = "made-up UART, revision 2"
+from = "fixture notes (revision 2)"
+
+[patch."registers.ctl.fields.divisor"]
+grade = "inferred"
+
+[add.registers.irq_mask]
+offset = 0x18
+access = "rw"
+width = 32
+grade = "inferred"
+
+[add.registers.irq_mask.fields]
+tx = { bits = [1, 1], grade = "inferred" }
+rx = { bits = [0, 0], grade = "inferred" }

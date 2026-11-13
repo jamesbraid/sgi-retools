@@ -43,9 +43,12 @@ def _note(node):
     return ["Notes: %s" % node["notes"].strip(), ""] if node.get("notes") else []
 
 
-def gen_docs(u, src, profile="public"):
+def gen_docs(u, src, profile="public", banner_first=False):
+    """The browsable register table. banner_first puts the generated-file comment on the first line, as
+    the pages beside their sources do; the old gen/docs pages keep the title first."""
     title = u.get("title") or u["unit"]
-    out = ["# %s" % title, "", "<!-- %s -->" % banner(src, "", "").strip(), ""]
+    note = "<!-- %s -->" % banner(src, "", "").strip()
+    out = [note, "", "# %s" % title, ""] if banner_first else ["# %s" % title, "", note, ""]
     if u.get("doc"):
         out += [u["doc"].strip(), ""]
     meta = ["Unit `%s`, macro prefix `%s`" % (u["unit"], u["prefix"])]

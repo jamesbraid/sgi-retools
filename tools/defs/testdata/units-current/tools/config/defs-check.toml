@@ -1,0 +1,23 @@
+[project]
+name = "mini"
+
+[[banned.extra]]
+label = "driver routine prefix"
+regex = '\bmini_\w*'
+
+[units.uart]
+notes_corpus = ["devices/uart/README.md"]
+
+[[claims]]
+group = "uart"
+label = "control register fields"
+doc = "devices/uart/README.md"
+regex = 'The control register sits at (0x[0-9a-f]+).*?bits (\d+):(\d+) of the control word, parity in bits (\d+):(\d+)'
+binds = [["O", "UART.ctl", 1], ["F", "UART.ctl.divisor", 2, 3], ["F", "UART.ctl.parity", 4, 5]]
+
+[[claims]]
+group = "uart"
+label = "frame payload"
+doc = "devices/uart/README.md"
+regex = 'payload in bits (\d+):(\d+)'
+binds = [["F", "FRAME.payload", 1, 2]]

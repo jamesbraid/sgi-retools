@@ -6,16 +6,19 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UNITS_FIXTURE = os.path.join(HERE, "testdata", "units")
+CURRENT_FIXTURE = os.path.join(HERE, "testdata", "units-current")
 
 
 class RepoTest(unittest.TestCase):
-    """Each test gets its own copy of testdata/units as a repo root."""
+    """Each test gets its own copy of testdata/units (the old defs/ layout) as a repo root."""
+
+    FIXTURE = UNITS_FIXTURE
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
         self.root = os.path.join(self.tmp, "repo")
-        shutil.copytree(UNITS_FIXTURE, self.root)
+        shutil.copytree(self.FIXTURE, self.root)
 
     def path(self, rel):
         return os.path.join(self.root, rel)
@@ -34,6 +37,12 @@ class RepoTest(unittest.TestCase):
         text = self.read(rel)
         self.assertIn(old, text)
         self.write(rel, text.replace(old, new, 1))
+
+
+class CurrentRepoTest(RepoTest):
+    """The same repo in the current layout: testdata/units-current (devices/, formats/, tools/config)."""
+
+    FIXTURE = CURRENT_FIXTURE
 
 
 def which(*names):

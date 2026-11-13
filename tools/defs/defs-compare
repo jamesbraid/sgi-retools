@@ -8,8 +8,9 @@ The first form is for a migration. Every unit that names the header it replaces
 ([c] legacy_header) is compared: the old text comes from git at REV (default HEAD,
 read with git show, so it still works after defs-gen has overwritten the file with
 the forwarding header) and the new text is the file now at that path. Macros the
-migration drops on purpose are listed in defs/legacy-dropped.txt (NAME, a tab, a
-reason); a name there that is not missing is reported.
+migration drops on purpose are listed in tools/config/defs-legacy-dropped.txt
+(defs/legacy-dropped.txt on the old layout; NAME, a tab, a reason); a name there that is
+not missing is reported.
 
 Exit 0 when every old macro is present with the same value, 1 on any difference or
 missing macro, 2 on a setup problem.
@@ -22,6 +23,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from defslib import compare, loader  # noqa: E402
+from _layout import Layout  # noqa: E402
 
 
 def report(out, quiet=False):
@@ -38,15 +40,16 @@ def report(out, quiet=False):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--root", default=".", help="repo root holding defs/ (default: current directory)")
+    ap.add_argument("--root", default=".", help="repo root holding devices/ or defs/ (default: current directory)")
     ap.add_argument("--old-rev", default="HEAD", help="git revision holding the old headers (default HEAD)")
     ap.add_argument("--unit", action="append", help="compare only this unit (repeatable)")
-    ap.add_argument("--dropped", help="file of macros dropped on purpose (default defs/legacy-dropped.txt under the root)")
+    ap.add_argument("--dropped", help="file of macros dropped on purpose (default tools/config/defs-legacy-dropped.txt, else defs/legacy-dropped.txt, under the root)")
     ap.add_argument("--old", help="an old header file (with --new)")
     ap.add_argument("--new", help="its replacement (with --old)")
     ap.add_argument("-I", dest="includes", action="append", default=[], help="include directory for the compiler")
     args = ap.parse_args(argv)
-    dropped = compare.load_dropped(args.dropped or os.path.join(args.root, "defs", "legacy-dropped.txt"))
+    lay = Layout(args.root)
+    dropped = compare.load_dropped(args.dropped or lay.path(lay.legacy_dropped_file))
     try:
         if args.old or args.new:
             if not (args.old and args.new):
@@ -56,7 +59,7 @@ def main(argv=None):
             report(out)
             return 0 if out.ok else 1
         if not loader.has_defs(args.root):
-            print("error: %s has no defs/ directory" % args.root, file=sys.stderr)
+            print("error: %s has no register maps (devices/*/registers.toml, formats/*/format.toml or defs/)" % args.root, file=sys.stderr)
             return 2
         repo = loader.load_repo(args.root)
         if repo.errors:

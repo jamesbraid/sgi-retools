@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Convert a repo's annotated headers into defs/ sources.
+"""Convert a repo's annotated headers into register-map sources.
 
-    defs-import [--root DIR] [--config defs.toml] [--out defs] [--from TEXT]
+    defs-import [--root DIR] [--config defs.toml] [--layout current|old] [--out DIR] [--from TEXT]
                 [--space-unit NAME ...] [--unit-name HEADER=UNIT ...] [--force] [--dry-run]
 
-Reads the repo's old defs.toml and every header it lists; writes defs/<unit>.toml,
-defs/<unit>_helpers.h (function-like macros) and defs/check.toml. It never edits a
-header. The report on stdout lists everything that needs a person: constants with no
-grade, macros with no counterpart, defaulted grades, and the legacy macro names that
-now live in [c.aliases]. The same report goes to <out>/import-report.txt, which is
-deleted after the migration.
+Reads the repo's old defs.toml and every header it lists; writes devices/<unit>/registers.toml,
+devices/<unit>/helpers.h (function-like macros) and tools/config/defs-check.toml. A repo that
+has not moved yet (none of tools/config, evidence, devices, ...) gets the old shape instead:
+defs/<unit>.toml, defs/<unit>_helpers.h and defs/check.toml. --layout forces one; --out DIR
+writes the old flat shape into DIR. It never edits a header. The report on stdout lists
+everything that needs a person: constants with no grade, macros with no counterpart, defaulted
+grades, and the legacy macro names that now live in [c.aliases]. The same report goes to
+import-report.txt beside the settings file, which is deleted after the migration.
 
 Exit 0 on success, 2 on a setup problem or when a file would be overwritten.
 """
@@ -19,13 +21,16 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from defslib import importer  # noqa: E402
+from _layout import Layout  # noqa: E402
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=".", help="repo root (default: current directory)")
     ap.add_argument("--config", default="defs.toml", help="old config, relative to the root")
-    ap.add_argument("--out", default="defs", help="output directory, relative to the root")
+    ap.add_argument("--layout", choices=("current", "old"),
+                    help="where to write: the current layout or the old defs/ (default: the current layout when the repo already shows it)")
+    ap.add_argument("--out", help="write the old flat shape into this directory, relative to the root")
     ap.add_argument("--from", dest="frm", help="the source to record for every unit (default: a note that it was not recorded)")
     ap.add_argument("--space-unit", action="append", default=[], metavar="NAME", help="declare this address space in register-index units")
     ap.add_argument("--unit-name", action="append", default=[], metavar="HEADER=UNIT", help="name the unit for a header")
@@ -42,16 +47,22 @@ def main(argv=None):
     print("\n".join(report))
     if args.dry_run:
         return 0
+    layout = args.layout or ("old" if args.out else "current" if Layout(args.root).on_current_layout else "old")
     try:
-        written = importer.write_result(args.root, res, args.out, args.force)
-        rpath = os.path.join(args.root, args.out, "import-report.txt")
-        with open(rpath, "w", encoding="utf-8") as f:
+        if layout == "current" and not args.out:
+            written = importer.write_current(args.root, res, args.force)
+            report_rel = "tools/config/import-report.txt"
+        else:
+            out = args.out or "defs"
+            written = importer.write_result(args.root, res, out, args.force)
+            report_rel = os.path.join(out, "import-report.txt")
+        with open(os.path.join(args.root, report_rel), "w", encoding="utf-8") as f:
             f.write("\n".join(report) + "\n")
-        written.append(os.path.join(args.out, "import-report.txt"))
+        written.append(report_rel)
     except FileExistsError as e:
         print("error: %s" % e, file=sys.stderr)
         return 2
-    print("wrote %d files under %s/" % (len(written), args.out))
+    print("wrote %d files" % len(written))
     return 0
 
 

@@ -314,6 +314,28 @@ class ImporterTest(OldRepoTest):
         r = run(CHECK, "--root", self.root, "--build")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_cli_writes_the_current_layout_when_the_repo_shows_it(self):
+        os.makedirs(self.path("tools/config"))
+        r = run(IMPORT, "--root", self.root)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for f in ("devices/uart/registers.toml", "devices/leg/registers.toml", "devices/leg/helpers.h",
+                  "tools/config/defs-check.toml", "tools/config/import-report.txt"):
+            self.assertTrue(os.path.isfile(self.path(f)), f)
+        self.assertFalse(os.path.exists(self.path("defs")))
+
+    def test_layout_flag_and_out_choose_the_shape(self):
+        self.assertEqual(run(IMPORT, "--root", self.root, "--layout", "current").returncode, 0)
+        self.assertTrue(os.path.isfile(self.path("devices/uart/registers.toml")))
+        self.assertEqual(run(IMPORT, "--root", self.root, "--out", "elsewhere").returncode, 0)
+        self.assertTrue(os.path.isfile(self.path("elsewhere/uart.toml")))
+
+    def test_current_layout_import_generates_and_checks_clean(self):
+        self.assertEqual(run(IMPORT, "--root", self.root, "--layout", "current").returncode, 0)
+        self.assertEqual(run(GEN, "--root", self.root).returncode, 0)
+        r = run(CHECK, "--root", self.root, "--build")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(self.path("generated/c/uart.h")))
+
     def test_missing_header_is_a_setup_error(self):
         os.remove(self.path("TAB.h"))
         r = run(IMPORT, "--root", self.root)

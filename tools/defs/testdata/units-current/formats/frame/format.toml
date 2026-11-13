@@ -1,0 +1,20 @@
+# Made-up packed structure used to test the defs tools. Not a real format.
+unit = "frame"
+prefix = "FRAME"
+title = "made-up frame header (fixture for the defs tools)"
+doc = "A packed header word."
+from = "fixture notes (frame page)"
+public_from = ["fixture notes"]
+
+[words.HEADER]
+width = 32
+grade = "established"
+doc = "A header: a version and a length."
+
+[words.HEADER.fields]
+version = { bits = [31, 28], grade = "established" }
+length = { bits = [15, 0], grade = "established" }
+
+[[words.HEADER.tests]]
+value = 0x10000040
+expect = { version = 1, length = 64 }
