@@ -20,6 +20,8 @@ import glob
 import os
 import re
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', 'tools'))
+from _layout import sw  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.cache/kona-ge'
 LST = re.compile(r'^([0-9a-f]{4}): ([0-9a-f]{18}) f\d+\s+(.*?)(?:  ; .*)?$')
@@ -59,7 +61,7 @@ def test_a():
     gh = ghidra_listing(os.path.join(OUT, 'prod.listing'))
     n = bad = 0
     shown = []
-    for f in sorted(glob.glob('ucode/ge_listing/*.lst')):
+    for f in sorted(glob.glob(sw('ucode/ge_listing/*.lst'))):
         for line in open(f):
             m = LST.match(line.rstrip('\n'))
             if not m:
@@ -111,7 +113,7 @@ def producer(gh, addr, reg):
 
 def test_b():
     gh = ghidra_listing(os.path.join(OUT, 'diag.listing'))
-    rows = [l.rstrip('\n').split('\t') for l in open('ucode/ge_inst_results.tsv') if l[0].isdigit()]
+    rows = [l.rstrip('\n').split('\t') for l in open(sw('ucode/ge_inst_results.tsv')) if l[0].isdigit()]
     bad = []
     nops = 0
     for row in rows:
@@ -160,24 +162,24 @@ def compute_routines():
     routine (lXF1, mainloop_clamp, ...) are not routine entries.
     """
     syms = {}
-    for line in open('ucode/KONA/ge_symbols'):
+    for line in open(sw('ucode/KONA/ge_symbols')):
         n, a = line.split()
         syms[n] = int(a, 16)
     reached = set()
-    for line in open('ucode/ge_xref.tsv'):
+    for line in open(sw('ucode/ge_xref.tsv')):
         f = line.rstrip('\n').split('\t')
         if line.startswith(('#', 'address')) or len(f) < 11:
             continue
         slots, arm, _, ged, _, consts = f[5:11]
         if slots or arm or ged or consts:
             reached.add(int(f[0], 16))
-    for p in glob.glob('ucode/ge_listing/*.lst'):
+    for p in glob.glob(sw('ucode/ge_listing/*.lst')):
         for line in open(p):
             m = re.search(r' xfer[45] c0 cc=[0-9a-f]+ -> ([0-9a-f]{4})', line)
             if m:
                 reached.add(int(m.group(1), 16))
     names, other = [], []
-    for line in open('ucode/ge_compute.md'):
+    for line in open(sw('ucode/ge_compute.md')):
         m = re.match(r'^- `([A-Za-z_][A-Za-z0-9_]*)`', line)
         if m and m.group(1) in syms:
             (names if syms[m.group(1)] in reached else other).append((m.group(1), syms[m.group(1)], line))

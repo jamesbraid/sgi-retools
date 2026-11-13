@@ -7,6 +7,8 @@
 # Run from the repository root with analyzeHeadless on PATH and root/
 # populated. Writes OUTDIR/<image>.dump and OUTDIR/<image>.log per image.
 set -eu
+# A path written for the old layout, as this workspace has it (software/ucode/..., see tools/_layout.py).
+sw() { python3 "$(dirname "$(readlink -f "$0")")/../../../../tools/_layout.py" sw "$1" 2>/dev/null || echo "$1"; }
 MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/kona-arm}
 mkdir -p "$OUT"
@@ -14,7 +16,7 @@ OUT=$(cd "$OUT" && pwd)
 proj=$(mktemp -d /tmp/kona-arm-proj.XXXXXX)
 trap 'rm -rf "$proj"' EXIT
 
-for f in ucode/KONA/arm1.u ucode/KONA/arm1_kpm.u ucode/KONA/tport.bin \
+for f in $(sw ucode/KONA/arm1.u) $(sw ucode/KONA/arm1_kpm.u) $(sw ucode/KONA/tport.bin) \
          root/usr/diags/IR/ucode/arm1.u root/usr/diags/IR/ucode/arm1_nic.u \
          root/usr/diags/IR/ucode/diag_arm_init.u; do
     name=$(basename "$f")

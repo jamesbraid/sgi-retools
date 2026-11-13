@@ -20,12 +20,14 @@ import os
 import re
 import subprocess
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', 'tools'))
+from _layout import sw  # noqa: E402
 
 DISASM = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..',
                       'tools', 'odsy', 'buzz_ucode_disasm.py')
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.cache/odsy-buzz'
-IMAGES = [('xform', 'ucode/ODSY/buzz_xform.bin', []),
-          ('kernel', 'ucode/buzz_ucode_ip30.bin', ['--kernel']),
+IMAGES = [('xform', sw('ucode/ODSY/buzz_xform.bin'), []),
+          ('kernel', sw('ucode/buzz_ucode_ip30.bin'), ['--kernel']),
           ('diag', 'root/builds/odydiags-6.5.15/usr/diags/ody/ucode/diagxform.bin', [])]
 GROUPS = [('r1', 'r2', 'r3'), ('a', 'b'), ('ln', 'rb', 'bx'), ('mc', 'ma'),
           ('d0', 'd1', 'd2'), ('e0', 'e1', 'e2', 'e3'), ('s0', 's1')]
@@ -105,7 +107,7 @@ def test_a():
 def routine_table():
     """(entry, kernel record or None) rows of buzz_routines.md's routine table."""
     rows, on = [], False
-    for line in open('ucode/buzz_routines.md'):
+    for line in open(sw('ucode/buzz_routines.md')):
         if line.startswith('## Routines'):
             on = True
             continue

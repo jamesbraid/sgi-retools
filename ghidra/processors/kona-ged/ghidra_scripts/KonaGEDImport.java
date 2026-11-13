@@ -47,6 +47,30 @@ public class KonaGEDImport extends GhidraScript {
 		return ((b[o] & 0xff) << 8) | (b[o + 1] & 0xff);
 	}
 
+	/** A workspace path written for the old layout, as this workspace has it: component directories
+	 * sit under software/, the Ghidra tree under tools/, and the headers under devices/. */
+	Path res(Path repo, String rel) {
+		String head = rel.contains("/") ? rel.substring(0, rel.indexOf('/')) : rel;
+		String rest = rel.substring(head.length());
+		String comp = null;
+		switch (head) {
+		case "ucode": comp = "ucode"; break;
+		case "kona_kernel": comp = "kernel"; break;
+		case "libglcore": comp = "opengl"; break;
+		case "ddx": comp = "xsgi"; break;
+		case "irisgl": comp = "irisgl"; break;
+		case "diags": comp = "diags"; break;
+		default: break;
+		}
+		if (comp != null && Files.exists(repo.resolve("software/" + comp))) {
+			return repo.resolve("software/" + comp + rest);
+		}
+		if (head.equals("ghidra") && Files.exists(repo.resolve("tools/ghidra"))) {
+			return repo.resolve("tools/" + rel);
+		}
+		return repo.resolve(rel);
+	}
+
 	@Override
 	protected void run() throws Exception {
 		String[] args = getScriptArgs();
@@ -118,7 +142,7 @@ public class KonaGEDImport extends GhidraScript {
 		// Relocated slots: arm1.u init_ged_ucode replaces the low 16 bits of
 		// these loads with a geometry-engine handler address (ucode/arm1.md).
 		Map<Integer, String> reloc = new HashMap<>();
-		Path rp = repo.resolve("ucode/ged_relocs.tsv");
+		Path rp = res(repo, "ucode/ged_relocs.tsv");
 		if (Files.exists(rp)) {
 			for (String l : Files.readAllLines(rp)) {
 				String[] r = l.split("\t");

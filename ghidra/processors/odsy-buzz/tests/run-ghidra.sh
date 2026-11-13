@@ -11,6 +11,8 @@
 # and ghidra/processors/odsy-buzz/tests/check.py then compares them with
 # retools/tools/odsy/buzz_ucode_disasm.py and the documents.
 set -eu
+# A path written for the old layout, as this workspace has it (software/ucode/..., see tools/_layout.py).
+sw() { python3 "$(dirname "$(readlink -f "$0")")/../../../../tools/_layout.py" sw "$1" 2>/dev/null || echo "$1"; }
 MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/odsy-buzz}
 DIAG=root/builds/odydiags-6.5.15/usr/diags/ody/ucode/diagxform.bin
@@ -41,13 +43,13 @@ headless() {
 
 # Three routines whose arithmetic the documents give: the clip-plane routine
 # 0, the unlit transform program 214 and the normalize program 1520.
-headless -import ucode/ODSY/buzz_xform.bin -loader BinaryLoader \
+headless -import $(sw ucode/ODSY/buzz_xform.bin) -loader BinaryLoader \
     -processor ODSY-BUZZ:BE:16:default -preScript BuzzImport.java \
     -postScript DumpFunctions.java "$OUT/xform.functions" \
     -postScript DecompileAt.java "$OUT/decomp" 0 214 1520 \
     -postScript DumpListing.java "$OUT/xform.listing"
 
-headless -import ucode/buzz_ucode_ip30.bin -loader BinaryLoader \
+headless -import $(sw ucode/buzz_ucode_ip30.bin) -loader BinaryLoader \
     -processor ODSY-BUZZ:BE:16:default -preScript BuzzImport.java \
     -postScript DumpFunctions.java "$OUT/kernel.functions" \
     -postScript DumpListing.java "$OUT/kernel.listing"

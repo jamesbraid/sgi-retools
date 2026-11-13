@@ -26,6 +26,8 @@ Exits 1 on any mismatch.
 import os
 import re
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', 'tools'))
+from _layout import sw  # noqa: E402
 
 D = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '.cache/kona-arm')
 bad = 0
@@ -84,9 +86,9 @@ def check_arm1():
     g = load('arm1.u')
     if g is None:
         return
-    lab = labels('ucode/arm1.s')
+    lab = labels(sw('ucode/arm1.s'))
     flags = {}
-    for r in tsv('ucode/arm1_symbols.tsv'):
+    for r in tsv(sw('ucode/arm1_symbols.tsv')):
         if r[0].startswith('0x'):
             flags[(int(r[0], 16), r[2])] = int(r[1])
     want = set()
@@ -110,8 +112,8 @@ def check_arm1():
     print(f'arm1.u: {len(want)} function symbols, {len(want) - len(missing)} found, {named} named as arm1.s; '
           f'{len(extra)} more found by analysis')
 
-    hand = {int(r[0], 16): r for r in tsv('ucode/arm1_handlers.tsv') if r[0].startswith('0x')}
-    toks = {int(r[0], 16): r for r in tsv('ucode/icu_map.tsv') if r[0].startswith('0x')}
+    hand = {int(r[0], 16): r for r in tsv(sw('ucode/arm1_handlers.tsv')) if r[0].startswith('0x')}
+    toks = {int(r[0], 16): r for r in tsv(sw('ucode/icu_map.tsv')) if r[0].startswith('0x')}
     t = g['T']
     ok = 0
     for tok, r in toks.items():
@@ -154,9 +156,9 @@ def check_tport():
     g = load('tport.bin')
     if g is None:
         return
-    lab = labels('ucode/tport.s')
+    lab = labels(sw('ucode/tport.s'))
     md = {}
-    for line in open('ucode/tport.md'):
+    for line in open(sw('ucode/tport.md')):
         if line.startswith('| 0x0c'):
             c = line.split('|')
             md[int(c[1].strip(), 16)] = c[2].strip().strip('`')

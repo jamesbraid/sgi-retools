@@ -6,6 +6,8 @@
 # Run from the repository root with Ghidra's support directory (sleigh,
 # analyzeHeadless) on PATH and root/ populated. Writes OUTDIR/ged1b.listing.
 set -eu
+# A path written for the old layout, as this workspace has it (software/ucode/..., see tools/_layout.py).
+sw() { python3 "$(dirname "$(readlink -f "$0")")/../../../../tools/_layout.py" sw "$1" 2>/dev/null || echo "$1"; }
 MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-.cache/kona-ged}
 mkdir -p "$OUT"
@@ -29,7 +31,7 @@ ln -s "$MOD" "$ext/kona-ged"
 
 sleigh "$MOD/data/languages/kona_ged.slaspec" >/dev/null
 
-analyzeHeadless "$proj" p -import ucode/KONA/ged1b.u -loader BinaryLoader \
+analyzeHeadless "$proj" p -import $(sw ucode/KONA/ged1b.u) -loader BinaryLoader \
     -processor KONA-GED:BE:32:default -scriptPath "$MOD/ghidra_scripts;$MOD/tests" \
     -preScript KonaGEDImport.java "$(pwd)" \
     -postScript DumpListing.java "$OUT/ged1b.listing" -deleteProject \
