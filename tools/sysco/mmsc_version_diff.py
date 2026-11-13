@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare the MMSC firmware images routine by routine, by symbol name.
 
-Usage: retools/tools/re-run python3 retools/tools/sysco/mmsc_version_diff.py [--out docs/version-diffs]
+Usage: retools/tools/re-run python3 retools/tools/sysco/mmsc_version_diff.py [--out evidence/version-diffs]
 
 The MMSC image is an unstripped a.out, so its routines are named. Each set is compared with
 the one before it in release order (the series below), keyed by symbol name and kind:
@@ -18,7 +18,7 @@ Text is decoded with capstone in 32-bit mode. A hex operand inside the image's o
 range is masked as ADDR, so code that only moved still matches. Similarity is the sequence
 match ratio of the normalised instruction lists; it is inferred, a ranking aid and no proof.
 
-Writes, under docs/version-diffs/:
+Writes, under evidence/version-diffs/:
 
   mmsc-routines.tsv     one row per routine change between consecutive sets
   mmsc-data.tsv         data and bss symbols added or removed between consecutive sets
@@ -44,8 +44,9 @@ import capstone  # noqa: E402
 TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, TOOLS)
 from _workspace import find_workspace  # noqa: E402
+from _layout import Layout  # noqa: E402
 REPO = find_workspace()
-OUT = os.path.join(REPO, 'docs', 'version-diffs')
+OUT = os.path.join(REPO, Layout(REPO).pick('evidence/version-diffs', 'docs/version-diffs'))
 if '--out' in sys.argv:
     OUT = os.path.abspath(sys.argv[sys.argv.index('--out') + 1])
 

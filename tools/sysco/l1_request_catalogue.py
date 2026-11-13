@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """General request codes of the Origin 300 L1 package in every set that carries it.
 
-Usage: retools/tools/re-run python3 retools/tools/sysco/l1_request_catalogue.py [--out docs/version-diffs]
+Usage: retools/tools/re-run python3 retools/tools/sysco/l1_request_catalogue.py [--out evidence/version-diffs]
        retools/tools/re-run python3 retools/tools/sysco/l1_request_catalogue.py --series early
 
 --series early covers the early series (1.0.2 to 1.18.3, version_diff.EARLY_SETS) and writes
 l1-early-request-catalogue.tsv and l1-early-request-changes.tsv; its reference column is 1.18.3.
 
-Writes two TSV files under docs/version-diffs/:
+Writes two TSV files under evidence/version-diffs/:
 
   l1-request-catalogue.tsv  one row per set and accepted general request code: the
                             handler address, a hash of the handler's normalised text
@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import version_diff as vd  # noqa: E402
 import sysco_tables as st  # noqa: E402
 
-OUT = os.path.join(st.REPO, 'docs', 'version-diffs')
+OUT = os.path.join(st.REPO, st.VERSION_DIFFS_DIR)
 if '--out' in sys.argv:
     OUT = os.path.abspath(sys.argv[sys.argv.index('--out') + 1])
 
