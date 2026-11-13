@@ -1,4 +1,4 @@
-"""Convert a repo's annotated decode and census headers into defs/ sources.
+"""Convert a repo's annotated decode and census headers into register-map sources.
 
 Reads the old defs.toml for the header list and per-header settings, and
 each header's annotations:
@@ -8,8 +8,10 @@ each header's annotations:
   census headers  `#define PFX_NAME 0xOFF /* [E] width N byte(s), access rw; ... */`
   plain tables    graded numeric #defines and nothing else
 
-and writes one defs/<unit>.toml per header, defs/<unit>_helpers.h for the
-function-like macros it cannot turn into data, and defs/check.toml. Nothing is
+and writes one devices/<unit>/registers.toml per header, devices/<unit>/helpers.h for
+the function-like macros it cannot turn into data, and tools/config/defs-check.toml (a
+repository still on the old layout gets defs/<unit>.toml, defs/<unit>_helpers.h and
+defs/check.toml). Nothing is
 guessed silently: the report lists every constant it could not grade, every
 grade it defaulted, every macro it could not carry over and every legacy name
 that differs from the naming rule (those become the forwarding header's aliases).
@@ -742,8 +744,30 @@ def check_settings(cfg, res):
     return out
 
 
+def write_current(root, res, force=False):
+    """Write the sources in the current layout: devices/<unit>/registers.toml and helpers.h, and
+    tools/config/defs-check.toml. Returns the files written."""
+    written = []
+
+    def put(rel, text):
+        path = os.path.join(root, rel)
+        if os.path.exists(path) and not force:
+            raise FileExistsError("%s exists; pass --force to overwrite" % rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        written.append(rel)
+    for unit, src in res.units.items():
+        put("devices/%s/registers.toml" % unit,
+            toml_emit.emit_unit(normalize(src), "# Imported from %s. Review the sources and grades, then maintain by hand." % res.header_of[unit]))
+    for unit, text in res.helpers.items():
+        put("devices/%s/helpers.h" % unit, text)
+    put("tools/config/defs-check.toml", toml_emit.emit_check(res.check))
+    return written
+
+
 def write_result(root, res, out_dir="defs", force=False):
-    """Write sources, helpers and check.toml; return the files written."""
+    """Write sources, helpers and check.toml into one flat directory (the old layout); return the files written."""
     base = os.path.join(root, out_dir)
     os.makedirs(base, exist_ok=True)
     written = []

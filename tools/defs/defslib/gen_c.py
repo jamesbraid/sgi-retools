@@ -10,7 +10,7 @@ The header names follow one rule:
   <CONST PREFIX>_<NAME>                                     constants
 
 `[c] offset_macro = "bare"` drops the _OFFSET suffix. A hand-written
-defs/<unit>_helpers.h, when present, is included at the end.
+devices/<unit>/helpers.h (old layout: defs/<unit>_helpers.h), when present, is included at the end.
 """
 import os
 
@@ -96,9 +96,12 @@ def gen_c(u, src, helpers_include=None):
     return "\n".join(out), {k: v for k, v in names.items() if v is not None}
 
 
-def helpers_rel(unit_name):
-    """Path from gen/c/<unit>.h to defs/<unit>_helpers.h."""
-    return "../../defs/%s_helpers.h" % unit_name
+def helpers_rel(unit_name, helpers_path=None, c_path=None):
+    """Path from the generated header (gen/c/<unit>.h) to the unit's hand-written helpers
+    (defs/<unit>_helpers.h); the paths default to the old layout's."""
+    helpers_path = helpers_path or "defs/%s_helpers.h" % unit_name
+    c_path = c_path or "gen/c/%s.h" % unit_name
+    return rel_include(c_path, helpers_path)
 
 
 def gen_c_test(u, hdr):

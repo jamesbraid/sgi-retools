@@ -175,13 +175,13 @@ def load_plugin(repo):
     return mod
 
 
-def check_leaks(ctx, texts, project):
+def check_leaks(ctx, texts, project, rust_dir="gen/rust"):
     """Banned content over the public-profile rendering of every generated file.
     Generated Rust must not name the project at all, as the old Rust check required."""
     named = re.compile(r"(?i)\b%s\b" % re.escape(project))
     for rel, text in sorted(texts.items()):
         pc.check_banned(ctx, rel, text)
-        if rel.startswith("gen/rust/"):
+        if rel.startswith(rust_dir + "/"):
             for n, line in enumerate(text.splitlines(), 1):
                 if named.search(line):
                     ctx.rep.fail("%s:%d" % (rel, n), "banned content (project name in generated Rust) %r in: %s"
@@ -236,7 +236,7 @@ def notes_corpus(run, ctx, unit):
 def no_addresses(run, unit, c_text, fields):
     """For descriptors that must carry no address value. Scans the generated header
     and the unit's hand-written helpers, then the vectors. Returns the address fields."""
-    for rel, text in (("gen/c/%s.h" % unit.name, c_text), (unit.helpers_path, helpers_text(run, unit))):
+    for rel, text in ((run.repo.layout.gen_file("c", unit.name), c_text), (unit.helpers_path, helpers_text(run, unit))):
         if text:
             _no_addresses_in(run, unit, rel, text)
     _vector_rules(run, unit)
@@ -332,13 +332,17 @@ def run_checks(repo, verbose=False, fresh=True, only=None):
     ctx.rules = pc.banned_rules(ctx)
 
     # 4. leaks: every public rendering, plus the hand-written helper files
-    selected = {rel: text for rel, text in pub.items()
-                if not only or any(rel.endswith("/%s.%s" % (n, e)) for n in only for e in ("h", "rs", "py", "json", "xml", "md"))
-                or rel in legacy_paths}
-    check_leaks(ctx, selected, repo.project)
-    for rel in helper_paths:
-        if not only or os.path.basename(rel)[:-len("_helpers.h")] in only:
-            pc.check_banned(ctx, rel, ctx.read(rel))
+    lay = repo.layout
+    chosen = set(legacy_paths)
+    for n in only or ():
+        u = repo.units[n]
+        chosen.update(lay.gen_file(k, n) for k in ("c", "py", "json", "xml"))
+        chosen.update(("%s/src/%s.rs" % (lay.gen_dir("rust"), n), lay.doc_file(u)))
+    selected = {rel: text for rel, text in pub.items() if not only or rel in chosen}
+    check_leaks(ctx, selected, repo.project, lay.gen_dir("rust"))
+    for u in repo.units.values():
+        if u.helpers_path in helper_paths and (not only or u.name in only):
+            pc.check_banned(ctx, u.helpers_path, ctx.read(u.helpers_path))
 
     # 5. per-unit views, shared across the prose, vector and plugin checks
     all_views, allregs = {}, {}
@@ -352,7 +356,7 @@ def run_checks(repo, verbose=False, fresh=True, only=None):
     hdrs = {}
     for u in repo.units.values():
         c_text, regs, fields, widths, enums, defs, vecs, legacy = all_views[u.name]
-        file = u.model["c"].get("legacy_header") or "gen/c/%s.h" % u.name
+        file = u.model["c"].get("legacy_header") or lay.gen_file("c", u.name)
         hcfg = {"file": file, "block": block_of(u.model) if u.model["registers"] else None,
                 "group": run.group_of(u.name), "form": run.unit_setting(u.name, "plugin_form", "regs"),
                 "prefix": u.model["prefix"], "no_addresses": run.unit_setting(u.name, "no_addresses", False),
@@ -371,7 +375,7 @@ def run_checks(repo, verbose=False, fresh=True, only=None):
         if u.model["registers"] and run.unit_setting(u.name, "prose_offsets", True):
             prose_literals(run, ctx, u, allregs)
         notes_corpus(run, ctx, u)
-        h = hdrs[u.model["c"].get("legacy_header") or "gen/c/%s.h" % u.name]
+        h = hdrs[u.model["c"].get("legacy_header") or lay.gen_file("c", u.name)]
         if run.unit_setting(u.name, "no_addresses"):
             h.addr_fields = no_addresses(run, u, c_text, all_views[u.name][2])
         if plugin and hasattr(plugin, "check_header"):
@@ -415,6 +419,7 @@ def run_checks(repo, verbose=False, fresh=True, only=None):
     if fresh and not only:
         for p in gen.stale(repo, files):
             rep.fail("generated", p)
+
     return (1 if rep.fails else 0), run
 
 
@@ -422,7 +427,9 @@ def _c_names(unit, repo):
     from . import gen_c
     from .model import publish_profile
     m = unit.model if repo.profile == "internal" else publish_profile(unit.model)
-    helpers = gen_c.helpers_rel(unit.name) if os.path.isfile(os.path.join(repo.root, unit.helpers_path)) else None
+    helpers = None
+    if os.path.isfile(os.path.join(repo.root, unit.helpers_path)):
+        helpers = gen_c.helpers_rel(unit.name, unit.helpers_path, repo.layout.gen_file("c", unit.name))
     return gen_c.gen_c(m, unit.path, helpers)
 
 

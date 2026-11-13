@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Write the generated tree (gen/ and the forwarding headers) from defs/.
+"""Write the generated tree (generated/, or gen/ in the old layout, the register tables and the
+forwarding headers) from the register maps.
 
     defs-gen [--root DIR] [--check]
 
@@ -16,11 +17,11 @@ from defslib import gen, loader  # noqa: E402
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--root", default=".", help="repo root holding defs/ (default: current directory)")
+    ap.add_argument("--root", default=".", help="repo root holding devices/ or defs/ (default: current directory)")
     ap.add_argument("--check", action="store_true", help="write nothing; fail when the committed output is stale")
     args = ap.parse_args(argv)
     if not loader.has_defs(args.root):
-        print("error: %s has no defs/ directory" % args.root, file=sys.stderr)
+        print("error: %s has no register maps (devices/*/registers.toml, formats/*/format.toml or defs/)" % args.root, file=sys.stderr)
         return 2
     repo = loader.load_repo(args.root)
     if repo.errors:
@@ -46,7 +47,7 @@ def main(argv=None):
     for rel in removed:
         print("removed %s" % rel)
     for rel in kept:
-        print("warning: %s is under gen/ but was not generated; left alone" % rel, file=sys.stderr)
+        print("warning: %s is in the generated tree but was not generated; left alone" % rel, file=sys.stderr)
     print("%d files, %d written" % (len(files), len(written)))
     return 0
 

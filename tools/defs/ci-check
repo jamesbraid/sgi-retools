@@ -4,11 +4,12 @@
 Run from the workspace root, with this repository checked out as retools/.
 Needs Python 3.11 or newer, a C compiler and, optionally, rustc.
 
-A workspace with a defs/ directory is on the TOML sources: defs-check runs every
-check, confirms gen/ is fresh and builds the committed outputs (C, Python, genxml
-through the upstream pack generator and, when rustc exists, the Rust crate).
-A workspace with only a defs.toml still has decode headers and takes the older
-path below. With neither it prints "no decode headers". So workspaces move one at
+A workspace with register maps (devices/*/registers.toml, formats/*/format.toml, or the
+old defs/ directory) is on the TOML sources: defs-check runs every check, confirms the
+generated tree (generated/, or gen/ on the old layout) is fresh and builds the committed
+outputs (C, Python, genxml through the upstream pack generator and, when rustc exists, the
+Rust crate). A workspace with only a defs.toml still has decode headers and takes the
+older path below. With neither it prints "no decode headers". So workspaces move one at
 a time.
 """
 import glob
@@ -20,6 +21,9 @@ import tempfile
 import tomllib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))
+from _layout import Layout  # noqa: E402
+
 failures = []
 
 
@@ -36,7 +40,8 @@ def run(label, argv):
 
 def main_toml():
     if os.path.isfile("defs.toml"):
-        print("ci-check: defs/ exists, so defs.toml is not used; delete it once its settings are in defs/check.toml", file=sys.stderr)
+        print("ci-check: register maps exist, so defs.toml is not used; delete it once its settings are in %s"
+              % Layout(".").defs_check_file, file=sys.stderr)
     p = subprocess.run([sys.executable, os.path.join(HERE, "defs-check"), "--build"], capture_output=True, text=True)
     sys.stdout.write(p.stdout)
     sys.stderr.write(p.stderr)
@@ -51,7 +56,7 @@ def main_toml():
 
 
 def main():
-    if os.path.isdir("defs"):
+    if Layout(".").has_defs():
         return main_toml()
     if not os.path.isfile("defs.toml"):
         print("no decode headers")
