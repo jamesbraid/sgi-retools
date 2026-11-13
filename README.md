@@ -14,8 +14,8 @@ Update the pin with
 
 | Path | Contents |
 |---|---|
-| `tools/` | tools every workspace runs the same way: `re-run`, `setup-clone.sh`, `Containerfile`, `Containerfile.ghidra`, `ghidra-export.py`, `inventory.py`, `facts.py`, `hostfacts.py`, `envscan.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `mips_xlate.py`, `reading_round.py`, `render_reading.py`, `grade_readings.py`, `fact_check.py`, `rerender_mismatches.py`, `toolchain.py`, the shared `clean_asm.py`, `disasm_kernel.py`, `map_binaries.py` and `resolve_got.py`, their tests (`test_*.py`) and data files; `README-analysis.md` describes the analysis tools |
-| `tools/defs/` | the shared publish-safe decode-header framework: `check-publish-safe.py` (leak and consistency check) and `gen_decode_rust.py` (Rust modules from the headers), both driven by a repo's `defs.toml`; see [tools/defs/README.md](tools/defs/README.md) |
+| `tools/` | tools every workspace runs the same way: `re-run`, `setup-clone.sh`, `Containerfile`, `Containerfile.ghidra`, `ghidra-export.py`, `inventory.py`, `facts.py`, `hostfacts.py`, `envscan.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `mips_xlate.py`, `reading_round.py`, `render_reading.py`, `grade_readings.py`, `fact_check.py`, `rerender_mismatches.py`, `toolchain.py`, `_workspace.py` and `_layout.py` (where a workspace keeps its files), the shared `clean_asm.py`, `disasm_kernel.py`, `map_binaries.py` and `resolve_got.py`, their tests (`test_*.py`) and data files; `README-analysis.md` describes the analysis tools |
+| `tools/defs/` | the hardware-definition framework: `defs-gen`, `defs-check`, `defs-import`, `defs-compare` and `ci-check` over a repo's `devices/*/registers.toml` and `formats/*/format.toml` (or the old `defs/`), and the older publish-safe decode-header tools `check-publish-safe.py` and `gen_decode_rust.py`, driven by `defs.toml`; see [tools/defs/README.md](tools/defs/README.md) |
 | `tools/<device>/` | extractors, disassemblers and analysis scripts for one device family: `kona`, `odsy`, `crime`, `chips`, `voyager`, `kudzu`, `sysco`, `gr4`, `hdsp`. A device's `clean_asm.py`, `disasm_kernel.py` and similar are deliberate forks of the shared ones, not copies to merge |
 | `ghidra/` | start at [ghidra/README.md](ghidra/README.md), the index of the shared Ghidra code and of each workspace's own conventions |
 | `ghidra/scripts/` | the Ghidra scripts for IRIX MIPS objects and the export helpers (`Re*.java`) |
@@ -23,10 +23,13 @@ Update the pin with
 | `ghidra/import/<name>/`, `ghidra/types/<name>/` | firmware importers and data-type scripts (`kona-arm`, `kona-types`, `mmsc-aout`) |
 
 There are no symlinks in this repository, and none are needed in a workspace. Tools that name
-paths of their workspace (`docs/`, `root/`, `scripts/inventory-config.json`) take the workspace
+paths of their workspace (`evidence/`, `root/`, `tools/config/inventory-config.json`) take the workspace
 from `--repo DIR` where the tool has it, else `$ORIGAMI_RE_WORKSPACE`, else the git work tree
 around the current directory, else the current directory (`tools/_workspace.py`, and the same
-rule in `tools/re-run`). Run them from the workspace. A tool finds its own siblings and data
+rule in `tools/re-run`). Run them from the workspace. A workspace on the old layout (`docs/`,
+`scripts/`, `defs/`, `gen/`) works unchanged: `tools/_layout.py` is the one place that maps each path
+to the current layout and to the old one, so repositories move one at a time
+([README-analysis.md](tools/README-analysis.md) lists the paths). A tool finds its own siblings and data
 from its file path, so it does not matter where retools is checked out.
 
 ## For agents without containers

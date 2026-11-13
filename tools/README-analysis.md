@@ -45,9 +45,31 @@ jump tables and following compare trees, and writes the code address each select
 routine that code calls. Selectors that share a target are flagged. Selectors that never narrow to a single
 value are not listed. Tests for the walker and the list parsers: `tools/test_syssgi_selectors.py`.
 
+## Where the tools look
+
+Every tool that names a workspace path asks `tools/_layout.py`, which knows the current layout and the
+old one. A path is the current one when it exists, else the old one when that exists, else the current one
+(the old one when the workspace shows only the old layout).
+
+| Item | Current | Old |
+|---|---|---|
+| inventory config, root manifest, sibling pins, scope list | `tools/config/inventory-config.json`, `inventory-root.sha256`, `inventory-siblings.json`, `scope.json` | `scripts/` |
+| binaries manifest (`map_binaries.py`) | `tools/config/binaries_manifest.json` | `binaries_manifest.json` |
+| inventory tables, `functions.tsv`, `audits.tsv` | `evidence/inventory/` | `docs/inventory/` |
+| coverage page | `evidence/coverage.md` | `docs/coverage.md` |
+| routine role pages | `evidence/routines/` | `docs/routines/` |
+| reading pages (`reading_round.py`, `rerender_mismatches.py`) | `evidence/instruction-readings-*.md` | `docs/instruction-readings-*.md` |
+| census tables (`chips/`) | `devices/<chip>/census/` | `chips/<chip>/census/` |
+| register maps, their output and settings (`defs/`) | see [defs/README.md](defs/README.md) | `defs/`, `gen/` |
+| submodules `setup-clone.sh` initialises | `references/code/<name>` | `<name>` |
+
+A sibling workspace is read at its pinned commit on whichever layout it had then, so a repository that
+has moved can still be compared with one that has not. The workspace itself is `--repo DIR`, else
+`$ORIGAMI_RE_WORKSPACE`, else the git work tree around the current directory.
+
 ## Routine role entries
 
-`tools/reading_round.py` and the readers that write `docs/routines/*.md` state what a routine does, in
+`tools/reading_round.py` and the readers that write `evidence/routines/*.md` state what a routine does, in
 the author's own words, so that `tools/inventory.py` can move its row from located to understood. The
 inventory credits an entry only for the build it names, so the entry must say which build and where.
 
@@ -82,11 +104,11 @@ indented lines, a header-only bullet takes the corrected text as indented paragr
 heading line and takes the corrected text as its paragraphs. The `Reviewed: DATE` line goes last, indented under
 a bullet and as a paragraph of its own under a heading.
 
-    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --check-doc
+    tools/re-run python3 retools/tools/grade_readings.py evidence/routines/FILE.md --check-doc
 
 lints one file the way the inventory reads it and exits 1 when it reports anything. For each entry that will
 not credit its routine it prints the line and the reason: no routine named, a heading with no address or no
-binary, no citation, too few role words or items, a header that is not a row of `docs/inventory/functions.tsv`
+binary, no citation, too few role words or items, a header that is not a row of `evidence/inventory/functions.tsv`
 (`--inventory PATH` selects another table), or a bare file name that cannot pick between builds. Entries
 held at located by their own wording are listed as notes and do not change the exit status.
 
@@ -94,9 +116,9 @@ held at located by their own wording are listed as notes and do not change the e
 
 A reader that writes many entries quickly gets some of them wrong, and the mechanical fact check below
 sees only a small share of the wrong ones. A workspace can therefore ask for a second reading before an
-entry counts as understood. `scripts/inventory-config.json` takes a top-level list of globs:
+entry counts as understood. `tools/config/inventory-config.json` takes a top-level list of globs:
 
-    "review_required": ["docs/routines/t2-*.md", "docs/routines/r3-*.md"]
+    "review_required": ["evidence/routines/t2-*.md", "evidence/routines/r3-*.md"]
 
 The paths are relative to the repository root. An entry in a matching file earns at most located unless
 it carries a review marker, a line (or sentence) of the form
@@ -112,14 +134,14 @@ that comes from the routine's name, not from its facts, and earns at most locate
 
 ### Checking an entry's claims against its facts
 
-    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --check-doc --check-facts
+    tools/re-run python3 retools/tools/grade_readings.py evidence/routines/FILE.md --check-doc --check-facts
 
 adds a mechanical check of what each entry claims. It renders the routine's facts the way
 `reading_round.py` and `render_reading.py` do (once per binary and address), pulls the checkable claims out
 of the prose with fixed patterns, and reports every claim the facts contradict, with the rule and the
 reason. It reports a contradiction, never a missing detail, and it skips a claim it cannot place on one
 call, branch or access. It needs `root/`; the size of a routine the header does not give comes from
-`docs/inventory/functions.tsv`. PowerPC and ColdFire (m68k) firmware entries are rendered too, from the segment
+`evidence/inventory/functions.tsv`. PowerPC and ColdFire (m68k) firmware entries are rendered too, from the segment
 the config's `layout` group cuts out of the container (the same `firmware_layout.py` the inventory uses); the
 architecture comes from the entry's `Architecture:` line or, without one, the table's `abi` column. PowerPC
 passes arguments in r3-r10, so `arg-slot`, `arg-register` and their cited forms read `r4 = 0x10` and
@@ -194,7 +216,7 @@ Rules, each reported with the sentence it came from:
 The rules of the previous section also run, on the prose with its citations removed, except the two argument
 rules, which the citation check replaces.
 
-    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --check-doc --check-facts --strict-citations
+    tools/re-run python3 retools/tools/grade_readings.py evidence/routines/FILE.md --check-doc --check-facts --strict-citations
 
 reads every entry of the file as a cited entry. It prints each finding as `FILE:LINE: routine [rule]` with the
 reason and the sentence, counts an entry once however many findings it has, and exits 1 when any entry has one.
@@ -210,7 +232,7 @@ anywhere else (the name suggests, by its name, looks like) is `role-unmarked`. A
 
 ### Review pack
 
-    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --review-pack OUT.md [--unreviewed] [--batch 2/6] [--routine NAME...]
+    tools/re-run python3 retools/tools/grade_readings.py evidence/routines/FILE.md --review-pack OUT.md [--unreviewed] [--batch 2/6] [--routine NAME...]
 
 writes what a reviewer reads. For each entry of the file: its key (`routine@0xADDR@binary`, the key a verdict file
 uses), then the entry as written beside the facts rendered for its routine (`fact_check.fact_index`: calls
@@ -222,7 +244,7 @@ cannot be rendered says so in place of the facts. It needs `root/`, as `--check-
 
 ### Applying a review
 
-    tools/re-run python3 retools/tools/grade_readings.py docs/routines/FILE.md --apply-verdicts VERDICTS.json [--review-date 2026-11-12]
+    tools/re-run python3 retools/tools/grade_readings.py evidence/routines/FILE.md --apply-verdicts VERDICTS.json [--review-date 2026-11-12]
 
 reads a reviewer's verdicts, a JSON object from entry key (the `routine@0xADDR@binary` of the review pack) to
 
