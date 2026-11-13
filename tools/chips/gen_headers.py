@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Generate defs/<chip>.toml from the census tables.
+"""Generate devices/<chip>/registers.toml (old layout: defs/<chip>.toml) from the census tables.
 
-Usage: retools/tools/chips/gen_headers.py            (from the repository root; rewrites the census units in defs/)
+Usage: retools/tools/chips/gen_headers.py            (from the repository root; rewrites the census units)
 
-Inputs per chip: chips/<dir>/census/census.tsv and fields.tsv (written by retools/tools/chips/run.sh). Output: one
+Inputs per chip: devices/<dir>/census/census.tsv and fields.tsv (chips/<dir>/census/ on the old layout) (written by retools/tools/chips/run.sh). Output: one
 hardware-definition source per chip (the format of retools/tools/defs) with the registers, their access width and
 source, the bit masks the code isolates and the constants it writes. Run retools/tools/defs/defs-gen afterwards for
 the C headers, Rust crate and reference pages. Never edit these sources by hand; improve the census or its config
-and regenerate. The hand-written companions (`defs/*_extra.toml`, `l1_requests`, `xio_fc`, `ice1724`) are not touched.
+and regenerate. The hand-written companions (`registers-extra.toml`, `defs/*_extra.toml` on the old layout, `l1_requests`, `xio_fc`, `ice1724`) are not touched.
 (The name is from when this wrote C headers.)
 
 Labels: [E] established (read from the disassembly or a specification page), [I] inferred, [U] unknown.
@@ -31,6 +31,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import slots  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'defs'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from _layout import Layout  # noqa: E402
 from defslib import toml_emit  # noqa: E402
 from defslib.model import normalize  # noqa: E402
 
@@ -96,20 +98,38 @@ HUB_BLOCKS = [  # (first offset, name); both aliases (local 0x01000000, node-add
 ]
 
 
+def layout():
+    return Layout('.')
+
+
+def current():
+    """Whether this workspace is on the current layout: register maps under devices/, or none yet and
+    the current layout's directories already there."""
+    lay = layout()
+    return lay.defs_mode == 'new' or (lay.defs_mode is None and lay.on_current_layout)
+
+
+def source_path(chip, base=None):
+    """Where the unit of `chip` is written; with `base` the overlay on that base chip's unit."""
+    if current():
+        return 'devices/%s/registers.%s.toml' % (base, chip) if base else 'devices/%s/registers.toml' % chip
+    return 'defs/%s.%s.toml' % (base, chip) if base else 'defs/%s.toml' % chip
+
+
 def stem(f):
     f = f.replace('pcireg_', '')
     return re.sub(r'(_bit_set|_bit_clr|_get|_set|_addr)$', '', f)
 
 
 def load(dirn, variant):
-    p = 'chips/%s/census/census.tsv' % dirn
+    p = '%s/census.tsv' % layout().census_dir(dirn)
     if not os.path.exists(p):
         return [], {}
     rows = [r for r in csv.DictReader(open(p), delimiter='\t') if variant is None or r['variant'] == variant]
     for r in rows:
         r['space'] = r.get('space') or ''       # a census written before address spaces were separated has none
     fl = collections.defaultdict(list)
-    fp = 'chips/%s/census/fields.tsv' % dirn
+    fp = '%s/fields.tsv' % layout().census_dir(dirn)
     if os.path.exists(fp):
         for r in csv.DictReader(open(fp), delimiter='\t'):
             if variant is None or r['variant'] in (variant, '?'):
@@ -134,7 +154,7 @@ class SiteNames:
         self.slot_of = slot_of
         self.exact = collections.defaultdict(lambda: [collections.Counter(), 0])   # key -> [names, pseudo sites]
         self.by_slot = collections.defaultdict(list)
-        p = 'chips/%s/census/census-sites.tsv' % dirn
+        p = '%s/census-sites.tsv' % layout().census_dir(dirn)
         if not os.path.exists(p):
             return
         for r in csv.DictReader(open(p), delimiter='\t'):
@@ -231,7 +251,7 @@ HEADER = '# Written by retools/tools/chips/gen_headers.py from chips/%s/census/.
 
 
 def gen(chip, spec):
-    """The unit dictionary for one chip, in the shape of a defs/<unit>.toml source, and the block titles.
+    """The unit dictionary for one chip, in the shape of a register-map source, and the block titles.
 
     Returns (unit, blocks): blocks maps the name of the first register of each block to the block's title.
     """
@@ -251,10 +271,12 @@ def gen(chip, spec):
         doc.append("Names come from the config register_names (the shipped diagnostic prints them, or the public Linux driver "
                    "where it prints none); offsets 0x100000 and up are the widget block, see the chip page.")
     unit = {'unit': chip, 'prefix': P, 'title': title, 'doc': ' '.join(doc),
-            'c': {'legacy_header': 'include/%s.h' % chip, 'legacy_guard': '%s_H' % P}}
+            'c': {}}
+    if not current():       # the current layout has no forwarding headers: consumers include generated/c
+        unit['c'] = {'legacy_header': 'include/%s.h' % chip, 'legacy_guard': '%s_H' % P}
     blocks = {}
     if not rows:
-        unit['from'] = 'census: no rows yet, nothing is established for this chip by the census (chips/%s/README.md)' % chip
+        unit['from'] = 'census: no rows yet, nothing is established for this chip by the census (%s/%s/README.md)' % ('devices' if current() else 'chips', chip)
         return unit, blocks
     unit['from'] = 'census: loads and stores in the shipped binaries; names from %s' % name_source
     unit['public_from'] = ['census:']
@@ -386,7 +408,7 @@ def gen(chip, spec):
 
 
 def toml_of(chip, spec):
-    """defs/<chip>.toml text. Block titles go in as comments above the first register of each block."""
+    """Register-map text for one chip. Block titles go in as comments above the first register of each block."""
     unit, blocks = gen(chip, spec)
     text = toml_emit.emit_unit(normalize(unit), HEADER % unit['unit'])
     for reg, title in blocks.items():
@@ -394,13 +416,13 @@ def toml_of(chip, spec):
     return text
 
 
-# A chip that is a revision of another is written as an overlay on it (defs/<base>.<chip>.toml), so what the
+# A chip that is a revision of another is written as an overlay on it (registers.<chip>.toml), so what the
 # census found different is all that the file says. chip -> base chip.
 OVERLAYS = {'xbridge': 'bridge'}
 
 
 def overlay_of(chip, base):
-    """defs/<base>.<chip>.toml text: the census unit of chip as a patch on the unit of base, or None when the
+    """Overlay text: the census unit of chip as a patch on the unit of base, or None when the
     two differ in a way an overlay cannot say (a property removed from an item)."""
     u, _ = gen(chip, CHIPS[chip])
     b, _ = gen(base, CHIPS[base])
@@ -420,7 +442,7 @@ def overlay_of(chip, base):
     for k in ('enums', 'words'):
         if tu.get(k) or tb.get(k):
             return None
-    out = [HEADER % chip + ' It patches defs/%s.toml.' % base, '']
+    out = [HEADER % chip + ' It patches %s.' % source_path(base), '']
     if remove:
         out += ['remove = [%s]' % ', '.join(toml_emit._s(x) for x in remove), '']
     out.append('[override]')
@@ -443,14 +465,16 @@ def overlay_of(chip, base):
 
 
 def main():
-    os.makedirs('defs', exist_ok=True)
+    if not current():
+        os.makedirs('defs', exist_ok=True)
     for chip, spec in CHIPS.items():
         base = OVERLAYS.get(chip)
         text = overlay_of(chip, base) if base else None
-        path = 'defs/%s.%s.toml' % (base, chip) if text else 'defs/%s.toml' % chip
-        for stale in ('defs/%s.toml' % chip, 'defs/%s.%s.toml' % (base, chip) if base else None):
+        path = source_path(chip, base) if text else source_path(chip)
+        for stale in (source_path(chip), source_path(chip, base) if base else None):
             if stale and stale != path and os.path.exists(stale):
                 os.remove(stale)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
             f.write(text or toml_of(chip, spec))
 

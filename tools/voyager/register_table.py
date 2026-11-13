@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Regenerate the access tables of docs/registers.md.
+"""Regenerate the access tables of the register page (evidence/registers.md, docs/registers.md on the old layout).
 
 Usage: retools/tools/voyager/register_table.py [--public-root DIR] [--reuse DIR] [--check]
 
 Run it from the repository root inside the toolchain environment, after
-tools/inventory.py has written docs/inventory/. The inventory merges the
+tools/inventory.py has written the inventory tables. The inventory merges the
 register offsets of every binary into one row; this script runs the same
 replay twice more (writing to a scratch directory), once with only the kernel
 object's base rules and once with only the X module's, so that each offset is
@@ -45,10 +45,13 @@ import tempfile
 TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, TOOLS)
 from _workspace import find_workspace  # noqa: E402
+from _layout import Layout  # noqa: E402
 REPO = find_workspace()
-DOC = os.path.join(REPO, 'docs', 'registers.md')
-CONFIG = os.path.join(REPO, 'scripts', 'inventory-config.json')
-FUNCS = os.path.join(REPO, 'docs', 'inventory', 'functions.tsv')
+LAYOUT = Layout(REPO)
+DOC_REL = LAYOUT.pick('evidence/registers.md', 'docs/registers.md')
+DOC = os.path.join(REPO, DOC_REL)
+CONFIG = os.path.join(REPO, LAYOUT.inventory_config)
+FUNCS = os.path.join(REPO, LAYOUT.functions_table)
 BINARIES = (('kernel', 'fglrx.o', 'usr/cpu/sysgen/IP35boot/fglrx.o'),
             ('xmod', 'fglrx_drv.so', 'usr/X11R6/lib/modules/drivers/fglrx_drv.so'))
 R3XX = ('reg_srcs/r300', 'r300d.h', 'r100d.h', 'r300_reg.h')
@@ -231,7 +234,7 @@ def main():
     text = open(DOC, encoding='utf-8').read()
     m = re.search(r'(<!-- registers:begin -->\n)(.*?)(<!-- registers:end -->)', text, re.S)
     if not m:
-        sys.exit('docs/registers.md has no registers:begin / registers:end markers')
+        sys.exit(DOC_REL + ' has no registers:begin / registers:end markers')
     new = text[:m.end(1)] + build(a.public_root, a.reuse, read_in_full(text)) + '\n' + text[m.start(3):]
     if a.check:
         sys.exit(0 if new == text else 1)

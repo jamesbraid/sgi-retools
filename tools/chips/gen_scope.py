@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Write the `scope` list of scripts/inventory-config.json for this workspace.
+"""Write the `scope` list of tools/config/inventory-config.json (old layout: scripts/) for this workspace.
 
 The function table counts whole kernels and libraries, but only the code that drives or reports on a
 system ASIC belongs to the work. A function is in scope when
   - its object is a chip driver or an attach, error or interrupt object of one (KEEP_OBJECTS), or
-  - it holds a register access site of the census (chips/*/census/census-sites.tsv; a site in an
+  - it holds a register access site of the census (devices/*/census/census-sites.tsv, chips/*/census/ on the old layout; a site in an
     address-named routine counts for the function that contains the address), or
   - it is a routine of the linked kernels, the object `kernel.o` or the debug monitor whose name carries a
     chip or its error and interrupt plumbing (NAME_PREFIX).
 Every other object is excluded whole under one of four reasons. Run from the repository root after
-`python3 retools/tools/inventory.py` has written docs/inventory/, then run inventory.py again. `--check` fails when
+`python3 retools/tools/inventory.py` has written evidence/inventory/, then run inventory.py again. `--check` fails when
 the config is stale against the census, which is how a new census site cannot fall out of scope unnoticed.
 `--slices PATH` writes the in-scope functions of functions.tsv in four slices, one per build (the
 standalone programs go with IP32).
@@ -24,8 +24,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 from _workspace import find_workspace  # noqa: E402
+from _layout import Layout  # noqa: E402
 REPO = find_workspace()
-CFG = os.path.join(REPO, 'scripts', 'inventory-config.json')
+LAYOUT = Layout(REPO)
+CFG = os.path.join(REPO, LAYOUT.inventory_config)
+FUNCTIONS = os.path.join(REPO, LAYOUT.functions_table)
 
 KEEP_OBJECTS = '''pcibr.o pciio.o pciio_ppb.o pciiox.o pic.o xbridge.o xbow.o xswitch.o xtalk.o xconn.o xbmon.o hubspc.o
 ioc3.o ioc3ei.o ioc3_pckm.o ioc4.o ioc4_ei.o ioc4_pckm.o if_ef.o l1.o l1_command.o nic.o eeprom.o partition.o
@@ -90,7 +93,8 @@ def census_functions(funcs, spans, labels):
         for i in json.load(open(f))['images']:
             image_path[i['label']] = i['path']
     sites = collections.defaultdict(set)
-    for f in sorted(glob.glob(os.path.join(REPO, 'chips', '*', 'census', 'census-sites.tsv'))):
+    for f in sorted(glob.glob(os.path.join(REPO, 'devices', '*', 'census', 'census-sites.tsv')) +
+                    glob.glob(os.path.join(REPO, 'chips', '*', 'census', 'census-sites.tsv'))):
         for r in tsv(f):
             sites[r['image']].add(r['function'])
     out = collections.defaultdict(set)
@@ -136,7 +140,7 @@ def globs(chosen, labels, spare):
 
 
 def build():
-    inv = os.path.join(REPO, 'docs', 'inventory')
+    inv = os.path.join(REPO, LAYOUT.inventory_dir)
     funcs, spans = collections.defaultdict(set), collections.defaultdict(list)
     for r in tsv(os.path.join(inv, 'functions.tsv')):
         funcs[r['binary']].add(r['name'])
@@ -181,7 +185,7 @@ def build():
 def slices(path):
     """The rows functions.tsv marks `in`, grouped by binary."""
     keep = collections.defaultdict(list)
-    for r in tsv(os.path.join(REPO, 'docs', 'inventory', 'functions.tsv')):
+    for r in tsv(FUNCTIONS):
         if r['scope'] == 'in':
             keep[r['binary']].append(r['name'])
     rows = [(b, sorted(ns)) for b, ns in sorted(keep.items())]
@@ -209,7 +213,7 @@ def main():
     if '--check' in sys.argv:
         if cfg.get('scope') != rules:
             sys.exit('gen_scope: the scope list in %s is stale; run retools/tools/chips/gen_scope.py' % CFG)
-        scoped = {(r['binary'], r['name']): r['scope'] for r in tsv(os.path.join(REPO, 'docs', 'inventory', 'functions.tsv'))}
+        scoped = {(r['binary'], r['name']): r['scope'] for r in tsv(FUNCTIONS)}
         bad = sorted((b, n) for b, ns in cen.items() for n in ns if scoped.get((b, n)) != 'in')
         if bad:
             sys.exit('gen_scope: census access-site routines out of scope or missing from functions.tsv: %s' % bad[:10])
