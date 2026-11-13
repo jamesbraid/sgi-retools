@@ -96,6 +96,21 @@ class GenerateTest(CurrentRepoTest):
         self.assertTrue(files["generated/c/uart.h"].startswith("/* generated from devices/uart/registers.toml by defs-gen"))
         self.assertIn("devices/ and formats/", files["generated/rust/src/lib.rs"])
 
+    def test_write_prunes_outputs_of_removed_units_but_not_hand_written_files(self):
+        tool(GEN, self.root)
+        self.write("generated/json/gone.json", "{}\n")
+        self.write("generated/xml/gone.xml", "<x/>\n")
+        self.write("generated/README.md", "hand-written\n")
+        self.write("devices/uart/notes.md", "hand-written\n")
+        r = tool(GEN, self.root)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("removed generated/json/gone.json", r.stdout)
+        self.assertFalse(os.path.exists(self.path("generated/json/gone.json")))
+        self.assertFalse(os.path.exists(self.path("generated/xml/gone.xml")))
+        self.assertTrue(os.path.exists(self.path("generated/README.md")))
+        self.assertTrue(os.path.exists(self.path("devices/uart/notes.md")))
+        self.assertTrue(os.path.exists(self.path("generated/json/uart.json")))
+
     def test_same_outputs_as_the_old_layout(self):
         old = RepoTest("run")
         old.setUp()

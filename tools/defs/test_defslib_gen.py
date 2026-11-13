@@ -112,6 +112,23 @@ class GenTest(RepoTest):
         self.assertTrue(os.path.exists(self.path("gen/notes.txt")))
         self.assertIn("left alone", r.stderr)
 
+    def test_write_prunes_outputs_of_removed_units_in_the_directories_it_owns(self):
+        run("--root", self.root)
+        # JSON cannot carry the banner, so these have no mark to recognise them by.
+        self.write("gen/json/gone.json", "{}\n")
+        self.write("gen/py/gone.py", "x = 1\n")
+        self.write("gen/rust/src/gone.rs", "// x\n")
+        self.write("gen/rust/target/debug/keep.rs", "// cargo output\n")
+        self.write("gen/README.md", "hand-written\n")
+        r = run("--root", self.root)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for rel in ("gen/json/gone.json", "gen/py/gone.py", "gen/rust/src/gone.rs"):
+            self.assertIn("removed %s" % rel, r.stdout)
+            self.assertFalse(os.path.exists(self.path(rel)), rel)
+        self.assertTrue(os.path.exists(self.path("gen/rust/target/debug/keep.rs")))
+        self.assertTrue(os.path.exists(self.path("gen/README.md")))
+        self.assertTrue(os.path.exists(self.path("gen/json/uart.json")))
+
     def test_bad_source_is_a_setup_error(self):
         self.edit("defs/uart.toml", "width = 8\n", "width = 9\n")
         r = run("--root", self.root)
