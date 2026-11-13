@@ -222,11 +222,13 @@ old name from `[c.aliases]`.
 5. Freshness: `generated/`, the register tables and the forwarding headers are what
    `defs-gen` would write, with no file missing and none left over.
 6. Siblings: the repositories named in `tools/config/inventory-siblings.json` are
-   looked for at `--sibling NAME=PATH`, the `siblings` map of the inventory config,
-   `../NAME` and `.cache/siblings/NAME`. Each register with the same unit name, address
+   looked for at `--sibling NAME=PATH` (or `$ORIGAMI_RE_SIBLINGS`, which `re-run --sibling`
+   sets for a checkout outside the workspace), the `siblings` map of the inventory config,
+   `.cache/siblings/NAME` (the default: `setup-clone.sh` clones there, and it is inside the
+   workspace a container sees) and `../NAME`. Each register with the same unit name, address
    space and offset in this repo and in a sibling fails, whatever its name: a register
-   lives in one repository. A sibling that is not present or does not load is a note on
-   stderr and does not fail; `--skip-siblings` turns the check off.
+   lives in one repository. A sibling that is not present, lacks its pinned commit or does not load is a note on
+   stderr, naming where it looked, and does not fail; `--skip-siblings` turns the check off.
 
 `--build` then builds what is committed: every C header and forwarding header
 compiles with `-Wall -Wextra -Werror` and a generated program decodes each vector

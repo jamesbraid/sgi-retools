@@ -304,6 +304,20 @@ def sw(rel):
     return of().software(rel)
 
 
+SIBLINGS_ENV = 'ORIGAMI_RE_SIBLINGS'
+
+
+def env_siblings():
+    """{name: path} from $ORIGAMI_RE_SIBLINGS, a comma-separated list of NAME=PATH. tools/re-run sets it
+    for each `--sibling NAME=PATH` it was given, with PATH as seen inside the container."""
+    out = {}
+    for item in os.environ.get(SIBLINGS_ENV, '').split(','):
+        name, eq, path = item.partition('=')
+        if eq and name and path:
+            out[name] = path
+    return out
+
+
 def header(name):
     """Layout.header for the workspace the tools find."""
     return of().header(name)

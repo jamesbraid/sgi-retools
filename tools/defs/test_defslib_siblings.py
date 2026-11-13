@@ -65,6 +65,44 @@ class SiblingTest(CurrentRepoTest):
         fails, notes = self.run_siblings()
         self.assertTrue(fails and not notes)
 
+    def test_absent_sibling_note_says_where_it_looked_and_how_to_fix_it(self):
+        shutil.rmtree(self.sib)
+        with open(self.pins, "w", encoding="utf-8") as f:
+            json.dump({"other": "abcdef0123456789" * 2 + "abcdef01" * 1}, f)
+        _, notes = self.run_siblings()
+        self.assertEqual(len(notes), 1)
+        self.assertIn("at its pinned commit abcdef012345", notes[0])
+        self.assertIn(self.path(".cache/siblings/other"), notes[0])
+        self.assertIn("--sibling other=PATH", notes[0])
+
+    def test_sibling_checkout_without_register_maps_is_not_called_absent(self):
+        shutil.rmtree(self.sib)
+        os.makedirs(self.path(".cache/siblings/other"))
+        _, notes = self.run_siblings()
+        self.assertEqual(len(notes), 1)
+        self.assertIn("has no register maps", notes[0])
+        self.assertNotIn("not present", notes[0])
+
+    def test_sibling_named_in_the_environment_is_found(self):
+        old = os.environ.get("ORIGAMI_RE_SIBLINGS")
+        os.environ["ORIGAMI_RE_SIBLINGS"] = "other=%s" % self.sib
+        try:
+            fails, notes = self.run_siblings()
+        finally:
+            if old is None:
+                del os.environ["ORIGAMI_RE_SIBLINGS"]
+            else:
+                os.environ["ORIGAMI_RE_SIBLINGS"] = old
+        self.assertEqual(notes, [])
+        self.assertTrue(fails)
+
+    def test_checkout_without_the_pinned_commit_is_a_note(self):
+        subprocess.run(["git", "init", "-q", self.sib], check=True)
+        fails, notes = self.run_siblings({"other": self.sib})
+        self.assertTrue(fails)
+        self.assertEqual(len(notes), 1)
+        self.assertIn("does not have its pinned commit %s" % ("0" * 12), notes[0])
+
     def test_sibling_on_the_old_layout_is_read(self):
         shutil.rmtree(self.sib)
         shutil.copytree(UNITS_FIXTURE, self.sib)

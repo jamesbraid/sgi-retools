@@ -58,7 +58,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mips_xlate  # noqa: E402
 from firmware_layout import firmware_segments  # noqa: E402,F401
 from _workspace import find_workspace, repo_arg  # noqa: E402
-from _layout import Layout  # noqa: E402
+from _layout import Layout, env_siblings  # noqa: E402
 
 # The workspace is the repository whose root/ and evidence/ this reads, found from the current directory
 # (or --repo, $ORIGAMI_RE_WORKSPACE), not from this file: it lives in the retools submodule.
@@ -964,6 +964,7 @@ def load_siblings(cfg, given, tmp, problems, new_pins, skip=False, update=False)
     --skip-siblings skips, and it says so in the tables."""
     global REPO
     spec = dict(cfg.get('siblings', {}))
+    spec.update(env_siblings())
     spec.update(given)
     roles, used, skipped = collections.defaultdict(list), {}, []
     pins_rel = sibling_pins()
@@ -977,9 +978,10 @@ def load_siblings(cfg, given, tmp, problems, new_pins, skip=False, update=False)
         cands = [spec[name], os.path.join('.cache', 'siblings', name)]
         found = next((c for c in cands if os.path.exists(os.path.join(REPO, c, '.git'))), None)
         if found is None:
-            problems.append('sibling %s: no git checkout at %s (clone it there, or pass --sibling %s=PATH; '
-                            '--skip-siblings runs without the cross-workspace check)' %
-                            (name, ' or '.join(cands), name))
+            problems.append('sibling %s: no git checkout at %s (clone it into .cache/siblings/%s, which '
+                            'tools/setup-clone.sh does, or pass --sibling %s=PATH: tools/re-run mounts a PATH '
+                            'outside the workspace; --skip-siblings runs without the cross-workspace check)' %
+                            (name, ' or '.join(cands), name, name))
             continue
         src = os.path.normpath(os.path.join(REPO, found))
         if update:
@@ -993,8 +995,9 @@ def load_siblings(cfg, given, tmp, problems, new_pins, skip=False, update=False)
             problems.append('sibling %s: no commit recorded in %s (run with --update-pins)' % (name, pins_rel))
             continue
         if git(src, 'cat-file', '-e', commit + '^{commit}').returncode:
-            problems.append('sibling %s at %s does not have commit %s recorded in %s (fetch it, or run with '
-                            '--update-pins)' % (name, found, commit[:12], pins_rel))
+            problems.append('sibling %s at %s does not have commit %s recorded in %s (fetch it: git -C %s fetch origin; '
+                            'or run with --update-pins to record the checkout\'s HEAD instead)' %
+                            (name, found, commit[:12], pins_rel, found))
             continue
         # the sibling may be on either layout at its pinned commit
         cpaths = [CONFIG_DIR + '/inventory-config.json', OLD_CONFIG_DIR + '/inventory-config.json']
@@ -3740,7 +3743,8 @@ def main():
                     help='default: evidence/inventory, else docs/inventory')
     ap.add_argument('--no-coverage', action='store_true')
     ap.add_argument('--sibling', action='append', default=[], metavar='NAME=PATH',
-                    help='read the sibling workspace NAME from PATH instead of the config\'s path')
+                    help='read the sibling workspace NAME from PATH instead of the config\'s path (the default is '
+                         'a clone in .cache/siblings/NAME)')
     ap.add_argument('--skip-siblings', action='store_true',
                     help='run without the cross-workspace role check; the tables say it was skipped')
     ap.add_argument('--update-pins', action='store_true',
