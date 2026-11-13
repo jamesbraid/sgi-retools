@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Measure what the workspace has covered, from the binaries.
 
-Usage: retools/tools/inventory.py [--repo DIR] [--config scripts/inventory-config.json]
-                            [--out docs/inventory] [--no-coverage] [--jobs N]
+Usage: retools/tools/inventory.py [--repo DIR] [--config tools/config/inventory-config.json]
+                            [--out evidence/inventory] [--no-coverage] [--jobs N]
 
 Run it from the repository root with root/ populated (IRIX_FILES.md), inside
 the toolchain environment of AGENTS.md (MIPS objdump, dwarfdump, pyelftools).
@@ -14,10 +14,10 @@ pointer, or a command-packet header stored into a buffer: `packets`), where
 command tokens come from, which kernel tables dispatch ioctls, the microcode images, any register
 tables from a specification and the small-data sections (`gp_literals`) in which
 a linked kernel with no GOT keeps its address constants -- is in
-scripts/inventory-config.json.
+tools/config/inventory-config.json (old layout: scripts/).
 
-It writes eight tables to docs/inventory/ and rewrites the block between the
-inventory markers in docs/coverage.md:
+It writes eight tables to evidence/inventory/ and rewrites the block between the
+inventory markers in evidence/coverage.md (old layout: docs/inventory/ and docs/coverage.md):
 
   binaries.tsv        every file in scope, one row per distinct content
   functions.tsv       one row per (binary, function symbol)
@@ -28,7 +28,7 @@ inventory markers in docs/coverage.md:
   spec-registers.tsv  registers listed by a specification or register table
   summary.tsv         row counts per status, and unresolved access sites
 
-docs/inventory/README.md defines every column and status. The output is
+evidence/inventory/README.md defines every column and status. The output is
 deterministic: the same inputs give byte-identical tables.
 """
 import argparse
@@ -58,8 +58,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mips_xlate  # noqa: E402
 from firmware_layout import firmware_segments  # noqa: E402,F401
 from _workspace import find_workspace, repo_arg  # noqa: E402
+from _layout import Layout  # noqa: E402
 
-# The workspace is the repository whose root/ and docs/ this reads, found from the current directory
+# The workspace is the repository whose root/ and evidence/ this reads, found from the current directory
 # (or --repo, $ORIGAMI_RE_WORKSPACE), not from this file: it lives in the retools submodule.
 REPO = find_workspace(repo_arg(sys.argv[1:]))
 
@@ -953,7 +954,7 @@ def load_siblings(cfg, given, tmp, problems, new_pins, skip=False, update=False)
     [masked role text]}, {name: commit} of the siblings that were read, and (name, why) of those that were
     not. A sibling is a checkout named in the config's `siblings` ({name: path from this repository}) or
     by --sibling NAME=PATH; a clone at .cache/siblings/NAME is the fallback for a run where ../NAME is not
-    visible. What is read is the sibling's documents as of the commit recorded for it in SIBLING_PINS, taken
+    visible. What is read is the sibling's documents as of the commit recorded for it in the sibling pin file, taken
     from the commit and not from the working tree, so the result does not depend on what the checkout holds,
     where it is, or the order the workspaces are regenerated in. A sibling that is absent, lacks its commit,
     or is of this family (it would grade every entry as a copy of itself) is a problem, not a skip: only
@@ -962,7 +963,8 @@ def load_siblings(cfg, given, tmp, problems, new_pins, skip=False, update=False)
     spec = dict(cfg.get('siblings', {}))
     spec.update(given)
     roles, used, skipped = collections.defaultdict(list), {}, []
-    pins_path = os.path.join(REPO, SIBLING_PINS)
+    pins_rel = sibling_pins()
+    pins_path = os.path.join(REPO, pins_rel)
     pins = json.load(open(pins_path, encoding='utf-8')) if os.path.isfile(pins_path) else {}
     new_pins.update(pins)
     for name in sorted(spec):
@@ -985,16 +987,20 @@ def load_siblings(cfg, given, tmp, problems, new_pins, skip=False, update=False)
             new_pins[name] = head.stdout.strip()
         commit = new_pins.get(name)
         if not commit:
-            problems.append('sibling %s: no commit recorded in %s (run with --update-pins)' % (name, SIBLING_PINS))
+            problems.append('sibling %s: no commit recorded in %s (run with --update-pins)' % (name, pins_rel))
             continue
         if git(src, 'cat-file', '-e', commit + '^{commit}').returncode:
             problems.append('sibling %s at %s does not have commit %s recorded in %s (fetch it, or run with '
-                            '--update-pins)' % (name, found, commit[:12], SIBLING_PINS))
+                            '--update-pins)' % (name, found, commit[:12], pins_rel))
             continue
-        cpath = 'scripts/inventory-config.json'
-        shown = git(src, 'show', '%s:%s' % (commit, cpath))
-        if shown.returncode:
-            problems.append('sibling %s at %s has no %s at commit %s' % (name, found, cpath, commit[:12]))
+        # the sibling may be on either layout at its pinned commit
+        cpaths = [CONFIG_DIR + '/inventory-config.json', OLD_CONFIG_DIR + '/inventory-config.json']
+        for cpath in cpaths:
+            shown = git(src, 'show', '%s:%s' % (commit, cpath))
+            if not shown.returncode:
+                break
+        else:
+            problems.append('sibling %s at %s has no %s at commit %s' % (name, found, ' or '.join(cpaths), commit[:12]))
             continue
         scfg = json.loads(shown.stdout)
         if scfg.get('family') == cfg.get('family'):
@@ -1537,8 +1543,17 @@ def strip_generated(lines):
 
 # ===================================================================== inputs
 
-ROOT_MANIFEST = 'scripts/inventory-root.sha256'
-SIBLING_PINS = 'scripts/inventory-siblings.json'
+from _layout import CONFIG_DIR, OLD_CONFIG_DIR  # noqa: E402
+
+
+def root_manifest(base=None):
+    return Layout(base or REPO).root_manifest
+
+
+def sibling_pins(base=None):
+    return Layout(base or REPO).sibling_pins
+
+
 CONFLICT = re.compile(r'^(?:<{7}|>{7}|\|{7})(?: |$)', re.M)
 SHOWN = 20
 
@@ -1566,8 +1581,8 @@ def doc_files(cfg, base):
     (the hand-written audits, the coverage page, the pinned manifests), and the repository files the config
     names."""
     d = cfg['docs']
-    out = {'scripts/inventory-config.json', ROOT_MANIFEST, SIBLING_PINS, 'docs/coverage.md',
-           'docs/inventory/audits.tsv'}
+    lay = Layout(base)
+    out = {lay.inventory_config, lay.root_manifest, lay.sibling_pins, lay.coverage_file, lay.audits_file}
     for k in ('prose', 'headers', 'tables', 'index', 'dumps'):
         for pat in d.get(k, []):
             out.update(os.path.relpath(p, base) for p in glob.glob(os.path.join(base, pat), recursive=True))
@@ -1591,7 +1606,7 @@ def conflict_problems(base, rels, label):
     out = []
     for rel in rels:
         text = open(os.path.join(base, rel), encoding='utf-8', errors='replace').read()
-        if rel == 'docs/coverage.md':
+        if rel == Layout(base).coverage_file:
             span = generated_span(text)
             if span:
                 text = text[:span[0]] + text[span[1]:]
@@ -1633,11 +1648,11 @@ def root_check(cfg, docs, update, problems):
         if real.startswith(real_root + os.sep) and os.path.isfile(real):
             need[os.path.relpath(real, real_root)] = real
     have = {rel: file_sha256(real) for rel, real in sorted(need.items())}
-    mpath = os.path.join(REPO, ROOT_MANIFEST)
+    mpath = os.path.join(REPO, root_manifest())
     if update:
         return None, ''.join('%s  %s\n' % (h, rel) for rel, h in sorted(have.items())), len(have)
     if not os.path.isfile(mpath):
-        problems.append('%s is missing (write it from a complete root/ with --update-root-manifest)' % ROOT_MANIFEST)
+        problems.append('%s is missing (write it from a complete root/ with --update-root-manifest)' % root_manifest())
         return '', None, 0
     want = {}
     for ln in open(mpath, encoding='utf-8').read().split('\n'):
@@ -3715,17 +3730,20 @@ def main():
     ap.add_argument('--repo', metavar='DIR',
                     help='the workspace to read and write (default: $ORIGAMI_RE_WORKSPACE, else the git '
                          'work tree around the current directory, else the current directory)')
-    ap.add_argument('--config', default=os.path.join(REPO, 'scripts', 'inventory-config.json'))
-    ap.add_argument('--out', default=os.path.join(REPO, 'docs', 'inventory'))
+    lay = Layout(REPO)
+    ap.add_argument('--config', default=os.path.join(REPO, lay.inventory_config),
+                    help='default: tools/config/inventory-config.json, else scripts/inventory-config.json')
+    ap.add_argument('--out', default=os.path.join(REPO, lay.inventory_dir),
+                    help='default: evidence/inventory, else docs/inventory')
     ap.add_argument('--no-coverage', action='store_true')
     ap.add_argument('--sibling', action='append', default=[], metavar='NAME=PATH',
                     help='read the sibling workspace NAME from PATH instead of the config\'s path')
     ap.add_argument('--skip-siblings', action='store_true',
                     help='run without the cross-workspace role check; the tables say it was skipped')
     ap.add_argument('--update-pins', action='store_true',
-                    help='record the HEAD of each sibling checkout in %s' % SIBLING_PINS)
+                    help='record the HEAD of each sibling checkout in %s' % sibling_pins())
     ap.add_argument('--update-root-manifest', action='store_true',
-                    help='rewrite %s from the files under root/' % ROOT_MANIFEST)
+                    help='rewrite %s from the files under root/' % root_manifest())
     ap.add_argument('--jobs', type=int, default=min(16, os.cpu_count() or 1))
     a = ap.parse_args()
     a.sibling = dict(x.split('=', 1) for x in a.sibling)
@@ -3756,11 +3774,11 @@ def build(cfg, a, tmp):
         sys.exit('inventory: refusing to write tables from inputs that are not what they should be:\n  ' +
                  '\n  '.join(problems))
     if new_manifest is not None:
-        with open(os.path.join(REPO, ROOT_MANIFEST), 'w', encoding='utf-8', newline='\n') as f:
+        with open(os.path.join(REPO, root_manifest()), 'w', encoding='utf-8', newline='\n') as f:
             f.write(new_manifest)
         manifest = hashlib.sha256(new_manifest.encode('utf-8')).hexdigest()
     if a.update_pins:
-        with open(os.path.join(REPO, SIBLING_PINS), 'w', encoding='utf-8', newline='\n') as f:
+        with open(os.path.join(REPO, sibling_pins()), 'w', encoding='utf-8', newline='\n') as f:
             json.dump(pins, f, indent=2, sort_keys=True)
             f.write('\n')
     docs = DocIndex(cfg, siblings)
@@ -4451,7 +4469,7 @@ def record_status(docs, v, cfg):
 
 
 def read_audits(path):
-    """The latest independent audit of each table, from docs/inventory/audits.tsv: the sampled rows
+    """The latest independent audit of each table, from the inventory directory's audits.tsv: the sampled rows
     graded real, shallow or wrong by someone who did not write them. The last row of a table with the
     latest date wins."""
     got = {}
@@ -4502,26 +4520,29 @@ def summary_row(name, rows, unresolved, out_of_scope=0):
 
 
 def update_coverage(cfg, srows, imgs, kind, resolved, unres, by_win, sib, inputs, scope_report=()):
-    path = os.path.join(REPO, 'docs', 'coverage.md')
+    lay = Layout(REPO)
+    path = os.path.join(REPO, lay.coverage_file)
     if not os.path.exists(path):
         return
+    inv_dir = lay.inventory_dir
+    inv_link = os.path.relpath(inv_dir, os.path.dirname(lay.coverage_file))
     text = open(path, encoding='utf-8').read()
     elf = sum(1 for i in imgs if kind.get(i['label'], 'data') != 'data')
     lines = [MARK_BEGIN, '## Measured coverage', '',
              'Generated by `retools/tools/inventory.py` from %d distinct files in scope, %d of them ELF images. '
-             'The rows are in [docs/inventory/](inventory/README.md), which defines every column and status. '
+             'The rows are in [%s/](%s/README.md), which defines every column and status. '
              'The headline is the share **understood**: an entry that states a role and hardware effect, '
              'labelled established or inferred, with a derivation specific to its subject. A mention alone '
              '(named only) is not understanding, and an entry credits only its subject. A row is done when it '
              'is understood or labelled as having no software dependency. "Distinct" counts the differently '
              'worded entries behind the understood rows, so templated bulk shows.'
-             % (len(imgs), elf), '',
+             % (len(imgs), elf, inv_dir, inv_link), '',
              '| Table | Rows | Out of scope | % understood | % located or better | % mentioned | Understood | '
              'With open | Distinct | Located | No software dependency | Named only | Undocumented |',
              '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|']
     for r in srows:
         link = r['table'] if r['table'] in TABLES else None
-        label = '[%s](inventory/%s.tsv)' % (link, link) if link else r['table']
+        label = '[%s](%s/%s.tsv)' % (link, inv_link, link) if link else r['table']
         lines.append('| %s | %d | %d | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d |' % (
             label, r['rows'], r['out_of_scope'], r['pct_understood'], r['pct_located_or_better'], r['pct_mentioned'],
             r['understood'], r['understood_with_open'], r['understood_distinct'], r['located'], r['no_software_dependency'],
@@ -4544,9 +4565,9 @@ def update_coverage(cfg, srows, imgs, kind, resolved, unres, by_win, sib, inputs
     if audited:
         lines += ['', '### Audited', '',
                   'The share of understood rows that an independent audit found real when it re-derived a '
-                  'random sample from the binaries ([docs/inventory/audits.tsv](inventory/audits.tsv); the '
+                  'random sample from the binaries ([%s/audits.tsv](%s/audits.tsv); the '
                   'sample is small, so read the sample size). The percentages above are what the entries claim; '
-                  'this is how often the claim held up.', '',
+                  'this is how often the claim held up.' % (lay.audits_file, os.path.relpath(lay.audits_file, os.path.dirname(lay.coverage_file))), '',
                   '| Table | Audited real | Sample | Date |', '|---|---:|---:|---|']
         for r in audited:
             lines.append('| %s | %s%% | %s | %s |' % (r['table'], r['audited_real_pct'], r['audited_sample'],
@@ -4558,7 +4579,7 @@ def update_coverage(cfg, srows, imgs, kind, resolved, unres, by_win, sib, inputs
         if sib['siblings'] else 'skipped.')]
     for name, why in sib['skipped']:
         checks.append('Skipped: sibling %s (%s). Rows are graded without it.' % (name, why))
-    checks.append('Inputs (also in [summary.tsv](inventory/summary.tsv)): ' + '; '.join(
+    checks.append('Inputs (also in [summary.tsv](%s/summary.tsv)): ' % inv_link + '; '.join(
         '%s %s' % (r['table'][6:], (r['input'][:16] + (', %d files' % r['rows'] if r.get('rows') else ''))
                    if r['table'] == 'input root manifest' else r['input'][:12]) for r in inputs) + '.')
     fr = next((r for r in srows if r['table'] == 'functions'), None)

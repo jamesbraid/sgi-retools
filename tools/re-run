@@ -13,7 +13,7 @@
 #   retools/tools/re-run --ghidra-export root/usr/gfx/arch/IP27KONA32/libGLcore.so \
 #       --decompile-symbol NAME --types ghidra/types/ctx.types.json
 #
-# The workspace is the repository holding root/ and docs/, not the retools checkout this file is
+# The workspace is the repository holding root/ and evidence/, not the retools checkout this file is
 # in. It is --workspace DIR, else $ORIGAMI_RE_WORKSPACE, else the git work tree around the current
 # directory, else the current directory. Run it from the workspace and nothing needs setting. The
 # retools checkout is also mounted read-only at /opt/retools, so its tools can be run from
@@ -44,7 +44,7 @@
 #
 # The workspace is mounted read-write at /work, as your own user id, so
 # generated files are yours. root/ (the IRIX files you copied in, see
-# IRIX_FILES.md) is inside it. If root/ is a symlink to a directory elsewhere,
+# evidence/irix-files.md) is inside it. If root/ is a symlink to a directory elsewhere,
 # that directory is mounted read-only at the path the link resolves to inside
 # the container, so the link works. A link that resolves into a system
 # directory of the container (/usr, /etc, /var and so on) is refused: make

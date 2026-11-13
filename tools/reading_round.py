@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Run one instruction-reading round in a workspace, with no LLM involved.
 
-Selects the uncovered routines of docs/inventory/functions.tsv, renders each with
+Selects the uncovered routines of evidence/inventory/functions.tsv, renders each with
 render_reading.py, grades each entry alone with grade_readings.py, and writes
-docs/instruction-readings-REPO-gN.md, committing every 25 entries. Never pushes.
+evidence/instruction-readings-REPO-gN.md, committing every 25 entries. Never pushes.
 
 Run from the workspace root (it needs `root/`, the binary root, and the retools submodule):
 
@@ -21,17 +21,17 @@ payload that starts inside its file, `--elf` for a mapped ARM ELF, `--binary PAT
 image's rows). Those entries carry an `Architecture:` line so grade_readings can reload them.
 A row keyed by a segment of a firmware container (`l1.bin(l1#2)`, `l2.bin(kernel)`, which the inventory
 writes for a binaries group with a `layout`) needs none of those options: the arch, the bytes and the load
-address come from the workspace's scripts/inventory-config.json, the same layout code the inventory used.
+address come from the workspace's tools/config/inventory-config.json (old layout: scripts/), the same layout code the inventory used.
 
 The entry it writes is the canonical routine role entry of README-analysis.md, which
 `grade_readings.py DOC --check-doc` lints.
 
 Target selection, in order:
-  1. Rows of docs/inventory/functions.tsv on HEAD with a status at or below --from-grade
+  1. Rows of evidence/inventory/functions.tsv on HEAD with a status at or below --from-grade
      (default named-only: named-only or undocumented; located adds located rows) and scope
      `in` (out:N rows are excluded from coverage on purpose). --hardware-only then keeps only
      the rows rule 5 ranks 1, routines a hardware table names, whatever their role.
-  2. Drop rows that already have an entry header in docs/*.md, matched on binary + routine
+  2. Drop rows that already have an entry header in evidence/*.md, matched on binary + routine
      (an archive member is part of the binary: lib.a(member.o)) or on binary + address.
   3. Drop rows at address 0x0 with an empty size: the renderer cannot resolve them.
   4. Keep the first row per binary + address (glFoo and glFooEXT share one).
@@ -56,6 +56,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+from _layout import Layout  # noqa: E402
 
 BATCH = 25
 # Lowest grade first; --from-grade names the highest one a round may pick up.
@@ -379,16 +380,18 @@ def main(argv=None):
     import firmware_layout
     config = firmware_layout.read_config(repo)
     tag = "%s-%s" % (args.repo_name, args.round)
-    doc_rel = "docs/instruction-readings-%s.md" % tag
+    lay = Layout(repo)
+    readings_dir = lay.readings_dir
+    doc_rel = "%s/instruction-readings-%s.md" % (readings_dir, tag)
     started = time.time()
 
-    rows = read_tsv(head_file("docs/inventory/functions.tsv"))
+    rows = read_tsv(head_file(lay.functions_table))
     link_names, link_addrs = hardware_links(
-        *(read_tsv(head_file("docs/inventory/%s.tsv" % n)) for n in ("mmio", "ioctls", "tokens")))
+        *(read_tsv(head_file("%s/%s.tsv" % (lay.inventory_dir, n))) for n in ("mmio", "ioctls", "tokens")))
     lines = []
-    for name in sorted(os.listdir("docs")):
+    for name in sorted(os.listdir(readings_dir)):
         if name.endswith(".md") and name != os.path.basename(doc_rel):
-            with open(os.path.join("docs", name), encoding="utf-8") as handle:
+            with open(os.path.join(readings_dir, name), encoding="utf-8") as handle:
                 lines.extend(handle.read().splitlines())
     doc_names, doc_addrs = header_keys(lines)
     targets = select_targets(rows, doc_names, doc_addrs, link_names, link_addrs, args.from_grade,
@@ -409,7 +412,7 @@ def main(argv=None):
     scratch = os.path.join(args.out_dir, "entry-%s.tmp.md" % tag)
 
     with open(doc_rel, "w", encoding="utf-8") as handle:
-        handle.write(intro_text("docs", os.path.basename(doc_rel)) + "\n")
+        handle.write(intro_text(readings_dir, os.path.basename(doc_rel)) + "\n")
 
     skips = {"renderer": 0, "grader": 0}
     done = pending = last_committed = 0
@@ -423,8 +426,8 @@ def main(argv=None):
         if pending or final:
             first, last = last_committed + 1, done
             if last >= first:
-                commit(doc_rel, "docs: add %s %s readings %d to %d" % (
-                    args.repo_name, args.round, first, last), repo)
+                commit(doc_rel, "%s: add %s %s readings %d to %d" % (
+                    readings_dir, args.repo_name, args.round, first, last), repo)
             elif final and done:
                 # the last batch was already committed; fold the closing sentence into it
                 commit(doc_rel, "", repo, amend=True)

@@ -2,7 +2,7 @@
 """Compare facts-only instruction readings with hostfacts output, or lint a routine-role document.
 
     grade_readings.py DOC --root ROOT [--count N | --routine NAME...]    grade instruction readings
-    grade_readings.py DOC --check-doc [--inventory functions.tsv]         lint docs/routines/*.md
+    grade_readings.py DOC --check-doc [--inventory functions.tsv]         lint evidence/routines/*.md
     grade_readings.py DOC --check-doc --check-facts [--root ROOT]         also test each entry's claims against its facts
     grade_readings.py DOC --check-doc --check-facts --strict-citations    require and test a citation for every claim
     grade_readings.py DOC --review-pack OUT [--root ROOT]                 entries beside their facts, for a reviewer
@@ -11,7 +11,7 @@
 --check-doc reads DOC the way tools/inventory.py does and reports every routine entry that will not
 reach located or understood, with the reason, plus every heading that looks like a routine header and
 is not one. It exits 1 when it reports anything. It needs no root/. With the workspace's functions
-table (default docs/inventory/functions.tsv when it exists) it also checks that the header's binary
+table (default evidence/inventory/functions.tsv when it exists) it also checks that the header's binary
 and address are a row of the table and that a bare file name several builds share can say which build.
 The canonical entry is in README-analysis.md, "Routine role entries".
 
@@ -757,7 +757,8 @@ def _function_rows(path):
 def needs_review(doc, workspace):
     """Whether the workspace's inventory config lists DOC in review_required."""
     import inventory as inv
-    path = os.path.join(workspace, "scripts", "inventory-config.json")
+    from _layout import Layout
+    path = os.path.join(workspace, Layout(workspace).inventory_config)
     if not os.path.isfile(path):
         return False
     with open(path, encoding="utf-8") as config:
@@ -767,9 +768,12 @@ def needs_review(doc, workspace):
 
 def is_routines_file(doc, workspace):
     """Whether DOC is a routines file of the workspace: one the inventory config lists in review_required,
-    or one under docs/routines/."""
+    or one under evidence/routines/ (docs/routines/ on the old layout)."""
+    from _layout import Layout
     rel = os.path.relpath(os.path.abspath(doc), workspace)
-    return needs_review(doc, workspace) or rel.startswith("docs" + os.sep + "routines" + os.sep)
+    routines = Layout(workspace).routines_dir
+    return needs_review(doc, workspace) or rel.startswith(routines.replace("/", os.sep) + os.sep) \
+        or rel.startswith("docs" + os.sep + "routines" + os.sep)
 
 
 ENTRY_LIKE = re.compile(r"(?:[-*+]|\d+\.|#{1,6})\s")
@@ -1146,7 +1150,7 @@ def main(argv=None):
     parser.add_argument("--batch", metavar="K/M",
                         help="with --review-pack, the Kth of M equal slices of the chosen entries (K from 1)")
     parser.add_argument("--inventory", metavar="FUNCTIONS_TSV",
-                        help="functions table for --check-doc (default: docs/inventory/functions.tsv of the workspace)")
+                        help="functions table for --check-doc (default: the workspace's evidence/inventory/functions.tsv, else docs/inventory/)")
     parser.add_argument("--root", help="directory containing the cited binaries")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--seed", type=int, default=0)
@@ -1167,7 +1171,8 @@ def main(argv=None):
         batch = tuple(int(n) for n in args.batch.split("/")) if args.batch else None
         if batch and not 1 <= batch[0] <= batch[1]:
             parser.error("--batch K/M needs 1 <= K <= M")
-        table = args.inventory or os.path.join(workspace, "docs", "inventory", "functions.tsv")
+        from _layout import Layout
+        table = args.inventory or os.path.join(workspace, Layout(workspace).functions_table)
         count = review_pack(args.doc, args.root or os.path.join(workspace, "root"), table, args.review_pack,
                             args.routine, args.unreviewed, batch)
         print("review pack: %d entries written to %s" % (count, args.review_pack))
@@ -1177,7 +1182,8 @@ def main(argv=None):
         workspace = find_workspace()
         table = args.inventory
         if table is None:
-            table = os.path.join(workspace, "docs", "inventory", "functions.tsv")
+            from _layout import Layout
+            table = os.path.join(workspace, Layout(workspace).functions_table)
         problems = check_doc(args.doc, table, review=needs_review(args.doc, workspace),
                              routines=is_routines_file(args.doc, workspace))
         if args.check_facts:

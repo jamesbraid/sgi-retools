@@ -10,7 +10,7 @@ every ELF file, its sections, function symbols and DWARF compilation units.
 Non-ELF files (microcode, tables) are listed by size.
 
 Outputs:
-  - binaries_manifest.json
+  - tools/config/binaries_manifest.json (old layout: binaries_manifest.json)
   - Detailed terminal report
 """
 
@@ -154,7 +154,13 @@ def main():
 
         full_manifest[cat] = cat_data
 
-    manifest_file = 'binaries_manifest.json'
+    # tools/config/binaries_manifest.json, or binaries_manifest.json at the top of an old workspace
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from _layout import Layout
+    from _workspace import find_workspace
+    ws = find_workspace()
+    manifest_file = os.path.join(ws, Layout(ws).binaries_manifest)
+    os.makedirs(os.path.dirname(manifest_file), exist_ok=True)
     with open(manifest_file, 'w') as f:
         json.dump(full_manifest, f, indent=2)
     print(f"\n[+] Saved detailed manifest to {manifest_file}")

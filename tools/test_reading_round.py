@@ -182,16 +182,19 @@ FUNCTIONS = ("binary\trole\taddress\tsize\tname\tscope\tstatus\trejected\n"
 class FirmwareRoundTests(unittest.TestCase):
     """A whole round on a throwaway workspace: select, render, grade, call-check, commit."""
 
+    INVENTORY = "docs/inventory"        # the old layout; CurrentFirmwareRoundTests runs the same on the current one
+    READINGS = "docs"
+
     def run_round(self, image, arch, status="located", from_grade="located", extra=(), mutate=None):
         with tempfile.TemporaryDirectory() as work:
             os.makedirs(os.path.join(work, "root", "fw"))
-            os.makedirs(os.path.join(work, "docs", "inventory"))
+            os.makedirs(os.path.join(work, self.INVENTORY))
             with open(os.path.join(work, "root", "fw", "img.bin"), "wb") as handle:
                 handle.write(image)
-            with open(os.path.join(work, "docs", "inventory", "functions.tsv"), "w") as handle:
+            with open(os.path.join(work, self.INVENTORY, "functions.tsv"), "w") as handle:
                 handle.write(FUNCTIONS % (len(image), status))
             for name in ("mmio", "ioctls", "tokens"):
-                with open(os.path.join(work, "docs", "inventory", name + ".tsv"), "w") as handle:
+                with open(os.path.join(work, self.INVENTORY, name + ".tsv"), "w") as handle:
                     handle.write("functions\texample\n" if name == "mmio" else "example\n")
             git = lambda *a: subprocess.run(("git",) + a, cwd=work, check=True, capture_output=True)
             git("init", "-q")
@@ -207,16 +210,17 @@ class FirmwareRoundTests(unittest.TestCase):
                     code = rr.main(["--repo-name", "fw", "--round", "g1", "--out-dir", "out",
                                     "--arch", arch, "--load", "0x1000"]
                                    + (["--from-grade", from_grade] if from_grade else []) + list(extra))
-                with open("docs/instruction-readings-fw-g1.md") as handle:
+                with open(self.READINGS + "/instruction-readings-fw-g1.md") as handle:
                     doc = handle.read()
                 if mutate:
                     # re-run only the checks on an edited document
                     import grade_readings
-                    with open("docs/edited.md", "w") as handle:
+                    edited = self.READINGS + "/edited.md"
+                    with open(edited, "w") as handle:
                         handle.write(mutate(doc))
                     with contextlib.redirect_stdout(io.StringIO()):
-                        graded = grade_readings.main(["docs/edited.md", "--root", "root", "--count", "0"])
-                    return rr.check_call_addrs("docs/edited.md", "root"), graded, doc
+                        graded = grade_readings.main([edited, "--root", "root", "--count", "0"])
+                    return rr.check_call_addrs(edited, "root"), graded, doc
             finally:
                 os.chdir(old)
             return code, out.getvalue(), doc
@@ -263,21 +267,31 @@ class FirmwareRoundTests(unittest.TestCase):
 
 
 @unittest.skipUnless(have_capstone(), "needs capstone and pyelftools")
+class CurrentFirmwareRoundTests(FirmwareRoundTests):
+    INVENTORY = "evidence/inventory"
+    READINGS = "evidence"
+
+
+@unittest.skipUnless(have_capstone(), "needs capstone and pyelftools")
 class SegmentRoundTests(unittest.TestCase):
     """Rows keyed by a segment of a firmware container render and grade like any other routine."""
+
+    INVENTORY = "docs/inventory"        # the old layout; CurrentSegmentRoundTests runs the same on the current one
+    READINGS = "docs"
+    CONFIG = "scripts"
 
     def run_round(self, rows, extra=()):
         import test_firmware_layout as fl
         with tempfile.TemporaryDirectory() as work:
             fl.workspace(os.path.join(work, "root"))
-            os.makedirs(os.path.join(work, "docs", "inventory"))
-            os.makedirs(os.path.join(work, "scripts"))
-            with open(os.path.join(work, "scripts", "inventory-config.json"), "w") as handle:
+            os.makedirs(os.path.join(work, self.INVENTORY))
+            os.makedirs(os.path.join(work, self.CONFIG))
+            with open(os.path.join(work, self.CONFIG, "inventory-config.json"), "w") as handle:
                 json.dump(fl.CONFIG, handle)
-            with open(os.path.join(work, "docs", "inventory", "functions.tsv"), "w") as handle:
+            with open(os.path.join(work, self.INVENTORY, "functions.tsv"), "w") as handle:
                 handle.write(HEADER + "".join("\t".join(r) + "\n" for r in rows))
             for name in ("mmio", "ioctls", "tokens"):
-                with open(os.path.join(work, "docs", "inventory", name + ".tsv"), "w") as handle:
+                with open(os.path.join(work, self.INVENTORY, name + ".tsv"), "w") as handle:
                     handle.write("functions\texample\n" if name == "mmio" else "example\n")
             git = lambda *a: subprocess.run(("git",) + a, cwd=work, check=True, capture_output=True)
             git("init", "-q")
@@ -292,7 +306,7 @@ class SegmentRoundTests(unittest.TestCase):
                 with contextlib.redirect_stdout(out):
                     code = rr.main(["--repo-name", "fw", "--round", "g1", "--out-dir", "out",
                                     "--from-grade", "located"] + list(extra))
-                with open("docs/instruction-readings-fw-g1.md") as handle:
+                with open(self.READINGS + "/instruction-readings-fw-g1.md") as handle:
                     doc = handle.read()
                 with open("out/renderer-conflicts-fw-g1.tsv") as handle:
                     conflicts = handle.read()
@@ -331,8 +345,8 @@ class SegmentRoundTests(unittest.TestCase):
         rows = [row("fw/l2.bin(kernel)", hex(fl.KERNEL_LOAD), str(len(fl.PPC_CODE)), "sub_kernel", "located", role="fw")]
         with tempfile.TemporaryDirectory() as work:
             fl.workspace(os.path.join(work, "root"))
-            os.makedirs(os.path.join(work, "scripts"))
-            with open(os.path.join(work, "scripts", "inventory-config.json"), "w") as handle:
+            os.makedirs(os.path.join(work, self.CONFIG))
+            with open(os.path.join(work, self.CONFIG, "inventory-config.json"), "w") as handle:
                 json.dump(fl.CONFIG, handle)
             row_ = inventory(*rows)[0]
             import firmware_layout
@@ -343,6 +357,12 @@ class SegmentRoundTests(unittest.TestCase):
             self.assertEqual(rr.grade_one(text, os.path.join(work, "root"), scratch), (True, ""))
             with self.assertRaisesRegex(ValueError, "layout gives ppc32 at 0xc0000000"):
                 rr.grade_one(bad, os.path.join(work, "root"), scratch)
+
+
+class CurrentSegmentRoundTests(SegmentRoundTests):
+    INVENTORY = "evidence/inventory"
+    READINGS = "evidence"
+    CONFIG = "tools/config"
 
 
 if __name__ == "__main__":
