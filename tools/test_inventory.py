@@ -306,6 +306,11 @@ class CitesBinary(unittest.TestCase):
         self.assertFalse(self.check(imgs, 'builds/a/usr/gfx/X.so', {'usr/gfx/X.so'}))
         self.assertFalse(self.check(imgs, 'builds/b/usr/gfx/X.so', {'usr/gfx/X.so'}))
 
+    def test_a_root_link_from_a_deep_page_names_the_build(self):
+        imgs = [self.img('usr/gfx/X.so')]
+        for tok in ('root/usr/gfx/X.so', '../root/usr/gfx/X.so', '../../root/usr/gfx/X.so'):
+            self.assertTrue(self.check(imgs, 'usr/gfx/X.so', {tok}), tok)
+
     def test_the_path_of_a_byte_identical_copy_names_the_image(self):
         imgs = [self.img('usr/gfx/libGL.so', ['builds/b/usr/gfx/libGL.so'])]
         self.assertTrue(self.check(imgs, 'usr/gfx/libGL.so', {'builds/b/usr/gfx/libGL.so'}))
