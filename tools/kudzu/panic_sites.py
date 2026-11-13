@@ -39,18 +39,20 @@ os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
 # The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
 TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, TOOLS)
+from _layout import Layout  # noqa: E402
 from _workspace import find_workspace  # noqa: E402
 REPO = find_workspace()
+LAYOUT = Layout(REPO)
 
 PANIC_CALLEES = ('panic', 'cmn_err', 'assfail', 'nopanicdebugger',
                  'printf', 'sync_printf', 'dri_printf', 'icmn_err', 'icmn_err_tag', 'cmn_err_tag')
 # The printf wrappers pass a fixed level in a1 to the console printer (`li a1,N` before the call);
 # the same N in IP27, IP30 and IP35. icmn_err and cmn_err_tag take their level from the caller.
 PRINTF_LEVEL = {'printf': 6, 'dri_printf': 6, 'sync_printf': 38}
-CONDITIONS = os.path.join(REPO, 'scripts', 'panic-conditions.json')
+CONDITIONS = os.path.join(REPO, LAYOUT.config('panic-conditions.json'))
 BUILD_LABEL = {'6.5.30/unix.IP27': '6.5.30 IP27', '6.5.30/unix.IP30': '6.5.30 IP30',
                '6.5.30/unix.IP35': '6.5.30 IP35'}
-TABLE = os.path.join(REPO, 'docs', 'inventory', 'panics.tsv')
+TABLE = os.path.join(REPO, LAYOUT.inventory_dir, 'panics.tsv')
 CACHE = os.path.join(REPO, '.cache', 'panic-sites')
 HDR = re.compile(r'^([0-9a-f]{16}) <([^>]+)>:$')
 INS = re.compile(r'^\s*([0-9a-f]{16}):\t(.*)$')
@@ -542,7 +544,7 @@ def main():
     ex.add_argument('--show', action='store_true', help='print each site with its window')
     ex.add_argument('--json', help='write the site records to this file')
     rd = sub.add_parser('render')
-    rd.add_argument('--doc', default='docs/panics.md')
+    rd.add_argument('--doc', default=LAYOUT.page('panics.md', 'kernel'))
     a = ap.parse_args()
     if a.cmd == 'render':
         render(a.doc)

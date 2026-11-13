@@ -57,8 +57,15 @@ os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
 # The workspace comes from the current directory (tools/_workspace.py), not from this file's path.
 TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, TOOLS)
+from _layout import Layout  # noqa: E402
 from _workspace import find_workspace  # noqa: E402
 REPO = find_workspace()
+
+
+def layout():
+    """The layout of REPO, asked each time because a test points REPO at another workspace."""
+    return Layout(REPO)
+
 
 import inventory  # noqa: E402  (the request-name labels live with it)
 
@@ -69,7 +76,7 @@ PANIC_CALLEES = ('panic', 'cmn_err', 'assfail', 'nopanicdebugger',
 
 def doc_names():
     names = set()
-    for p in glob.glob(os.path.join(REPO, 'docs', '*.md')):
+    for p in layout().doc_pages():
         for m in re.finditer(r'`([^`\n]+)`', open(p, encoding='utf-8').read()):
             names.add(m.group(1).strip())
     return names
@@ -78,7 +85,7 @@ def doc_names():
 def struct_pages():
     """Structure names with a field table page: docs/structs/<name>.md, titled with the name in backticks."""
     names = set()
-    for p in glob.glob(os.path.join(REPO, 'docs', 'structs', '*.md')):
+    for p in glob.glob(os.path.join(REPO, layout().page('structs', 'kernel'), '*.md')):
         m = re.fullmatch(r'# `([^`]+)`', open(p, encoding='utf-8').readline().strip())
         if m:
             names.add(m.group(1))
@@ -172,10 +179,10 @@ def write(out, name, header, rows):
 
 def function_scopes():
     """{(binary, name): 'in' | 'out'} from the shared inventory's functions table."""
-    p = os.path.join(REPO, 'docs', 'inventory', 'functions.tsv')
+    p = os.path.join(REPO, layout().functions_table)
     sc = {}
     if not os.path.exists(p):
-        sys.exit('run retools/tools/inventory.py first: docs/inventory/functions.tsv is missing')
+        sys.exit('run retools/tools/inventory.py first: %s is missing' % layout().functions_table)
     with open(p, encoding='utf-8') as f:
         head = f.readline().rstrip('\n').split('\t')
         b, n, c = head.index('binary'), head.index('name'), head.index('scope')
@@ -201,7 +208,7 @@ def formats(paths):
 
 def scope_report(out, scope):
     """scope.tsv: the in-scope rule of each binary group with its binary and function counts."""
-    base = os.path.join(REPO, 'docs', 'inventory')
+    base = os.path.join(REPO, layout().inventory_dir)
     group_of, nbin = {}, collections.Counter()
     with open(os.path.join(base, 'binaries.tsv'), encoding='utf-8') as f:
         head = f.readline().rstrip('\n').split('\t')
@@ -238,7 +245,7 @@ def coverage_block(out, scope_rows, path=None):
     for g, sc, nb, fi, fo, _ in scope_rows:
         lines.append('| %s | %s | %d | %d | %d |' % (g, sc, nb, fi, fo))
     lines.append('<!-- os-inventory:end -->')
-    p = path or os.path.join(REPO, 'docs', 'coverage.md')
+    p = path or os.path.join(REPO, layout().coverage_file)
     text = open(p, encoding='utf-8').read()
     block = '\n'.join(lines)
     if '<!-- os-inventory:begin -->' in text:
@@ -251,7 +258,7 @@ def coverage_block(out, scope_rows, path=None):
 def generate(out, coverage_path=None):
     import json
     from elftools.elf.elffile import ELFFile
-    scope = json.load(open(os.path.join(REPO, 'scripts', 'scope.json')))
+    scope = json.load(open(os.path.join(REPO, layout().scope_file)))
     spre = re.compile('(?:%s)' % '|'.join(scope['structure_prefixes']))
     sel_re = re.compile('(?:%s)' % '|'.join(scope['narrow_prefixes']))
     fscope = function_scopes()
@@ -304,14 +311,14 @@ def check(out):
     scratch = tempfile.mkdtemp(prefix='os_tables-')
     try:
         cov = os.path.join(scratch, 'coverage.md')
-        shutil.copyfile(os.path.join(REPO, 'docs', 'coverage.md'), cov)
+        shutil.copyfile(os.path.join(REPO, layout().coverage_file), cov)
         tables = os.path.join(scratch, 'inventory')
         os.mkdir(tables)
         generate(tables, cov)
         stale = [os.path.relpath(os.path.join(out, n), REPO) for n in sorted(os.listdir(tables))
                  if not os.path.exists(os.path.join(out, n)) or not filecmp.cmp(os.path.join(tables, n), os.path.join(out, n), shallow=False)]
-        if not filecmp.cmp(cov, os.path.join(REPO, 'docs', 'coverage.md'), shallow=False):
-            stale.append('docs/coverage.md')
+        if not filecmp.cmp(cov, os.path.join(REPO, layout().coverage_file), shallow=False):
+            stale.append(layout().coverage_file)
     finally:
         shutil.rmtree(scratch)
     if stale:
@@ -320,7 +327,7 @@ def check(out):
 
 
 def main():
-    out = os.path.join(REPO, 'docs', 'inventory')
+    out = os.path.join(REPO, layout().inventory_dir)
     if '--out' in sys.argv:
         out = sys.argv[sys.argv.index('--out') + 1]
     global RELEASE
