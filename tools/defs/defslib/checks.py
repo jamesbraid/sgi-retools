@@ -370,7 +370,7 @@ def run_checks(repo, verbose=False, fresh=True, only=None, siblings=True, siblin
         h.vecs = legacy if hcfg["form"] == "legacy" else vecs
         h.unit = u
         hdrs[file] = h
-    ctx.hdrs = hdrs
+    ctx.hdrs = pc.HdrMap(hdrs)
 
     for u in units:
         c_text = all_views[u.name][0]

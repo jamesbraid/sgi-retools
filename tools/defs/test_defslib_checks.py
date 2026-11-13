@@ -259,6 +259,23 @@ def check_final(ctx):
         r = self.check()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_plugin_finds_a_header_by_unit_name(self):
+        self.with_plugin('''
+def check_final(ctx):
+    if ctx.hdrs["uart"] is not ctx.hdrs["gen/c/uart.h"] or ctx.hdrs.get("nosuch") is not None:
+        ctx.rep.fail("final", "unit name does not find the header")
+    try:
+        ctx.hdrs["nosuch"]
+    except KeyError:
+        pass
+    else:
+        ctx.rep.fail("final", "an unknown unit name must raise KeyError")
+    if "uart" in ctx.hdrs or "uart" in list(ctx.hdrs):
+        ctx.rep.fail("final", "iteration sees file keys only")
+''')
+        r = self.check()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_plugin_failure_is_reported(self):
         self.with_plugin(self.PLUGIN.replace("f[1] != 1", "f[1] != 2"))
         self.assert_fails("payload moved")
