@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Compare the controller firmware across the four shipped sets.
 
-Usage: retools/tools/re-run python3 retools/tools/sysco/version_diff.py [--out docs/version-diffs]
+Usage: retools/tools/re-run python3 retools/tools/sysco/version_diff.py [--out evidence/version-diffs]
        retools/tools/re-run python3 retools/tools/sysco/version_diff.py --series early
 
 --series early runs the routine diff over the early series, 1.0.2 to 1.18.3 (EARLY_SETS), and
 writes l1-early-routines.tsv. The default run covers the four sets below.
 
-Three measurements, each written as TSV under docs/version-diffs/:
+Three measurements, each written as TSV under evidence/version-diffs/:
 
   l1-routines.tsv       routines of the Origin 300 L1 package (Fuel/PE, package 1) that
                         are added, removed or changed between consecutive sets
@@ -39,7 +39,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sysco_tables as st  # noqa: E402
 import capstone  # noqa: E402
 
-OUT = os.path.join(st.REPO, 'docs', 'version-diffs')
+OUT = os.path.join(st.REPO, st.VERSION_DIFFS_DIR)
 if '--out' in sys.argv:
     OUT = os.path.abspath(sys.argv[sys.argv.index('--out') + 1])
 
@@ -47,7 +47,7 @@ L1_SETS = [('1.24.8', '6.5.22'), ('1.32.15', 'patches/SG0005762'), ('1.44.0', '6
 # The early series, 1.0.2 to 1.18.3 (IRIX 6.5.9 to 6.5.19). Each set's package is its ColdFire
 # image: the whole file for 6.5.9 to 6.5.15 (no container table), the 1 MB image of the
 # container for 6.5.16 to 6.5.19 (its label has no product qualifier, so which product
-# package it is was not settled; see docs/version-diffs.md).
+# package it is was not settled; see evidence/version-diffs.md).
 EARLY_SETS = [('1.0.2', '6.5.9'), ('1.1.6', '6.5.10'), ('1.4.1', '6.5.12'), ('1.6.0', '6.5.13'), ('1.8.0', '6.5.14'),
               ('1.10.0', '6.5.15'), ('1.12.3', '6.5.16'), ('1.14.1', '6.5.17'), ('1.16.0', '6.5.18'), ('1.18.3', '6.5.19')]
 L2_SETS = [('1.24.1', '6.5.22'), ('1.32.4', 'patches/SG0005762'), ('1.44.0', '6.5.30'), ('1.48.0', 'patches/SG0007149')]
@@ -472,7 +472,7 @@ def request_report(rows):
                 row.append('text differs')
         table.append(row)
     # the 1.44.0 catalogue must agree with the curated general-request rows
-    curated = [r.split('\t') for r in open(os.path.join(st.REPO, 'docs', 'l1', 'request-codes.tsv')).read().splitlines()[1:]]
+    curated = [r.split('\t') for r in open(os.path.join(st.REPO, st.L1_DIR, 'request-codes.tsv')).read().splitlines()[1:]]
     checked = mismatched = 0
     for r in curated:
         if r[1] != '6':

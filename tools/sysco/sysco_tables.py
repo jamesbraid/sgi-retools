@@ -2,7 +2,7 @@
 """Measure the firmware side of the workspace: images, packages, functions, request codes,
 I/O registers and protocols.
 
-Usage: retools/tools/sysco/sysco_tables.py [--out docs/inventory]
+Usage: retools/tools/sysco/sysco_tables.py [--out evidence/inventory]
 
 Run from the repository root with root/ populated (IRIX_FILES.md), inside the toolchain
 container (retools/tools/re-run python3 retools/tools/sysco/sysco_tables.py). tools/inventory.py, the same
@@ -10,17 +10,17 @@ file in every workspace, measures ELF images and cannot read the controller firm
 the tables for it are written here. The output is deterministic.
 
 Inputs besides root/:
-  docs/l1/functions.tsv      names and roles assigned to routine addresses
-  docs/l1/request-codes.tsv  the request catalogue
-  docs/l1/io-registers.tsv   register and device accesses read from the code
-  docs/l1/protocols.tsv      descriptors, framing and routing, with optional byte checks
-  docs/l1/packages.tsv       one layout row per Linux L1 package, graded and located
+  software/firmware/l1/functions.tsv      names and roles assigned to routine addresses
+  software/firmware/l1/request-codes.tsv  the request catalogue
+  software/firmware/l1/io-registers.tsv   register and device accesses read from the code
+  software/firmware/l1/protocols.tsv      descriptors, framing and routing, with optional byte checks
+  software/firmware/l1/packages.tsv       one layout row per Linux L1 package, graded and located
 A curated row that names a package is checked against the bytes: handler addresses must lie in
 the body, and a `check` cell (bytes:OFFSET:HEX or sum32:OFFSET:LENGTH, body offsets) must hold.
 
 Statuses, from weakest: undocumented, located (the address, hash or offset is cited in a
-document under docs/), understood (a curated row carries a grade, a role and a locator and its
-checks pass). docs/inventory/README.md has the column definitions.
+note in the workspace), understood (a curated row carries a grade, a role and a locator and its
+checks pass). evidence/inventory/README.md has the column definitions.
 """
 import collections
 import glob
@@ -35,16 +35,30 @@ import zlib
 TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, TOOLS)
 from _workspace import find_workspace  # noqa: E402
+from _layout import Layout  # noqa: E402
 REPO = find_workspace()
+LAY = Layout(REPO)
 ROOT = os.path.join(REPO, 'root')
-OUT = os.path.join(REPO, 'docs', 'inventory')
+# Notes and tables of the L1 firmware: software/firmware/l1 on the current layout, docs/l1 on the old one.
+L1_DIR = LAY.pick('software/firmware/l1', 'docs/l1')
+MOVED = L1_DIR != 'docs/l1'
+INVENTORY_DIR = LAY.inventory_dir
+COVERAGE_FILE = LAY.coverage_file
+VERSIONS_PAGE = 'evidence/firmware-versions.md' if MOVED else 'docs/firmware-versions.md'
+VERSION_DIFFS_DIR = LAY.pick('evidence/version-diffs', 'docs/version-diffs')
+PERSONALITY_DIFFS_DIR = LAY.pick('evidence/personality-diffs', 'docs/personality-diffs')
+# Directories whose .md and .tsv files a hex string may be cited in.
+DOC_ROOTS = ('devices', 'platforms', 'formats', 'software', 'questions', 'evidence', 'references/documents') if MOVED \
+    else ('docs',)
+GENERATED_PAGE = re.compile(r'^(registers|format)(-extra|\.[a-z][a-z0-9_]*)?\.md$')
+OUT = os.path.join(REPO, INVENTORY_DIR)
 if '--out' in sys.argv:
     OUT = os.path.abspath(sys.argv[sys.argv.index('--out') + 1])
 
 RELEASES = ['6.4', '6.4-origin', '6.5', '6.5.2', '6.5.5', '6.5.6', '6.5.7', '6.5.9', '6.5.10', '6.5.12', '6.5.13', '6.5.14', '6.5.15', '6.5.16', '6.5.17', '6.5.18', '6.5.19',
             '6.5.20', '6.5.21', '6.5.22', '6.5.23', '6.5.24', '6.5.25', '6.5.26', '6.5.27', '6.5.28', '6.5.29', '6.5.30', 'patches/SG0005762', 'patches/SG0007149', 'patches/SG0002378', 'cd-ist-3.24']
 # Controller files outside the sysco product: the MMSC image and daemons, the Challenge and Onyx controller driver and daemon,
-# the ELSC driver object, and the manual pages of those tools (docs/controllers.md).
+# the ELSC driver object, and the manual pages of those tools (evidence/controllers.md).
 EXTRA = ('usr/cpu/firmware/', 'usr/etc/', 'usr/cpu/sysgen/', 'sbin/', 'usr/include/', 'usr/share/catman/')
 FW = 'usr/cpu/firmware/sysco/'
 CRAMFS_LE, CRAMFS_BE = b'\x45\x3d\xcd\x28', b'\x28\xcd\x3d\x45'
@@ -84,9 +98,14 @@ def tsv_write(name, cols, rows):
 # ------------------------------------------------------------------ documents
 def doc_text():
     text = []
-    for p in sorted(glob.glob(os.path.join(REPO, 'docs', '**', '*'), recursive=True)):
+    paths = []
+    for d in DOC_ROOTS:
+        paths += glob.glob(os.path.join(REPO, d, '**', '*'), recursive=True)
+    for p in sorted(paths):
         rel = os.path.relpath(p, REPO)
-        if not os.path.isfile(p) or rel.startswith('docs/inventory/') or '/disasm/' in rel:
+        # the generated register tables are not notes
+        if not os.path.isfile(p) or rel.startswith(INVENTORY_DIR + '/') or '/disasm/' in rel \
+                or GENERATED_PAGE.match(os.path.basename(p)):
             continue
         if p.endswith(('.md', '.tsv')):
             text.append((rel, open(p, encoding='utf-8', errors='replace').read().lower()))
@@ -98,7 +117,7 @@ DOCS = doc_text()
 
 def _citing_docs():
     """Documents that cited() searches, in search order."""
-    return [(rel, txt) for rel, txt in sorted(DOCS, key=lambda x: x[0] != 'docs/firmware-versions.md')
+    return [(rel, txt) for rel, txt in sorted(DOCS, key=lambda x: x[0] != VERSIONS_PAGE)
             if not rel.endswith(('/functions.tsv', '/request-codes.tsv', '/io-registers.tsv', '/protocols.tsv'))]
 
 
@@ -454,7 +473,7 @@ def function_rows(key, p, rel):
         t = struct.unpack('>I', body[o + 2:o + 6])[0]
         if base <= t < base + len(body) and t % 2 == 0:
             cands.setdefault(t, set()).add('call-target')
-    cur = {r['address'].lower(): r for r in tsv_read(os.path.join(REPO, 'docs/l1/functions.tsv'))
+    cur = {r['address'].lower(): r for r in tsv_read(os.path.join(REPO, L1_DIR, 'functions.tsv'))
            if r['package'] == key}
     rows = []
     for a in sorted(cands):
@@ -466,7 +485,7 @@ def function_rows(key, p, rel):
             r['name'] = c['name']
             r['grade'] = c['grade']
             r['status'] = 'understood' if c['grade'] in ('established', 'inferred') and len(c['note'].split()) >= 4 else 'located'
-            r['doc'] = 'docs/l1/functions.tsv'
+            r['doc'] = L1_DIR + '/functions.tsv'
         else:
             d = cited(h)
             if d:
@@ -517,7 +536,7 @@ KEYMAP = _Same()
 
 def curated(bodymap):
     reqs, ios, prots = [], [], []
-    for r in tsv_read(os.path.join(REPO, 'docs/l1/request-codes.tsv')):
+    for r in tsv_read(os.path.join(REPO, L1_DIR, 'request-codes.tsv')):
         key = KEYMAP[r['package']]
         load, body = bodymap[key]
         a = int(r['handler'], 16)
@@ -525,20 +544,20 @@ def curated(bodymap):
         st = 'understood' if inside and r['grade'] in ('established', 'inferred') and len(r['note'].split()) >= 4 else 'located'
         reqs.append({'image': key, 'task': r['task'], 'code': r['code'], 'handler': '0x%08x' % a,
                      'name': r['name'], 'grade': r['grade'], 'handler_in_body': 'yes' if inside else 'NO',
-                     'note': r['note'], 'status': st, 'doc': 'docs/l1/request-codes.tsv'})
-    for r in tsv_read(os.path.join(REPO, 'docs/l1/io-registers.tsv')):
+                     'note': r['note'], 'status': st, 'doc': L1_DIR + '/request-codes.tsv'})
+    for r in tsv_read(os.path.join(REPO, L1_DIR, 'io-registers.tsv')):
         ok = r['grade'] in ('established', 'inferred') and len(r['evidence'].split()) >= 4
         ios.append({'image': KEYMAP[r['package']], 'device': r['device'], 'window_base': r['window_base'],
                     'offset': r['offset'], 'width_bits': r['width_bits'], 'name': r['name'], 'access': r['access'],
                     'grade': r['grade'], 'evidence': r['evidence'], 'status': 'understood' if ok else 'located',
-                    'doc': 'docs/l1/io-registers.tsv'})
-    for r in tsv_read(os.path.join(REPO, 'docs/l1/protocols.tsv')):
+                    'doc': L1_DIR + '/io-registers.tsv'})
+    for r in tsv_read(os.path.join(REPO, L1_DIR, 'protocols.tsv')):
         key = KEYMAP[r['package']]
         chk = check_cell(r['check'], bodymap[key][1])
         ok = r['grade'] in ('established', 'inferred') and chk != 'MISMATCH' and len(r['evidence'].split()) >= 2
         prots.append({'image': key, 'protocol': r['protocol'], 'element': r['element'], 'value': r['value'],
                       'grade': r['grade'], 'evidence': r['evidence'], 'byte_check': chk,
-                      'status': 'understood' if ok else 'located', 'doc': 'docs/l1/protocols.tsv'})
+                      'status': 'understood' if ok else 'located', 'doc': L1_DIR + '/protocols.tsv'})
     return reqs, ios, prots
 
 
@@ -548,14 +567,14 @@ def status_of_image(rec):
         if d:
             # a container whose version, size, hash and layout are tabulated in the versions note is understood
             if rec.get('kind') in ('L1 firmware container', 'L2 firmware image') and rec.get('version') \
-                    and d == 'docs/firmware-versions.md':
+                    and d == VERSIONS_PAGE:
                 return 'understood', d
             return 'located', d
     return 'undocumented', ''
 
 
 def update_coverage(summary, images, pkgs):
-    path = os.path.join(REPO, 'docs', 'coverage.md')
+    path = os.path.join(REPO, COVERAGE_FILE)
     if not os.path.exists(path):
         return
     text = open(path, encoding='utf-8').read()
@@ -568,9 +587,9 @@ def update_coverage(summary, images, pkgs):
             sets.setdefault(r['release'], []).append('%s %s' % (r['kind'].split()[0], r['version']))
     lines = [b, '## Measured firmware coverage', '',
              'Generated by `retools/tools/sysco/sysco_tables.py` from %d distinct files and %d L1 packages under `root/`. '
-             'Rows are in [docs/inventory/](inventory/README.md). Understood means a curated entry gives the row a grade, '
+             'Rows are in [%s/](inventory/README.md). Understood means a curated entry gives the row a grade, '
              'a role and a locator and its byte checks pass; located means a note cites its address, offset or hash.' % (
-                 len(images), len(pkgs)), '',
+                 len(images), len(pkgs), INVENTORY_DIR), '',
              'Sets read: ' + '; '.join('%s (%s)' % (k, ', '.join(v)) for k, v in sets.items()) + '.', '',
              '| Table | Rows | Understood | Located | Undocumented | % understood | % located or better |',
              '|---|---:|---:|---:|---:|---:|---:|']
@@ -593,11 +612,11 @@ def main():
         s, d = status_of_image({'sha256': r['sha256']})
         r['status'], r['doc'] = s, d
     # a Linux package is understood once a curated row grades its layout
-    linux_rows = {r['package']: r for r in tsv_read(os.path.join(REPO, 'docs/l1/packages.tsv'))}
+    linux_rows = {r['package']: r for r in tsv_read(os.path.join(REPO, L1_DIR, 'packages.tsv'))}
     for r in pkgs:
         c = linux_rows.get(r['key'])
         if c and c['grade'] in ('established', 'inferred') and len(c['role'].split()) >= 4 and c['locator']:
-            r['status'], r['doc'] = 'understood', 'docs/l1/packages.tsv'
+            r['status'], r['doc'] = 'understood', L1_DIR + '/packages.tsv'
     bodymap = bodies(pkgs)
     reqs, ios, prots = curated(bodymap)
     tsv_write('images', ['path', 'release', 'kind', 'arch', 'version', 'bytes', 'sha256', 'copies', 'detail', 'status', 'doc'], images)
