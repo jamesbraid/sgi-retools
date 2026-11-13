@@ -319,8 +319,8 @@ rm tools/config/import-report.txt
 `--layout current|old` forces one and `--out DIR` writes the old flat shape into DIR.
 
 Commit the register maps, `generated/`, the forwarding headers and the removals
-together, add the workflow (below), and switch QEMU and iris to `generated/c/` paths
-in their own changes. Once the consumers have moved, delete `legacy_header` from each
+together, add the workflow (below), and move every consumer to the `generated/c/` paths
+in its own change. Once the consumers have moved, delete `legacy_header` from each
 unit and the forwarding headers with it.
 `defs-compare --old-rev REV` compares against another revision; `defs-compare --old
 FILE --new FILE` compares two files.
