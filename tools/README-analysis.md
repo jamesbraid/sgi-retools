@@ -22,6 +22,12 @@ highest source that states it, and grade it by that source. The grade words are 
    contradict a fact and never supply one. A fact that rests only on one of them stays `unknown`, with the
    note named in `from`.
 
+Machines with no IRIX source (the SN2 Altix and Prism, IA-64 on the SN1 Bedrock, and the Altix UV) put SGI's
+own Linux platform code in step 1: the SN code under `arch/ia64/sn/`, its headers under `include/asm-ia64/sn/`
+and `arch/ia64/include/asm/sn/`, and the UV code under `arch/x86/platform/uv/` and `arch/x86/include/asm/uv/`.
+A fact it defines is `established`, cited by tree, tag and path. SGI's shipped ProPack kernels and modules take
+step 2.
+
 Emulator runs show what the model does. They are never hardware evidence, and a reading must not call one
 "observed" or "measured".
 

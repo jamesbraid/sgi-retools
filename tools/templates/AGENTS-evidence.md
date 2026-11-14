@@ -8,6 +8,8 @@ For a register or behaviour fact, take it from the highest source that states it
 4. Published SGI and vendor manuals.
 5. Notes from other projects (Origami datasheets, QEMU manual pages, emulator code): may confirm or contradict, never supply a fact. A fact resting only on one stays `unknown`, with the note named.
 
+For machines with no IRIX source (SN2 Altix and Prism, IA-64 on SN1, Altix UV), SGI's own Linux platform code (`arch/ia64/sn/`, its `sn` headers, `arch/x86/platform/uv/` and the `uv` headers) takes step 1, cited by tree, tag and path, and SGI's ProPack binaries take step 2.
+
 Reset values: `established` when the source states a power-on default or PROM code relies on a reset state; `inferred` when the PROM depends on a value before its first write (cite the PROM address); a read after firmware initialisation is not a reset value and can only rule values out; otherwise `unknown`. A physical hardware read is a last resort, needs the repository owner's approval, and counts as a reset value only for a register firmware provably never writes. Emulator runs are model behaviour, never hardware evidence.
 
 Full text and the checks that enforce it: `retools/tools/README-analysis.md#evidence-order`.
