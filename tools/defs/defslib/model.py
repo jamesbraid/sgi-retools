@@ -6,7 +6,7 @@ descriptor words, or a table of constants.
   unit, prefix, block?, title, doc, from, public_from[], c{...}
   spaces{name: {unit: byte|reg, doc}}
   enums{name: {doc, values{label: {value, grade, from?, doc?}}}}
-  registers{name: {offset, access, width, count, stride, space, reset, grade,
+  registers{name: {offset, access, width, count, stride, space, reset, reset_grade?, reset_from?, grade,
                    from?, doc, notes, fields{}, tests[]}}
   words{NAME: {width, grade, from?, doc, type_name?, fields{}, tests[]}}
   constants{NAME: {value, grade, from?, doc, count?, stride?}}
@@ -173,6 +173,8 @@ def publish_profile(u):
         node["notes"] = ""
         if node.get("from") and not is_public(u, node["from"]):
             node.pop("from")
+        if node.get("reset_from") and not is_public(u, node["reset_from"]):
+            node.pop("reset_from")
     clean(u)
     for sect in ("registers", "words", "constants"):
         for x in u[sect].values():

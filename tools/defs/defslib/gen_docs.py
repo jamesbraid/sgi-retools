@@ -43,6 +43,14 @@ def _note(node):
     return ["Notes: %s" % node["notes"].strip(), ""] if node.get("notes") else []
 
 
+def _reset_cell(r):
+    """The reset value; when the register records where the value comes from, its own grade and source too."""
+    if not isinstance(r["reset"], int):
+        return "unknown"
+    why = [x for x in (r.get("reset_grade"), r.get("reset_from")) if x]
+    return "%s (%s)" % (_hex(r["reset"]), "; ".join(why)) if why else _hex(r["reset"])
+
+
 def gen_docs(u, src, profile="public", banner_first=False):
     """The browsable register table. banner_first puts the generated-file comment on the first line, as
     the pages beside their sources do; the old gen/docs pages keep the title first."""
@@ -69,7 +77,7 @@ def gen_docs(u, src, profile="public", banner_first=False):
         rows = []
         for n, r in u["registers"].items():
             rows.append(["`%s`" % n, _hex(r["offset"]), r["access"], r["width"], r["count"] if r["count"] > 1 else "",
-                         r["space"] or "", _hex(r["reset"]) if isinstance(r["reset"], int) else "unknown", r["grade"],
+                         r["space"] or "", _reset_cell(r), r["grade"],
                          eff_from(u, r) or ""])
         out += _table(["Register", "Offset", "Access", "Width", "Count", "Space", "Reset", "Grade", "Source"], rows)
         out.append("")
