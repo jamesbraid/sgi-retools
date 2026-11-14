@@ -6,6 +6,9 @@
   genxml      the vendored upstream pack generator accepts every export; what it
               writes compiles, and every vector unpacks and repacks through it
   Rust        the crate builds with warnings denied and its tests pass (rustc is optional)
+  export      each file of the export profiles (gen_export.py) compiles: the Rust constants as a library
+              with warnings denied, the C macros against a small stand-in for the REG and FIELD macros,
+              with a static assertion per register offset and array stride
 
 The paths are the repository's own: generated/{c,python,xml,rust} in the current layout,
 gen/{c,py,genxml,rust} in the old one.
@@ -16,7 +19,7 @@ import subprocess
 import sys
 import tempfile
 
-from . import gen_c, gen_genxml
+from . import gen_c, gen_export, gen_genxml
 from .model import publish_profile
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,6 +33,57 @@ def _run(argv, **kw):
 
 def _tail(r):
     return ((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-6:]
+
+
+# Stand-in for the REG and FIELD macros the C export expects from its includer, with the same meaning
+# as the registerfields.h macros: A_ is the byte offset, R_ the index in units of the register size.
+C_SHIM = """#include <stdint.h>
+#define MAKE_64BIT_MASK(shift, length) (((~0ULL) >> (64 - (length))) << (shift))
+#define REG8(reg, addr) enum { A_##reg = (addr), R_##reg = (addr) };
+#define REG16(reg, addr) enum { A_##reg = (addr), R_##reg = (addr) / 2 };
+#define REG32(reg, addr) enum { A_##reg = (addr), R_##reg = (addr) / 4 };
+#define REG64(reg, addr) enum { A_##reg = (addr), R_##reg = (addr) / 8 };
+#define FIELD(reg, field, shift, length) \\
+    enum { R_##reg##_##field##_SHIFT = (shift), R_##reg##_##field##_LENGTH = (length), \\
+           R_##reg##_##field##_MASK = MAKE_64BIT_MASK(shift, length) };
+"""
+
+
+def verify_export(repo, models, td, cc, rustc, notes):
+    fails = []
+    cfg = repo.settings.get("gen", {}).get("export", {})
+    profiles, units = cfg.get("profiles", []), cfg.get("units", {})
+    root, gen_root = repo.root, repo.layout.gen_root()
+    shim = os.path.join(td, "export_shim.h")
+    with open(shim, "w", encoding="utf-8") as f:
+        f.write(C_SHIM)
+    for name in sorted(units):
+        m = models.get(name)
+        if m is None:
+            continue
+        base = units[name].get("base", 0)
+        if gen_export.RUST_DIR in profiles and rustc:
+            rel = "%s/%s/%s.rs" % (gen_root, gen_export.RUST_DIR, name)
+            r = _run([rustc, "--edition", "2021", "--crate-type", "lib", "-D", "warnings", "--emit", "metadata",
+                      "-o", os.path.join(td, "export_%s.rmeta" % name), os.path.join(root, rel)])
+            if r.returncode:
+                fails.append("%s: build failed: %s" % (rel, " | ".join(_tail(r))))
+        if gen_export.C_DIR in profiles and cc:
+            rel = "%s/%s/%s.h" % (gen_root, gen_export.C_DIR, name)
+            src = os.path.join(td, "export_%s.c" % name)
+            lines = ['#include "export_shim.h"', '#include "%s"' % os.path.join(root, rel)]
+            for n, r in m["registers"].items():
+                lines.append("_Static_assert(A_%s == 0x%x, \"%s\");" % (n.upper(), r["offset"] - base, n))
+                if r["count"] > 1:
+                    lines.append("_Static_assert(%s_STRIDE == 0x%x, \"%s\");" % (n.upper(), r["stride"], n))
+            with open(src, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            r = _run([cc, "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-std=gnu11", "-I", td, "-x", "c", src])
+            if r.returncode:
+                fails.append("%s: C compile failed: %s" % (rel, " | ".join(_tail(r))))
+    if units and gen_export.RUST_DIR in profiles and not rustc:
+        notes.append("no rustc: skipped the Rust export build (run it in the rust container)")
+    return fails
 
 
 def verify(repo, notes=None):
@@ -113,6 +167,7 @@ def verify(repo, notes=None):
                 r = _run([exe])
                 if r.returncode:
                     fails.append("%s: tests failed: %s" % (lay.gen_dir("rust"), " | ".join(_tail(r))))
+        fails += verify_export(repo, models, td, cc, rustc, notes)
     return fails
 
 

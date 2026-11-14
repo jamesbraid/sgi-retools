@@ -2,23 +2,26 @@
 """Write the generated tree (generated/, or gen/ in the old layout, the register tables and the
 forwarding headers) from the register maps.
 
-    defs-gen [--root DIR] [--check]
+    defs-gen [--root DIR] [--check] [--profile NAME]
 
 --check writes nothing and exits 1 when any committed output is missing,
 stale or has no source. Exit 2 is a setup problem (a bad source file).
+--profile NAME restricts either to one export profile (rust-consts or c-regfields), which the
+settings in defs-check.toml turn on (see defslib/gen_export.py).
 """
 import argparse
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from defslib import gen, loader  # noqa: E402
+from defslib import gen, gen_export, loader, schema  # noqa: E402
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=".", help="repo root holding devices/ or defs/ (default: current directory)")
     ap.add_argument("--check", action="store_true", help="write nothing; fail when the committed output is stale")
+    ap.add_argument("--profile", choices=schema.EXPORT_PROFILES, help="only this export profile")
     args = ap.parse_args(argv)
     if not loader.has_defs(args.root):
         print("error: %s has no register maps (devices/*/registers.toml, formats/*/format.toml or defs/)" % args.root, file=sys.stderr)
@@ -33,22 +36,28 @@ def main(argv=None):
         for e in errors:
             print("error: %s" % e, file=sys.stderr)
         return 2
+    scope = None
+    if args.profile:
+        scope = "%s/%s" % (repo.layout.gen_root(), args.profile)
+        if args.profile not in repo.settings.get("gen", {}).get("export", {}).get("profiles", []):
+            print("error: profile %s is not enabled under [gen.export] in the repo settings" % args.profile, file=sys.stderr)
+            return 2
     if args.check:
-        probs = gen.stale(repo, files)
+        probs = gen.stale(repo, files, scope)
         for p in probs:
             print("FAIL %s" % p)
         if probs:
             return 1
-        print("generated tree is fresh: %d files" % len(files))
+        print("generated tree is fresh: %d files" % len([r for r in files if gen.in_scope(r, scope)]))
         return 0
-    written, removed, kept = gen.write(repo, files)
+    written, removed, kept = gen.write(repo, files, scope)
     for rel in written:
         print("wrote %s" % rel)
     for rel in removed:
         print("removed %s" % rel)
     for rel in kept:
         print("warning: %s is in the generated tree but was not generated; left alone" % rel, file=sys.stderr)
-    print("%d files, %d written" % (len(files), len(written)))
+    print("%d files, %d written" % (len([r for r in files if gen.in_scope(r, scope)]), len(written)))
     return 0
 
 
