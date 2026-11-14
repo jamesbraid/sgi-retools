@@ -74,15 +74,15 @@ class ResetProvenanceTest(RepoTest):
         return gen_docs.gen_docs(publish_profile(repo.units["uart"].model), "defs/uart.toml")
 
     def test_reset_cell_shows_grade_and_source(self):
-        self.edit("defs/uart.toml", "reset = 0\n", 'reset = 0x5\nreset_grade = "inferred"\nreset_from = "fixture notes (reset table)"\n')
+        self.edit("defs/uart.toml", "reset = 0\nreset_from = \"fixture notes (reset table)\"\n", 'reset = 0x5\nreset_grade = "inferred"\nreset_from = "fixture notes (reset table)"\n')
         self.assertIn("0x5 (inferred; fixture notes (reset table))", self.render_docs())
 
-    def test_plain_reset_is_unchanged(self):
+    def test_reset_without_its_own_grade_shows_only_the_source(self):
         ctl = [l for l in self.render_docs().splitlines() if l.startswith("| `ctl`")][0]
-        self.assertIn("| 0x0 |", ctl)
+        self.assertIn("| 0x0 (fixture notes (reset table)) |", ctl)
 
     def test_private_reset_source_stays_out_of_public_output(self):
-        self.edit("defs/uart.toml", "reset = 0\n", 'reset = 0x5\nreset_grade = "inferred"\nreset_from = "private notes (page 3)"\n')
+        self.edit("defs/uart.toml", "reset = 0\nreset_from = \"fixture notes (reset table)\"\n", 'reset = 0x5\nreset_grade = "inferred"\nreset_from = "private notes (page 3)"\n')
         self.assertNotIn("private notes", self.render_docs())
 
     def test_reset_grade_needs_a_reset(self):

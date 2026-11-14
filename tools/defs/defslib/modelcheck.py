@@ -3,6 +3,8 @@
 Overlap, width, enum fit, test vectors, a grade on every item and a `from`
 that reaches every item. The leak, prose and notes checks are in checks.py.
 """
+import re
+
 from .model import (ACCESS, GRADES, Problems, RE_CONST, RE_LABEL, RE_REG, RE_WORD, block_of, decode,
                     eff_from, enum_values, fwidth, items, last_unit, mask, unit_size)
 
@@ -39,6 +41,9 @@ def check_unit(u, settings=None):
         req(r["access"] in ACCESS, at, "access must be r/w/rw")
         if isinstance(r["reset"], int):
             req(r["reset"] <= mask(r["width"]), at, "reset does not fit the width")
+            req(r.get("reset_grade", r["grade"]) != "established" or r.get("reset_from"), at,
+                "reset value is established but has no reset_from naming the power-on default or the PROM code that relies on it; "
+                "give reset_from, or grade it inferred (PROM depends on it before its first write) or drop the reset")
         else:
             req("reset_grade" not in r and "reset_from" not in r, at, "reset_grade and reset_from need a reset value")
         req(r["stride"] >= unit_size(u, r), at, "stride smaller than the register")
@@ -117,3 +122,33 @@ def check_overlap(units):
             if hi > reach:
                 reach, who = hi, name
     return p
+
+
+# Sources that are notes from other projects: they may confirm or contradict a fact but never supply
+# one (the evidence order in tools/README-analysis.md). Matched as whole words, case-insensitive.
+OTHER_PROJECT = re.compile(r"\b(origami|qemu|iris|emulator|emulators)\b", re.I)
+_SOURCE_SPLIT = re.compile(r"\s*(?:;|,|\+|\band\b|\bplus\b)\s*", re.I)
+
+
+def other_project_only(text):
+    """True when every source named in a `from` string is another project's note or model."""
+    parts = [x for x in _SOURCE_SPLIT.split(text or "") if x.strip()]
+    return bool(parts) and all(OTHER_PROJECT.search(x) for x in parts)
+
+
+def evidence_warnings(u):
+    """Warnings (not failures) for an established register or reset value whose only source is another
+    project's note or emulator."""
+    out = []
+    w0 = u["unit"]
+    for kind, name, node, parent, width in items(u):
+        if kind != "register":
+            continue
+        at = "%s.%s" % (w0, name)
+        if node.get("grade") == "established" and other_project_only(eff_from(u, node, parent)):
+            out.append("%s: established on a note from another project alone (%s); that source may confirm "
+                       "or contradict a fact, never supply one, so grade it unknown or cite the source" % (at, eff_from(u, node, parent)))
+        if isinstance(node["reset"], int) and node.get("reset_grade", node["grade"]) == "established" \
+                and other_project_only(node.get("reset_from")):
+            out.append("%s: reset value established on a note from another project alone (%s)" % (at, node["reset_from"]))
+    return out

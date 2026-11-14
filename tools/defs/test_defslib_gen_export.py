@@ -64,7 +64,7 @@ class ExportTest(RepoTest):
 
     def test_reset_grade_is_a_comment_on_the_constant(self):
         self.enable()
-        self.edit("defs/uart.toml", "reset = 0\n", 'reset = 0x5\nreset_grade = "inferred"\n')
+        self.edit("defs/uart.toml", "reset = 0\nreset_from = \"fixture notes (reset table)\"\n", 'reset = 0x5\nreset_grade = "inferred"\n')
         self.assertIn("pub const RESET: u32 = 0x5; // inferred", self.render()["gen/rust-consts/uart.rs"])
 
     def test_c_regfields_shape(self):
