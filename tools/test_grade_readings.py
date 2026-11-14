@@ -407,6 +407,22 @@ class CheckDoc(unittest.TestCase):
         self.assertEqual(problems, 0, out)
         self.assertIn("understood=1", out)
 
+    def test_an_emulator_run_called_measured_is_a_problem(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s The reset value 0x5 was measured in a QEMU run.\n"
+                                  % (self.BINARY, self.ROLE))
+        self.assertEqual(problems, 1, out)
+        self.assertIn("model behaviour", out)
+
+    def test_an_emulator_run_described_as_a_model_result_is_fine(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s The QEMU model returns 0x5 here.\n"
+                                  % (self.BINARY, self.ROLE))
+        self.assertEqual(problems, 0, out)
+
+    def test_a_measurement_without_an_emulator_is_fine(self):
+        problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s The size was measured from the symbol table.\n"
+                                  % (self.BINARY, self.ROLE))
+        self.assertEqual(problems, 0, out)
+
     def test_an_unreviewed_entry_is_a_note_when_the_file_requires_review(self):
         problems, out = self.lint("- `swfio_mount` in `%s` at 0x1f80\n  **Inferred.** %s\n" % (self.BINARY, self.ROLE),
                                   review=True)
