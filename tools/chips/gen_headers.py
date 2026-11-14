@@ -295,6 +295,12 @@ def gen(chip, spec):
     used_aliases = set()
     taken = set()          # macros a row has already used
     last = {}              # (space, offset) -> macro of the last register at that offset
+    # The Hub keeps one register per offset, but its rows differ by index (an idx-0 read row, a node-alias store
+    # row): the register's access is every kind any row at the offset saw, and each row's site counts stay in "from".
+    merged = collections.defaultdict(list)
+    if rules == 'hub':
+        for r in rows:
+            merged[(r['space'], int(r['offset'], 16))].append(r)
     for r in sorted(rows, key=lambda r: (r['space'] != '', r['space'], int(r['offset'], 16), r['idx'])):
         off = int(r['offset'], 16)
         space = r['space']
@@ -357,8 +363,16 @@ def gen(chip, spec):
                 blocks[name.lower()] = pending
                 pending = None
             width = 8 * max(int(x) for x in wd.group(1).split('/'))
-            reg = {'offset': base + off, 'access': acc.group(1), 'width': width, 'grade': 'established', 'fields': {},
-                   'tests': [], 'from': 'census: %s sites, %s routines' % (r['sites'], r['functions'])}
+            access, origin = acc.group(1), 'census: %s sites, %s routines' % (r['sites'], r['functions'])
+            if rules == 'hub':
+                group = sorted(merged[(space, off)], key=lambda x: x['idx'])
+                kinds = ''.join(sorted({c for x in group for c in x['access_seen'] if c in 'rw'}))
+                access = {'r': 'r', 'w': 'w', 'rw': 'rw'}.get(kinds, access)
+                if len(group) > 1:
+                    origin = '; '.join('census: %s sites, %s routines (%s%s)' % (
+                        x['sites'], x['functions'], x['access_seen'], ', indexed' if x['idx'] == '1' else '') for x in group)
+            reg = {'offset': base + off, 'access': access, 'width': width, 'grade': 'established', 'fields': {},
+                   'tests': [], 'from': origin}
             if space:
                 sp = '%s_%s' % (chip, re.sub(r'[^a-z0-9]+', '_', space.lower()).strip('_'))
                 reg['space'] = sp
