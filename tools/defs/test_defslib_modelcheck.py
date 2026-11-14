@@ -109,8 +109,45 @@ class ModelCheckTest(RepoTest):
         self.assert_problem("no `from`")
 
     def test_reset_wider_than_register(self):
-        self.edit("defs/uart.toml", "reset = 0\n", "reset = 0x1ffffffff\n")
+        self.edit("defs/uart.toml", "reset = 0\nreset_from = \"fixture notes (reset table)\"\n", "reset = 0x1ffffffff\n")
         self.assert_problem("reset does not fit")
+
+    def test_established_reset_needs_reset_from(self):
+        self.edit("defs/uart.toml", 'reset_from = "fixture notes (reset table)"\n', "")
+        self.assert_problem("established but has no reset_from")
+
+    def test_inferred_reset_needs_no_reset_from(self):
+        self.edit("defs/uart.toml", 'reset_from = "fixture notes (reset table)"\n', 'reset_grade = "inferred"\n')
+        self.assertEqual(self.problems(), [])
+
+    def test_unknown_reset_needs_no_reset_from(self):
+        self.edit("defs/uart.toml", 'reset = 0\nreset_from = "fixture notes (reset table)"\n', "")
+        self.assertEqual(self.problems(), [])
+
+    def warnings(self):
+        return modelcheck.evidence_warnings(loader.load_repo(self.root).units["uart"].model)
+
+    def test_established_on_another_projects_note_warns(self):
+        self.assertEqual(self.warnings(), [])
+        self.edit("defs/uart.toml", 'access = "rw"\nwidth = 32\nreset = 0\nreset_from = "fixture notes (reset table)"\ngrade = "established"\n',
+                  'access = "rw"\nwidth = 32\nreset = 0\nreset_from = "fixture notes (reset table)"\ngrade = "established"\nfrom = "Origami datasheet uart.md"\n')
+        w = self.warnings()
+        self.assertEqual(len(w), 1, w)
+        self.assertIn("uart.ctl: established on a note from another project", w[0])
+
+    def test_other_project_beside_a_real_source_does_not_warn(self):
+        self.edit("defs/uart.toml", 'reset_from = "fixture notes (reset table)"', 'reset_from = "QEMU manual page; vendor guide p.14"')
+        self.assertEqual(self.warnings(), [])
+
+    def test_reset_established_on_an_emulator_warns(self):
+        self.edit("defs/uart.toml", 'reset_from = "fixture notes (reset table)"', 'reset_from = "emulator reset state"')
+        w = self.warnings()
+        self.assertEqual(len(w), 1, w)
+        self.assertIn("reset value established on a note from another project", w[0])
+
+    def test_inferred_on_another_projects_note_does_not_warn(self):
+        self.edit("defs/uart.toml", 'reset_from = "fixture notes (reset table)"', 'reset_grade = "inferred"\nreset_from = "QEMU manual page"')
+        self.assertEqual(self.warnings(), [])
 
     def test_stride_smaller_than_register(self):
         self.edit("defs/uart.toml", "access = \"r\"\nwidth = 32\ngrade", "access = \"r\"\nwidth = 32\ncount = 2\nstride = 2\ngrade")

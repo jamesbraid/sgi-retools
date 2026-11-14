@@ -139,6 +139,7 @@ class Run:
         self.files, self.render_errors = {}, []
         self.c_names = {}
         self.notes = []
+        self.warns = []
 
     @property
     def settings(self):
@@ -322,6 +323,8 @@ def run_checks(repo, verbose=False, fresh=True, only=None, siblings=True, siblin
     for u in units:
         for p in modelcheck.check_unit(u.model, repo.settings):
             rep.fail(u.path, p)
+    for u in units:
+        run.warns.extend("%s: %s" % (u.path, w) for w in modelcheck.evidence_warnings(u.model))
     for p in modelcheck.check_overlap([u.model for u in repo.units.values()]):
         rep.fail("registers", p)
 
@@ -464,6 +467,8 @@ def run(root, verbose=False, fresh=True, only=None, siblings=True, sibling_paths
         return 2
     for n in r.notes:
         print("note: %s" % n, file=sys.stderr)
+    for w in r.warns:
+        print("WARN %s" % w)
     if r.rep.fails:
         print("%d failure(s)" % len(r.rep.fails))
     else:

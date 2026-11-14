@@ -50,6 +50,12 @@ class ChecksTest(RepoTest):
         self.edit("defs/uart.rev2.toml", "offset = 0x18", "offset = 0x12")
         self.assert_fails("overlaps")
 
+    def test_evidence_warning_is_printed_and_does_not_fail(self):
+        self.edit("defs/uart.toml", 'reset_from = "fixture notes (reset table)"', 'reset_from = "QEMU model"')
+        r = self.check("--no-fresh")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("WARN defs/uart.toml: uart.ctl: reset value established on a note from another project", r.stdout)
+
     # -- leaks ----------------------------------------------------------
     def test_leak_in_prose_is_caught_in_every_rendering(self):
         self.edit("defs/uart.toml", 'doc = "Control register."', 'doc = "Reads irix/stand/foo from the board IP27."')

@@ -19,6 +19,7 @@ offset = 0x10
 access = "rw"
 width = 32
 reset = 0
+reset_from = "fixture notes (reset table)"
 grade = "established"
 doc = "Control register."
 

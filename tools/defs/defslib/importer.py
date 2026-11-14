@@ -192,6 +192,8 @@ def import_decode(text, hc, unit, frm, res, space_units):
         blk, n, off, acc, wd, cnt, sp, rst, g = m.groups()
         r = {"offset": int(off, 16), "access": acc, "width": int(wd), "grade": g,
              "reset": "unknown" if rst == "unknown" else int(rst, 0)}
+        if g == "established" and rst != "unknown":
+            r["reset_from"] = frm       # the old annotation names no source; the same placeholder as `from`
         if cnt:
             r["count"] = int(cnt)
         space = sp or hc.get("space")
