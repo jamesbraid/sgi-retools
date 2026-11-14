@@ -90,7 +90,8 @@ access = "rw"                       # r, w or rw
 width = 32                          # 8, 16, 32 or 64
 reset = 0x0                         # or "unknown" (default)
 # reset_grade = "inferred"          # the reset value's own grade and source, when they differ from the register's;
-# reset_from = "vendor guide p.14"  # only valid with a numeric reset. Add a reset only where a source states it.
+# reset_from = "vendor guide p.14"  # only valid with a numeric reset, and required when the reset is established.
+#                                   # Add a reset only where a source states it.
 count = 1                           # array of registers; stride defaults to the register size
 space = "hq"                        # default: the unit's own default space
 grade = "established"
@@ -120,7 +121,8 @@ FIFO_DEPTH = { value = 16, grade = "established" }
 
 Every register, word, field, enum value and constant needs a grade: `established`,
 `inferred` or `unknown`. A grade says how the item was derived from its source, not
-that it was measured on silicon. `from` is free text naming the source; it defaults
+that it was measured on silicon. Which source ranks highest, and when a reset value may be
+`established`, is set by the evidence order in [../README-analysis.md](../README-analysis.md#evidence-order). `from` is free text naming the source; it defaults
 from the file to the register or word, and an item sets its own only when it
 differs. The loader is strict: an unknown key, a wrong type, a missing grade or a
 misspelt grade is an error with the path of the key, and a duplicate key is a parse

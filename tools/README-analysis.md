@@ -4,6 +4,50 @@ Three tools beyond the decompile export. All run through `tools/re-run`, in the 
 image, and never write outside `.cache/` unless you give `--out`. Their output is derived from the
 binary you point them at; public lists named below are used only to check numbering.
 
+## Evidence order
+
+This is the order every RE tool and agent uses for a register or behaviour fact. Take the fact from the
+highest source that states it, and grade it by that source. The grade words are the ones the tools check:
+`established`, `inferred`, `unknown`.
+
+1. **IRIX source**: the public `irix-657m-src` tree, with its SN0/SN1 and graphics headers, PROM code and
+   kernel code. Read it, learn the fact, and write it in your own words. Never copy source text into a commit
+   or a datasheet. Cite the file path within that public tree. A fact the source defines is `established`.
+2. **Shipped binaries**: the PROMs, kernels and libraries we disassemble. Confirm that the source matches
+   what shipped, and note the release differences (6.5.7 source against 6.5.22 and 6.5.30 binaries).
+3. **Public OS headers and drivers**: Linux, OpenBSD and NetBSD. They are mostly derived from SGI's own, so
+   they rank below it. A fact from them becomes `established` when the IRIX source confirms it.
+4. **Published SGI and vendor manuals.**
+5. **Notes from other projects**: Origami datasheets, QEMU manual pages, emulator code. They may confirm or
+   contradict a fact and never supply one. A fact that rests only on one of them stays `unknown`, with the
+   note named in `from`.
+
+Emulator runs show what the model does. They are never hardware evidence, and a reading must not call one
+"observed" or "measured".
+
+### Reset values
+
+- `established`: the source states a power-on default, or PROM code relies on a reset state. Give
+  `reset_from`.
+- `inferred`: the PROM depends on a value before its first write. Cite the PROM address in `reset_from`.
+- A register read after firmware initialisation is not a reset value. It can only rule values out.
+- Otherwise `unknown`.
+- A read on physical hardware is the last resort. It needs James's approval, and it counts as a reset value
+  only for a register that firmware provably never writes.
+
+### What the tools check
+
+- `defs-check` fails when a numeric reset is graded `established` (its own `reset_grade`, else the register's)
+  and has no `reset_from`.
+- `defs-check` prints `WARN` when a register, or its reset value, is graded `established` and every source in
+  `from` (or `reset_from`) names origami, qemu, iris or an emulator. The warning does not change the exit
+  status. A source list that also names a real source passes.
+- `grade_readings.py --check-doc` reports an entry sentence that says "observed", "measured" or
+  "measurement" and names an emulator, QEMU, iris, a simulator or a model run.
+
+The tools cannot judge the rest, such as whether the source really states a power-on default. A reviewer
+checks that. Repos point here from their `AGENTS.md` with `tools/templates/AGENTS-evidence.md`.
+
 ## .mdebug import for Ghidra
 
 MIPSpro objects built for o32 and N32 carry an ECOFF-style `.mdebug` symbol table that Ghidra's ELF
