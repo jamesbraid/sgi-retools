@@ -273,6 +273,9 @@ def gen(chip, spec):
     name_source = cfg.get('name_source') or (
         'the shipped diagnostic or monitor name, or the public Linux driver name where none is printed (config register_names)')
     doc = [LABEL_DOC] + [ln[3:] for ln in view_notes(rows, rules)]
+    if cfg.get('register_resets'):
+        doc[0] = doc[0].replace('Reset values are unknown throughout.',
+                                'Reset values are unknown unless a register entry cites the source that states one.')
     if rules == 'heart':
         doc.append("Names come from the config register_names (the shipped diagnostic prints them, or the public Linux driver "
                    "where it prints none); offsets 0x100000 and up are the widget block, see the chip page.")
@@ -413,6 +416,18 @@ def gen(chip, spec):
                 consts[nm2[len(P) + 1:]] = {'value': int(b, 16), 'grade': 'inferred'}
                 alias(nm2[len(macro):], nm2)
                 used_aliases.update(d['name'] for d in mine if d.get('field') == nm2[len(macro):])
+    # Reset values a source states, kept beside the census because the census cannot see them: config
+    # "register_resets" names a JSON file of {register name: {"value": N, "from": source, "grade": label}}. The
+    # grade defaults to established, which the checks accept only with the source in "from".
+    if cfg.get('register_resets'):
+        resets = json.load(open(cfg['register_resets']))
+        missing = sorted(set(resets) - set(regs))
+        if missing:
+            raise SystemExit('%s: register_resets name registers the census does not have: %s' % (chip, ', '.join(missing)))
+        for n, r in resets.items():
+            regs[n]['reset'] = r['value']
+            regs[n]['reset_grade'] = r.get('grade', 'established')
+            regs[n]['reset_from'] = r['from']
     unused = {d['name'] for ds in deprecated.values() for d in ds} - used_aliases
     if unused:
         raise SystemExit('%s: deprecated_defines name a row the census does not have: %s' % (chip, ', '.join(sorted(unused))))

@@ -134,6 +134,37 @@ class SlotNaming(unittest.TestCase):
         self.assertEqual(got, ['full_reader'])
 
 
+class Resets(unittest.TestCase):
+    """Reset values a source states are kept in a file the config names and land on the register they name."""
+
+    def setUp(self):
+        self.old = os.getcwd()
+        self.addCleanup(os.chdir, self.old)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        os.chdir(tmp.name)
+        os.makedirs('tools/configs')
+        d = 'chips/bedrock/census/'
+        write(d + 'census.tsv', ROW, [['bedrock', '0x20', '0', '', 'rw', '8', '0', '1', '1', 'ip35-kernel']])
+        write(d + 'census-sites.tsv', SITE, [['ip35-kernel', 'get_slice', '0', 'ld', 'r', '8', '0x20', '0', 'bedrock', 'image-hint']])
+        write(d + 'fields.tsv', ['variant', 'register', 'kind', 'bits_or_value', 'source', 'sites'], [])
+
+    def config(self, resets):
+        json.dump(resets, open('tools/configs/bedrock-resets.json', 'w'))
+        json.dump({'register_resets': 'tools/configs/bedrock-resets.json'}, open('tools/configs/bedrock.json', 'w'))
+
+    def test_reset_lands_on_the_named_register_with_its_source(self):
+        self.config({'get_slice': {'value': 5, 'from': 'a table'}})
+        unit, _ = gen_headers.gen('bedrock', gen_headers.CHIPS['bedrock'])
+        reg = unit['registers']['get_slice']
+        self.assertEqual((reg['reset'], reg['reset_grade'], reg['reset_from']), (5, 'established', 'a table'))
+
+    def test_a_register_the_census_lacks_is_an_error(self):
+        self.config({'no_such_register': {'value': 1, 'from': 'a table'}})
+        with self.assertRaises(SystemExit):
+            gen_headers.gen('bedrock', gen_headers.CHIPS['bedrock'])
+
+
 class Overlay(unittest.TestCase):
     """A chip written as an overlay (XBridge on Bridge) loads to the unit the census gave it."""
 
