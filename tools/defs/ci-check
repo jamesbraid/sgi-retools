@@ -10,7 +10,8 @@ generated tree (generated/, or gen/ on the old layout) is fresh and builds the c
 outputs (C, Python, genxml through the upstream pack generator and, when rustc exists, the
 Rust crate). A workspace with only a defs.toml still has decode headers and takes the
 older path below. With neither it prints "no decode headers". So workspaces move one at
-a time.
+a time. A work tree that is a git checkout is also scanned for internal hostnames and paths
+(leakcheck.py); see that file for where the private patterns come from.
 """
 import glob
 import os
@@ -38,10 +39,18 @@ def run(label, argv):
     return p.returncode == 0
 
 
+def leak_check():
+    """Fail on a committed internal hostname or path. Only in a git work tree: the check reads tracked files."""
+    if os.path.exists(".git"):
+        run("internal host or path in a tracked file",
+            [sys.executable, os.path.join(os.path.dirname(HERE), "leakcheck.py")])
+
+
 def main_toml():
     if os.path.isfile("defs.toml"):
         print("ci-check: register maps exist, so defs.toml is not used; delete it once its settings are in %s"
               % Layout(".").defs_check_file, file=sys.stderr)
+    leak_check()
     p = subprocess.run([sys.executable, os.path.join(HERE, "defs-check"), "--build"], capture_output=True, text=True)
     sys.stdout.write(p.stdout)
     sys.stderr.write(p.stderr)
@@ -58,9 +67,12 @@ def main_toml():
 def main():
     if Layout(".").has_defs():
         return main_toml()
+    leak_check()
     if not os.path.isfile("defs.toml"):
         print("no decode headers")
-        return 0
+        for f in failures:
+            print(f"FAIL {f}", file=sys.stderr)
+        return 1 if failures else 0
     with open("defs.toml", "rb") as f:
         cfg = tomllib.load(f)
     py = sys.executable
