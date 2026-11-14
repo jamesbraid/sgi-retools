@@ -260,5 +260,31 @@ class BootSpace(unittest.TestCase):
         self.assertEqual(aliases.get('BEDROCK_OLD_NAME'), 'BEDROCK_BOOT_SPACE_BOOT_READER')
 
 
+class HubAccessMerge(unittest.TestCase):
+    """The Hub keeps one register per offset; its access is the union over the idx-0 and idx-1 rows."""
+
+    def test_read_row_and_alias_store_row_make_a_read_write_register(self):
+        old = os.getcwd()
+        self.addCleanup(os.chdir, old)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        os.chdir(tmp.name)
+        d = 'chips/hub/census/'
+        row = lambda off, idx, acc, name: ['?', off, idx, name, acc, '8', '0', '1', '1', 'ip27-unix']
+        write(d + 'census.tsv', ROW, [
+            row('0x18', '0', 'r', 'PI_REGION_PRESENT'),
+            row('0x18', '1', 'w', 'PI_REGION_PRESENT'),
+            row('0x20', '0', 'r', 'PI_CPU_NUM'),
+        ])
+        write(d + 'census-sites.tsv', SITE, [])
+        write(d + 'fields.tsv', ['variant', 'register', 'kind', 'bits_or_value', 'source', 'sites'], [])
+        unit, _ = gen_headers.gen('hub', gen_headers.CHIPS['hub'])
+        regs = unit['registers']
+        self.assertEqual(regs['pi_region_present']['access'], 'rw')
+        self.assertEqual(regs['pi_cpu_num']['access'], 'r')
+        self.assertIn('(r)', regs['pi_region_present']['from'])
+        self.assertIn('(w, indexed)', regs['pi_region_present']['from'])
+
+
 if __name__ == '__main__':
     unittest.main()
