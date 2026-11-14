@@ -89,11 +89,11 @@ def gen_rust_regs(m, base, source, commit, names=()):
             fl = ["%s: %d..%d" % (fn.upper(), f["bits"][1], f["bits"][0]) for fn, f in r["fields"].items()]
             line = "    %s { %s }" % (" ".join(parts), ", ".join(fl))
             if len(line) <= WRAP:
-                out.append(line)
+                out.append(line + ";")
             else:               # a register with many fields: one line per field
                 out.append("    %s {" % " ".join(parts))
                 out.extend("        %s," % f for f in fl)
-                out.append("    }")
+                out.append("    };")
         else:
             out.append("    %s;" % " ".join(parts))
     out.append("}")

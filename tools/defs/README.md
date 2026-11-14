@@ -317,22 +317,23 @@ holds the macro; this tool never writes one. Names are upper case.
 regs! {
     base 0x780000;
     const SOME_CONSTANT 0x30;
-    CTL     0x0000 rw width 32 reset 0x0 { ENABLE: 0..0, DIVISOR: 16..31 }
-    STATUS  0x0004 r width 32 { READY: 0..0 }
+    CTL     0x0000 rw width 32 reset 0x0 { ENABLE: 0..0, DIVISOR: 16..31 };
+    STATUS  0x0004 r width 32 { READY: 0..0 };
     TABLE   0x0100 rw count 128 stride 0x8;
     BIG     0x0200 rw {
         F0: 0..3,
         F1: 4..7,
-    }
+    };
 }
 ```
 
 - A register line is `NAME OFFSET ACCESS`, then in this order the optional `width N` (omitted for 64 bits),
   `count N stride 0xS` (an array: element `i` is at the offset plus `i` times the stride, so the end is the
   offset plus count times stride), and `reset 0xV` (only where a value is known: an unknown reset writes
-  nothing, not a zero). `ACCESS` is `r`, `w` or `rw`. A register with no fields ends in `;`; one with fields
-  ends in a brace list of `NAME: LO..HI` entries, inclusive bit numbers, low first. A register line longer
-  than 100 characters puts each field on its own line, with a trailing comma.
+  nothing, not a zero). `ACCESS` is `r`, `w` or `rw`. Every register ends in `;`, with or without fields.
+  A register with fields has a brace list of `NAME: LO..HI` entries before the `;`, inclusive bit numbers,
+  low first. A register line longer than 100 characters puts each field on its own line, with a trailing
+  comma, and the closing `};` on its own line.
 - `base` comes first and `const` lines next. A `const` is a plain value, not rebased.
 - Grades, docs and the unit's other constants are not written: they stay in the register map and its
   reference page. The generated file carries no comment but the banner.
