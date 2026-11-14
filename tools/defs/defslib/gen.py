@@ -2,7 +2,7 @@
 
     generated/c/<unit>.h        generated/rust/{Cargo.toml,src/}   generated/python/<unit>.py
     generated/json/<unit>.json  generated/xml/<unit>.xml           devices/<dir>/registers.md
-    generated/rust-consts/<unit>.rs  generated/c-regfields/<unit>.h   the export profiles (gen_export.py)
+    generated/rust-regs/<unit>.rs  generated/c-regfields/<unit>.h   the export profiles (gen_export.py)
     <legacy header path>        forwarding headers, one per unit that names one
 
 A repository still on the old layout gets the old names: gen/c, gen/rust, gen/py, gen/json,

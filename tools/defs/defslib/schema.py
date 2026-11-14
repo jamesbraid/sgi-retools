@@ -193,7 +193,7 @@ OVERLAY = Obj({
 })
 
 # The export profiles defs-gen can write beside the standard tree (see gen_export.py).
-EXPORT_PROFILES = ("rust-consts", "c-regfields")
+EXPORT_PROFILES = ("rust-regs", "c-regfields")
 
 # defs/check.toml
 CHECK = Obj({
@@ -202,7 +202,8 @@ CHECK = Obj({
                 "rust_crate": Str(r"^[a-z][a-z0-9_-]*$"),
                 "export": Obj({
                     "profiles": Arr(Choice(*EXPORT_PROFILES)),
-                    "units": Map(RE_UNIT.pattern, Obj({"base": UINT}), "unit name"),
+                    "source": Str(minlen=1),
+                    "units": Map(RE_UNIT.pattern, Obj({"base": UINT, "constants": Arr(Str(r"^[A-Za-z_][A-Za-z0-9_]*$"))}), "unit name"),
                 })}),
     "checks": Obj({"address_bits": Int(1), "max_reg_offset": UINT}),
     "banned": Obj({

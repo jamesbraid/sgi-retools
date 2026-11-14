@@ -49,6 +49,11 @@ C_SHIM = """#include <stdint.h>
 """
 
 
+# The consumer holds the regs! macro. Compiling the export needs only that every token lexes and the file
+# parses as one macro call, so the stand-in takes anything.
+RUST_SHIM = "#![allow(unused_macros)]\nmacro_rules! regs { ($($t:tt)*) => {}; }\n"
+
+
 def verify_export(repo, models, td, cc, rustc, notes):
     fails = []
     cfg = repo.settings.get("gen", {}).get("export", {})
@@ -64,8 +69,11 @@ def verify_export(repo, models, td, cc, rustc, notes):
         base = units[name].get("base", 0)
         if gen_export.RUST_DIR in profiles and rustc:
             rel = "%s/%s/%s.rs" % (gen_root, gen_export.RUST_DIR, name)
+            wrap = os.path.join(td, "export_%s.rs" % name)
+            with open(wrap, "w", encoding="utf-8") as f:
+                f.write(RUST_SHIM + 'include!("%s");\n' % os.path.join(root, rel))
             r = _run([rustc, "--edition", "2021", "--crate-type", "lib", "-D", "warnings", "--emit", "metadata",
-                      "-o", os.path.join(td, "export_%s.rmeta" % name), os.path.join(root, rel)])
+                      "-o", os.path.join(td, "export_%s.rmeta" % name), wrap])
             if r.returncode:
                 fails.append("%s: build failed: %s" % (rel, " | ".join(_tail(r))))
         if gen_export.C_DIR in profiles and cc:
