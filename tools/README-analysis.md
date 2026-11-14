@@ -298,3 +298,24 @@ reads a reviewer's verdicts, a JSON object from entry key (the `routine@0xADDR@b
 `Reviewed: DATE` (no reviewer name; a `reviewer` key is accepted and ignored) as the entry's last line, replacing an older marker. `reject` changes nothing and
 leaves the entry unreviewed, so the inventory still holds it at located. A key that is not in the file, an unknown
 verdict or a `fixed` with no text stops the run before the file is written. The date defaults to today.
+
+## Directory indexes
+
+    tools/re-run python3 retools/tools/docs-index [--repo DIR] [--check]
+
+writes a `README.md` into each of `devices/`, `platforms/`, `formats/`, `software/`, `questions/` and
+`evidence/` that exists, so a workspace's top-level README does not list documents by hand. The index has
+one table row for each Markdown page and each unit subdirectory: a link, the page's own title (its first
+heading) and a one-line summary (the first sentence of its first prose paragraph, cut to about 120
+characters). A subdirectory with a `README.md`, `registers.md` or `format.md` is one row that links to that
+page. Any other subdirectory, such as `software/kernel/`, gets a heading over a table of its pages. Tables,
+lists, quotes and code are skipped when looking for the summary, so a page that opens with one has an empty
+summary cell.
+
+The first line of a generated file marks it, and a run rewrites only files that carry the mark. A
+`README.md` containing `<!-- keep -->` is hand-written and skipped. A README with neither is left alone and
+the run fails, so no one's text is overwritten. An index whose directory has no pages left is removed.
+
+`--check` writes nothing and exits 1 for a missing or stale index. `tools/defs/ci-check` runs it, so a page added,
+retitled or removed without a rerun fails the workspace's check. The fix is to run the tool and commit the
+result. Tests: `tools/test_docs_index.py`.
