@@ -6,6 +6,25 @@
 # from that release's archive, so a rebuild picks up its security updates; the
 # versions seen when this file was written are in the comments. Python packages
 # are pinned exactly.
+# Debian ships no IA-64 binutils, and its multiarch objdump leaves ia64 out. The
+# Altix firmware and kernels need one, so build GNU binutils 2.44 (the release
+# the Debian packages track) for ia64-linux-gnu in a throwaway stage and copy
+# only objdump, readelf and nm. They land as ia64-linux-gnu-objdump etc.
+FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d AS ia64-binutils
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      build-essential ca-certificates curl xz-utils \
+ && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL -o /tmp/binutils.tar.xz https://ftp.gnu.org/gnu/binutils/binutils-2.44.tar.xz \
+ && echo 'ce2017e059d63e67ddb9240e9d4ec49c2893605035cd60e92ad53177f4377237  /tmp/binutils.tar.xz' | sha256sum -c - \
+ && tar -C /tmp -xf /tmp/binutils.tar.xz \
+ && cd /tmp/binutils-2.44 \
+ && ./configure --target=ia64-linux-gnu --prefix=/opt/ia64 --disable-nls --disable-gdb \
+      --disable-gdbserver --disable-sim --disable-gprofng --disable-gas --disable-ld \
+      --disable-gold --disable-werror \
+ && make -j"$(nproc)" all-binutils \
+ && make install-binutils
+
 FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d
 
 # binutils-mips64-linux-gnuabi64 (2.44) gives mips64-linux-gnuabi64-objdump,
@@ -41,6 +60,9 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
  && mips64-linux-gnuabi64-objdump --version >/dev/null \
  && dwarfdump --version >/dev/null \
  && cc --version >/dev/null
+
+COPY --from=ia64-binutils /opt/ia64/bin/ia64-linux-gnu-objdump /opt/ia64/bin/ia64-linux-gnu-readelf /opt/ia64/bin/ia64-linux-gnu-nm /usr/local/bin/
+RUN ia64-linux-gnu-objdump -i | grep -q ia64
 
 WORKDIR /work
 ENV PYTHONDONTWRITEBYTECODE=1
