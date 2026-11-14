@@ -6,7 +6,7 @@ forwarding headers) from the register maps.
 
 --check writes nothing and exits 1 when any committed output is missing,
 stale or has no source. Exit 2 is a setup problem (a bad source file).
---profile NAME restricts either to one export profile (rust-consts or c-regfields), which the
+--profile NAME restricts either to one export profile (rust-regs or c-regfields), which the
 settings in defs-check.toml turn on (see defslib/gen_export.py).
 """
 import argparse
