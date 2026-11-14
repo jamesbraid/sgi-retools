@@ -47,5 +47,7 @@ jobs:
         run: python3 tools/test_grade_readings.py
       - name: Run the internal host and path check tests
         run: python3 tools/test_leakcheck.py
+      - name: Run the directory index tests
+        run: python3 tools/test_docs_index.py
       - name: Run the decode-header check
         run: tools/defs/ci-check

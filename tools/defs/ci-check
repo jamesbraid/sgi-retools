@@ -11,7 +11,8 @@ outputs (C, Python, genxml through the upstream pack generator and, when rustc e
 Rust crate). A workspace with only a defs.toml still has decode headers and takes the
 older path below. With neither it prints "no decode headers". So workspaces move one at
 a time. A work tree that is a git checkout is also scanned for internal hostnames and paths
-(leakcheck.py); see that file for where the private patterns come from.
+(leakcheck.py); see that file for where the private patterns come from. The directory indexes
+(devices/README.md and the like) are checked with docs-index --check.
 """
 import glob
 import os
@@ -46,11 +47,18 @@ def leak_check():
             [sys.executable, os.path.join(os.path.dirname(HERE), "leakcheck.py")])
 
 
+def docs_index_check():
+    """Fail on a missing or stale README.md in devices/, platforms/, formats/, software/, questions/ or evidence/."""
+    run("directory index is missing or stale",
+        [sys.executable, os.path.join(os.path.dirname(HERE), "docs-index"), "--check"])
+
+
 def main_toml():
     if os.path.isfile("defs.toml"):
         print("ci-check: register maps exist, so defs.toml is not used; delete it once its settings are in %s"
               % Layout(".").defs_check_file, file=sys.stderr)
     leak_check()
+    docs_index_check()
     p = subprocess.run([sys.executable, os.path.join(HERE, "defs-check"), "--build"], capture_output=True, text=True)
     sys.stdout.write(p.stdout)
     sys.stderr.write(p.stderr)
@@ -68,6 +76,7 @@ def main():
     if Layout(".").has_defs():
         return main_toml()
     leak_check()
+    docs_index_check()
     if not os.path.isfile("defs.toml"):
         print("no decode headers")
         for f in failures:
