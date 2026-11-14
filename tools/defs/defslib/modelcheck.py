@@ -39,6 +39,8 @@ def check_unit(u, settings=None):
         req(r["access"] in ACCESS, at, "access must be r/w/rw")
         if isinstance(r["reset"], int):
             req(r["reset"] <= mask(r["width"]), at, "reset does not fit the width")
+        else:
+            req("reset_grade" not in r and "reset_from" not in r, at, "reset_grade and reset_from need a reset value")
         req(r["stride"] >= unit_size(u, r), at, "stride smaller than the register")
         req(r["space"] is None or r["space"] in u["spaces"], at, "space %r not declared in spaces" % r["space"])
         req(r["offset"] <= max_off and last_unit(u, r) <= max_addr, at,

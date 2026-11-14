@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from defslib import gen_docs, loader  # noqa: E402
+from defslib import gen_docs, loader, modelcheck  # noqa: E402
 from defslib.model import publish_profile  # noqa: E402
 from testkit import RepoTest  # noqa: E402
 
@@ -63,6 +63,34 @@ class GenDocsTest(RepoTest):
         m = self.unit()
         self.assertIn("driver readings", gen_docs.gen_docs(m, "defs/uart.toml", "internal"))
         self.assertNotIn("driver readings", gen_docs.gen_docs(publish_profile(m), "defs/uart.toml", "public"))
+
+
+class ResetProvenanceTest(RepoTest):
+    """A reset value can carry its own grade and source."""
+
+    def render_docs(self):
+        repo = loader.load_repo(self.root)
+        self.assertEqual(repo.errors, [])
+        return gen_docs.gen_docs(publish_profile(repo.units["uart"].model), "defs/uart.toml")
+
+    def test_reset_cell_shows_grade_and_source(self):
+        self.edit("defs/uart.toml", "reset = 0\n", 'reset = 0x5\nreset_grade = "inferred"\nreset_from = "fixture notes (reset table)"\n')
+        self.assertIn("0x5 (inferred; fixture notes (reset table))", self.render_docs())
+
+    def test_plain_reset_is_unchanged(self):
+        ctl = [l for l in self.render_docs().splitlines() if l.startswith("| `ctl`")][0]
+        self.assertIn("| 0x0 |", ctl)
+
+    def test_private_reset_source_stays_out_of_public_output(self):
+        self.edit("defs/uart.toml", "reset = 0\n", 'reset = 0x5\nreset_grade = "inferred"\nreset_from = "private notes (page 3)"\n')
+        self.assertNotIn("private notes", self.render_docs())
+
+    def test_reset_grade_needs_a_reset(self):
+        self.edit("defs/uart.toml", 'access = "r"\nwidth = 32\n', 'access = "r"\nwidth = 32\nreset_grade = "inferred"\n')
+        repo = loader.load_repo(self.root)
+        self.assertEqual(repo.errors, [])
+        problems = modelcheck.check_unit(repo.units["uart"].model, repo.settings)
+        self.assertTrue(any("reset_grade and reset_from need a reset value" in p for p in problems), problems)
 
 
 if __name__ == "__main__":

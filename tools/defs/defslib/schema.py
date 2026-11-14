@@ -142,7 +142,7 @@ TESTS = Arr(TEST)
 REGISTER = Obj({
     "offset": UINT, "access": Choice(*ACCESS), "width": Int(0, (8, 16, 32, 64)),
     "count": Int(1), "stride": Int(1), "space": Str(RE_REG.pattern),
-    "reset": Any(UINT, Choice("unknown")),
+    "reset": Any(UINT, Choice("unknown")), "reset_grade": GRADE, "reset_from": SOURCE,
     "grade": GRADE, "from": SOURCE, "doc": TEXT, "notes": TEXT, "fields": FIELDS, "tests": TESTS,
 }, required=("offset", "access", "width", "grade"))
 WORD = Obj({
@@ -176,7 +176,7 @@ PATCH_PROPS = Obj({
     "grade": GRADE, "from": SOURCE, "doc": TEXT, "notes": TEXT, "title": TEXT,
     "offset": UINT, "access": Choice(*ACCESS), "width": Int(0, (8, 16, 32, 64)), "count": Int(1),
     "stride": Int(1), "space": Str(RE_REG.pattern), "reset": Any(UINT, Choice("unknown")),
-    "bits": Arr(UINT, 2, 2), "value": UINT, "enum": Str(RE_LABEL.pattern), "type_name": TEXT,
+    "reset_grade": GRADE, "reset_from": SOURCE, "bits": Arr(UINT, 2, 2), "value": UINT, "enum": Str(RE_LABEL.pattern), "type_name": TEXT,
 })
 OVERLAY = Obj({
     "import": Str(RE_UNIT.pattern),
