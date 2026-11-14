@@ -196,6 +196,8 @@ class CurrentLayout(unittest.TestCase):
         self.assertEqual(found, [('devices/bridge/registers.toml', 'base'), ('devices/bridge/registers.xbridge.toml', 'overlay')])
         with open('devices/bridge/registers.xbridge.toml') as f:
             self.assertIn('It patches devices/bridge/registers.toml.', f.read())
+        with open('devices/bridge/registers.toml') as f:
+            self.assertIn('from devices/bridge/census/.', f.readline())
 
 
 class BootSpace(unittest.TestCase):

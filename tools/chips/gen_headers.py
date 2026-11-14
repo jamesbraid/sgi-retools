@@ -247,7 +247,12 @@ LABEL_DOC = ('Offsets and widths are established: a load or store in the cited r
              'Names are inferred from the accessor routine names the shipped objects carry. Constants are masks and values '
              'the code applies; their meaning is not read. Reset values are unknown throughout.')
 
-HEADER = '# Written by retools/tools/chips/gen_headers.py from chips/%s/census/. Do not edit: fix the census or its config and rerun.'
+HEADER = '# Written by retools/tools/chips/gen_headers.py from %s/%%s/census/. Do not edit: fix the census or its config and rerun.'
+
+
+def header(chip):
+    """The first line of a unit: it names the census directory of the layout the workspace is on."""
+    return HEADER % ('devices' if current() else 'chips') % chip
 
 
 def gen(chip, spec):
@@ -424,7 +429,7 @@ def gen(chip, spec):
 def toml_of(chip, spec):
     """Register-map text for one chip. Block titles go in as comments above the first register of each block."""
     unit, blocks = gen(chip, spec)
-    text = toml_emit.emit_unit(normalize(unit), HEADER % unit['unit'])
+    text = toml_emit.emit_unit(normalize(unit), header(unit['unit']))
     for reg, title in blocks.items():
         text = text.replace('\n[registers.%s]\n' % reg, '\n# ---- %s\n[registers.%s]\n' % (title, reg), 1)
     return text
@@ -456,7 +461,7 @@ def overlay_of(chip, base):
     for k in ('enums', 'words'):
         if tu.get(k) or tb.get(k):
             return None
-    out = [HEADER % chip + ' It patches %s.' % source_path(base), '']
+    out = [header(chip) + ' It patches %s.' % source_path(base), '']
     if remove:
         out += ['remove = [%s]' % ', '.join(toml_emit._s(x) for x in remove), '']
     out.append('[override]')
