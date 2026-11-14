@@ -6,7 +6,7 @@ For a register or behaviour fact, take it from the highest source that states it
 2. Shipped binaries (PROMs, kernels, libraries): confirm the source matches what shipped, and the release differences (6.5.7 source, 6.5.22 and 6.5.30 binaries).
 3. Public Linux, OpenBSD and NetBSD headers and drivers: `established` once the IRIX source confirms them.
 4. Published SGI and vendor manuals.
-5. Notes from other projects (Origami datasheets, QEMU manual pages, emulator code): may confirm or contradict, never supply a fact. A fact resting only on one stays `unknown`, with the note named.
+5. Notes from other projects (other projects' datasheets, manual pages and emulator code): may confirm or contradict, never supply a fact. A fact resting only on one stays `unknown`, with the note named.
 
 For machines with no IRIX source (SN2 Altix and Prism, IA-64 on SN1, Altix UV), SGI's own Linux platform code (`arch/ia64/sn/`, its `sn` headers, `arch/x86/platform/uv/` and the `uv` headers) takes step 1, cited by tree, tag and path, and SGI's ProPack binaries take step 2.
 

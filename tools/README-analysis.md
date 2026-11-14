@@ -18,7 +18,7 @@ highest source that states it, and grade it by that source. The grade words are 
 3. **Public OS headers and drivers**: Linux, OpenBSD and NetBSD. They are mostly derived from SGI's own, so
    they rank below it. A fact from them becomes `established` when the IRIX source confirms it.
 4. **Published SGI and vendor manuals.**
-5. **Notes from other projects**: Origami datasheets, QEMU manual pages, emulator code. They may confirm or
+5. **Notes from other projects**: other projects' datasheets, manual pages and emulator code. They may confirm or
    contradict a fact and never supply one. A fact that rests only on one of them stays `unknown`, with the
    note named in `from`.
 
@@ -38,7 +38,7 @@ Emulator runs show what the model does. They are never hardware evidence, and a 
 - `inferred`: the PROM depends on a value before its first write. Cite the PROM address in `reset_from`.
 - A register read after firmware initialisation is not a reset value. It can only rule values out.
 - Otherwise `unknown`.
-- A read on physical hardware is the last resort. It needs James's approval, and it counts as a reset value
+- A read on physical hardware is the last resort. It needs the repository owner's approval, and it counts as a reset value
   only for a register that firmware provably never writes.
 
 ### What the tools check
@@ -46,10 +46,10 @@ Emulator runs show what the model does. They are never hardware evidence, and a 
 - `defs-check` fails when a numeric reset is graded `established` (its own `reset_grade`, else the register's)
   and has no `reset_from`.
 - `defs-check` prints `WARN` when a register, or its reset value, is graded `established` and every source in
-  `from` (or `reset_from`) names origami, qemu, iris or an emulator. The warning does not change the exit
+  `from` (or `reset_from`) names an emulator or another project's notes. The warning does not change the exit
   status. A source list that also names a real source passes.
 - `grade_readings.py --check-doc` reports an entry sentence that says "observed", "measured" or
-  "measurement" and names an emulator, QEMU, iris, a simulator or a model run.
+  "measurement" and names an emulator, a simulator or a model run.
 
 The tools cannot judge the rest, such as whether the source really states a power-on default. A reviewer
 checks that. Repos point here from their `AGENTS.md` with `tools/templates/AGENTS-evidence.md`.

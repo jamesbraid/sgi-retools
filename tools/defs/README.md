@@ -361,7 +361,7 @@ BUZZ_HDR_W4_SIZEFLD_SHIFT = "BUZZ_HDR_W4_SIZE_FIELD_SHIFT"
 ```
 
 `defs-gen` writes a header at that path that includes `generated/c/<unit>.h` and defines
-the aliases, so QEMU and iris keep building unchanged for one transition period.
+the aliases, so downstream builds keep working unchanged for one transition period.
 Remove `legacy_header` (and the file) when the consumers use the new path.
 
 Helper macros and any C that is code rather than data (a table, a `static inline`
