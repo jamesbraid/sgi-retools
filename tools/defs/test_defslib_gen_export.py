@@ -46,6 +46,7 @@ class ExportTest(RepoTest):
         ctl = [ln for ln in lines if ln.startswith("    CTL ")][0]
         self.assertTrue(ctl.startswith("    CTL 0x0000 rw width 32 reset 0x0 { "), ctl)
         self.assertIn("DIVISOR: 16..31", ctl)           # inclusive bit range, low to high
+        self.assertTrue(ctl.endswith(" };"), ctl)       # every register ends in a semicolon, fields or not
         data = [ln for ln in lines if ln.startswith("    DATA ")][0]
         self.assertIn("DATA 0x0110 ", data)             # relative to the base: 0x120 - 0x10
         self.assertIn("width 8 count 16 stride 0x1", data)
@@ -55,6 +56,8 @@ class ExportTest(RepoTest):
         text = self.render()["gen/rust-regs/uart.rs"]
         status = [ln for ln in text.splitlines() if ln.startswith("    STATUS ")][0]
         self.assertNotIn("reset", status)         # reset unknown: no value, not a made-up zero
+        self.assertTrue(status.endswith(" };"), status)
+        self.assertTrue(text.splitlines()[-2].endswith(";"), text)    # the last register ends in a semicolon
         for banned in ("pub ", "//!", "///", "enum Value", "FIFO_DEPTH", "#[test]", "Control register", "established", "inferred"):
             self.assertNotIn(banned, text)
 
@@ -64,6 +67,7 @@ class ExportTest(RepoTest):
         self.edit("defs/uart.toml", "[registers.data]", '[registers.wide]\noffset = 0x300\naccess = "rw"\nwidth = 64\ngrade = "unknown"\n\n[registers.wide.fields]\n%s\n\n[registers.data]' % many)
         text = self.render()["gen/rust-regs/uart.rs"]
         self.assertIn("    WIDE 0x02f0 rw {\n        F39: 39..39,\n        F38: 38..38,\n", text)
+        self.assertIn("\n    };\n", text)               # the wrapped register closes with a semicolon
 
     def test_named_constants_are_carried_and_unnamed_ones_are_not(self):
         self.enable('constants = ["FIFO_DEPTH"]\n')
