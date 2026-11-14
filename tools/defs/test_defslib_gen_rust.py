@@ -46,6 +46,10 @@ class GenRustTest(RepoTest):
         self.assertIn("pub const N3D_MODE: u32 = 0x3;", text)
         self.assertIn("Self_,", text)
 
+    def test_labels_that_reduce_to_one_variant_get_a_suffix(self):
+        v = gen_rust.variants({"k9_6": {"value": 3}, "k96": {"value": 7}, "k8": {"value": 6}})
+        self.assertEqual(v, {"k9_6": "K96", "k96": "K96_7", "k8": "K8"})
+
     def test_crate_files(self):
         self.assertEqual(gen_rust.crate_name(), "hwdefs")
         self.assertEqual(gen_rust.crate_name("My_Repo"), "my_repo")

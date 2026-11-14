@@ -32,28 +32,42 @@ def rvariant(label):
     return s + "_" if s == "Self" else s
 
 
+def variants(vals):
+    """One Rust variant name per enum label. Two labels can reduce to the same name (k9_6 and k96 both
+    give K96), which rustc refuses; the later one takes its value as a suffix."""
+    out, seen = {}, set()
+    for lab, ev in vals.items():
+        v = rvariant(lab)
+        if v in seen:
+            v = "%s_%d" % (v, ev["value"])
+        seen.add(v)
+        out[lab] = v
+    return out
+
+
 def _enum_block(ty, vals, pad):
+    vn = variants(vals)
     o = []
     for lab, ev in vals.items():
         o.append("%spub const %s: %s = %d; // %s" % (pad, rconst(lab), ty, ev["value"], ev["grade"]))
     o.append("%s#[derive(Debug, Clone, Copy, PartialEq, Eq)]" % pad)
     o.append("%spub enum Value {" % pad)
     for lab in vals:
-        o.append("%s    %s," % (pad, rvariant(lab)))
+        o.append("%s    %s," % (pad, vn[lab]))
     o.append("%s    Other(%s)," % (pad, ty))
     o.append("%s}" % pad)
     o.append("%simpl Value {" % pad)
     o.append("%s    pub const fn from_raw(v: %s) -> Self {" % (pad, ty))
     o.append("%s        match v {" % pad)
     for lab, ev in vals.items():
-        o.append("%s            %d => Self::%s," % (pad, ev["value"], rvariant(lab)))
+        o.append("%s            %d => Self::%s," % (pad, ev["value"], vn[lab]))
     o.append("%s            _ => Self::Other(v)," % pad)
     o.append("%s        }" % pad)
     o.append("%s    }" % pad)
     o.append("%s    pub const fn raw(self) -> %s {" % (pad, ty))
     o.append("%s        match self {" % pad)
     for lab, ev in vals.items():
-        o.append("%s            Self::%s => %d," % (pad, rvariant(lab), ev["value"]))
+        o.append("%s            Self::%s => %d," % (pad, vn[lab], ev["value"]))
     o.append("%s            Self::Other(v) => v," % pad)
     o.append("%s        }" % pad)
     o.append("%s    }" % pad)
