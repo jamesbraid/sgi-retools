@@ -812,6 +812,21 @@ def unread_entries(lines):
     return found or ([] if taken else [(1, "the file has no entry the parser reads")])
 
 
+# "Observed" or "measured" claims state what hardware did. A sentence that uses that wording and
+# cites an emulator or model run is model behaviour, never hardware evidence (README-analysis.md,
+# "Evidence order").
+OBSERVED_WORD = re.compile(r"\b(observed|measured|measurement)\b", re.I)
+EMULATOR_RUN = re.compile(r"\b(emulator|qemu|iris|simulator|simulation|model run)\b", re.I)
+
+
+def emulator_observation(text):
+    """The first sentence of text that calls an emulator run observed or measured, else None."""
+    for sentence in re.split(r"(?<=[.;])\s+|\n\s*", text):
+        if OBSERVED_WORD.search(sentence) and EMULATOR_RUN.search(sentence):
+            return sentence.strip()
+    return None
+
+
 def check_doc(doc, inventory=None, out=None, review=False, routines=False):
     """Lint a routine-role document. Prints each problem as DOC:LINE: subject, then the reason, and
     returns how many entries were reported. review says the workspace requires a Reviewed line in
@@ -878,6 +893,10 @@ def check_doc(doc, inventory=None, out=None, review=False, routines=False):
             continue
         body = ent.text
         status = ent.level
+        claim = emulator_observation(body)
+        if claim:
+            report(n, subject, "calls an emulator run observed or measured (%r); a run shows model behaviour, "
+                   "not hardware, so say the model did it or cite hardware evidence" % claim[:80])
         why = ""
         if status != "understood":
             if inv.UNVERIFIED.search(inv.bare_text(body)):
