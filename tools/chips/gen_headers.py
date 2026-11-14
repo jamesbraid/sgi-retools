@@ -251,8 +251,9 @@ HEADER = '# Written by retools/tools/chips/gen_headers.py from %s/%%s/census/. D
 
 
 def header(chip):
-    """The first line of a unit: it names the census directory of the layout the workspace is on."""
-    return HEADER % ('devices' if current() else 'chips') % chip
+    """The first line of a unit: it names the census directory the chip's rows are read from, under the
+    layout the workspace is on (a chip can share another's census, as xbridge does)."""
+    return HEADER % ('devices' if current() else 'chips') % CHIPS[chip][0]
 
 
 def gen(chip, spec):
