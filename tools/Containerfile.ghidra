@@ -38,6 +38,13 @@ RUN mkdir -p /tmp/ghidra-projects && chmod 1777 /tmp/ghidra-projects
 # names, decompile export and BSim. Use them from your own analyzeHeadless run
 # with -scriptPath /opt/re-scripts.
 COPY ghidra/scripts /opt/re-scripts
+# The IA-64 processor, installed like a built-in one so any analyzeHeadless run
+# here can use IA64:LE:64:default, and the SN2 PROM layout script beside the others.
+COPY ghidra/processors/ia64/Module.manifest ghidra/processors/ia64/extension.properties /opt/ghidra/Ghidra/Processors/IA64/
+COPY ghidra/processors/ia64/data /opt/ghidra/Ghidra/Processors/IA64/data
+COPY ghidra/import/sn2-prom/ghidra_scripts/SN2PromImport.java /opt/re-scripts/
+RUN /opt/ghidra/support/sleigh /opt/ghidra/Ghidra/Processors/IA64/data/languages/ia64.slaspec \
+ && chmod -R a+rX /opt/ghidra/Ghidra/Processors/IA64 /opt/re-scripts
 WORKDIR /work
 RUN java -version 2>&1 | grep -q '21\.' \
  && javac -version \

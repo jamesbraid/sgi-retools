@@ -28,7 +28,8 @@
 # Ghidra scripts under /opt/re-scripts, built from retools/ghidra/scripts/.
 #
 # --ghidra-export OBJECT runs Ghidra over OBJECT, an ELF file in the
-# workspace, relative to its top (a linked library, a kernel, a relocatable driver object), and
+# workspace, relative to its top (a linked library, a kernel, a relocatable driver object, or with
+# --sn2-prom an SGI Altix or Prism flash PROM), and
 # writes decompiled C per function as JSON under .cache/ghidra-export/, naming
 # the file on stdout. OPTIONS: --decompile-symbol NAME|GLOB|@0xADDR (repeat),
 # --decompile-list FILE, --decompile-all, --decompile-timeout S, --types
@@ -114,9 +115,11 @@ if [ -n "$ghidra" ]; then
 else
     file=$shared/tools/Containerfile; name=re-toolchain
 fi
-# The Ghidra image also holds ghidra/scripts of the submodule, so they are part of its tag.
+# The Ghidra image also holds ghidra/scripts, the IA-64 processor and the SN2 PROM
+# script, so they are part of its tag.
 if [ -n "$ghidra" ]; then
-    tag=$name:$(cat "$file" "$shared"/ghidra/scripts/* | sha256sum | cut -c1-12)
+    tag=$name:$(cat "$file" "$shared"/ghidra/scripts/* "$shared"/ghidra/processors/ia64/data/languages/* \
+        "$shared"/ghidra/import/sn2-prom/ghidra_scripts/* 2>/dev/null | sha256sum | cut -c1-12)
 else
     tag=$name:$(sha256sum "$file" | cut -c1-12)
 fi

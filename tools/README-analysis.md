@@ -79,6 +79,32 @@ the table holds no type records for it. `tools/mdebug.py` decodes the same table
 Limits: no parameter types for a pointer to function, `long` is 4 bytes, bit fields that straddle their
 storage unit are dropped, and aggregates with the same tag are merged (the first definition with members wins).
 
+## SN2 PROM (IA-64) in Ghidra
+
+The SGI Altix and Prism system firmware is an IA-64 flash image. The Ghidra image carries the IA-64
+processor from `ghidra/processors/ia64/` (language `IA64:LE:64:default`) and the layout script
+`SN2PromImport.java`, so either of these reads one:
+
+    tools/re-run --ghidra-export root/sn2/snprom-10.54-70399/boot/efi/efi/sgi/snprom/shub1snprom.bin \
+        --sn2-prom --decompile-symbol SALE_ENTRY --decompile-symbol @0xffc4e970
+    tools/re-run --ghidra analyzeHeadless /tmp/ghidra-projects p -import IMAGE -loader BinaryLoader \
+        -loader-baseAddr 0xffa00000 -processor IA64:LE:64:default \
+        -scriptPath /opt/re-scripts -preScript SN2PromImport.java
+
+The script places the image to end at 4 GiB and adds an uncached alias of it at bit 63; parses the
+FIT and labels it and every component (`PAL_B_7_79`, `SAL_A_5_04`, ...); disassembles and names the
+generic PAL_A vectors (`PALE_RESET` at `0xffffffb0`), each processor-specific PAL_A entry (image +
+`0x300`), `SALE_ENTRY` and the three SAL_B entries; finds the physical-mode SAL dispatch table in
+SAL_B by its shape, makes each handler a function named `sal_<id>`, and sets r1 over SAL_B to the
+global pointer the table's descriptors carry. Full analysis of a 6 MiB image takes about 15 minutes.
+
+What the processor does not do, in short (its README has the detail): the register stack is
+approximated (no renaming or rotation; calls copy up to eight output registers into r32..), NaT bits
+are not tracked, floating-point registers hold 64 bits, and instructions the architecture leaves to
+the implementation are named p-code ops. A function whose result reaches its return only through
+complementary predicated moves can come out `void` until it is given a return type. Slot addresses
+are objdump's (bundle + 0, 6, 0xc), so objdump-based notes and Ghidra agree on every address.
+
 ## System call table
 
     tools/re-run --syscalls root/6.5.30/unix.IP35 --out .cache/syscalls.tsv [--cross-check DIR --report FILE]

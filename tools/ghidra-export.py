@@ -47,6 +47,13 @@ A flat image, such as a PROM, has no header Ghidra can read, so say what it is:
                          running in the extended cached window) resolves them;
                          default 0xc000000000000000 for a language with full-width
                          64-bit addresses, none otherwise
+An SGI SN2 (Altix, Prism) flash PROM is a flat image with its own layout:
+  --sn2-prom             read OBJECT as an SN2 PROM: the IA-64 language, loaded
+                         to end at 4 GiB, laid out by SN2PromImport.java (FIT
+                         components, PAL and SAL entries, the SAL dispatch table
+                         as sal_<id> functions, SAL_B's gp), then analysed
+Ask for its routines by address (@0xffc4e970) or by those names (SALE_ENTRY,
+sal_02000002).
 A flat image has no names: functions are `FUN_` placeholders, found by Ghidra's
 analysis, so ask for them by `@0xADDR` or with --decompile-all. `address` in the
 JSON is the machine address (--load), `ghidra_address` is where Ghidra holds it, and
@@ -70,6 +77,7 @@ EF_MIPS_ABI2 = 0x20
 SHF_EXECINSTR = 4
 ET_REL = 1
 FLAT_DEFAULT_LANGUAGE = 'MIPS:BE:64:default'
+SN2_LANGUAGE = 'IA64:LE:64:default'
 WIDE_WINDOW = 0xc000000000000000
 PLAIN = re.compile(r'[A-Za-z0-9._-]+')
 
@@ -193,6 +201,7 @@ def parser():
     p.add_argument('--header', type=int, default=0, metavar='N')
     p.add_argument('--processor', default=None)
     p.add_argument('--window', type=lambda v: int(v, 0), default=None, metavar='ADDR')
+    p.add_argument('--sn2-prom', action='store_true')
     p.add_argument('--timeout', type=int, default=3600)
     p.add_argument('--cpus', type=int, default=2)
     return p
@@ -217,6 +226,11 @@ def prepare(argv):
     if args.mdebug and args.flat:
         die('--mdebug reads an ELF object')
     flat = None
+    if args.sn2_prom:
+        if args.flat or args.load is not None or args.processor or args.header:
+            die('--sn2-prom sets the layout itself; drop --flat, --load, --processor and --header')
+        args.flat, args.processor, args.window = True, SN2_LANGUAGE, 0
+        args.load = (1 << 32) - obj.stat().st_size
     if args.flat:
         if args.load is None:
             die('--flat needs --load ADDR')
@@ -225,12 +239,15 @@ def prepare(argv):
         args.processor = args.processor or FLAT_DEFAULT_LANGUAGE
         window = args.window
         if window is None:
-            window = 0 if '64-32addr' in args.processor or ':32:' in args.processor else WIDE_WINDOW
+            mips64 = args.processor.startswith('MIPS') and ':64:' in args.processor
+            window = WIDE_WINDOW if mips64 and '64-32addr' not in args.processor else 0
+        if window and not args.processor.startswith('MIPS'):
+            die('--window applies to a MIPS language')
         if window and ':64:' not in args.processor:
             die('--window needs a 64-bit language')
         if window and args.load & window:
             die('--load %#x overlaps the window %#x' % (args.load, window))
-        flat = {'load': args.load, 'window': window, 'processor': args.processor}
+        flat = {'load': args.load, 'window': window, 'processor': args.processor, 'sn2': args.sn2_prom}
         relocatable, language, spec = False, args.processor, None
     else:
         for opt in ('load', 'window'):
@@ -298,10 +315,13 @@ def prepare(argv):
             argv += ['-cspec', spec]
     if flat:
         base = flat['load'] + flat['window']
-        argv += ['-loader', 'BinaryLoader', '-loader-baseAddr', '0x%x' % base]
-        # No header states the global pointer or the entry: recover gp from the
-        # code, and start disassembly at the first byte.
-        argv += ['-scriptPath', SCRIPTS, '-preScript', 'ReMipsGp.java', 'auto', '0x%x' % base]
+        argv += ['-loader', 'BinaryLoader', '-loader-baseAddr', '0x%x' % base, '-scriptPath', SCRIPTS]
+        if flat['sn2']:
+            argv += ['-preScript', 'SN2PromImport.java']
+        elif flat['processor'].startswith('MIPS'):
+            # No header states the global pointer or the entry: recover gp from
+            # the code, and start disassembly at the first byte.
+            argv += ['-preScript', 'ReMipsGp.java', 'auto', '0x%x' % base]
     else:
         argv += ['-scriptPath', SCRIPTS, '-preScript', 'ReMipsGp.java', 'loader', '-']
     if seeds:
