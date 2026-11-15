@@ -29,6 +29,11 @@ Options (after OBJECT, a path inside the workspace):
                                           .cache/ghidra-bsim), lowest similarity
                                           written (default 0.7)
   --timeout SECONDS  --cpus N             Ghidra analysis limits (3600, 2)
+  --heap SIZE                             the Java heap of Ghidra, such as 14G. Default: 2G for an
+                                          ELF object; for a flat image 2G plus 1G for each MiB of
+                                          it, at most 14G (a 12 MiB SHub 2 PROM runs out at 2G).
+                                          The container's memory cap is RE_GHIDRA_MEMORY (16g);
+                                          raise it for a larger heap
 
 Output goes under .cache/ghidra-export/ (ignored by git): decompile.json holds one
 entry per function with the decompiler's C, warnings and signature. Decompiler
@@ -227,8 +232,14 @@ def parser():
     p.add_argument('--sn2-prom', action='store_true')
     p.add_argument('--sal-runtime', action='store_true')
     p.add_argument('--timeout', type=int, default=3600)
+    p.add_argument('--heap', metavar='SIZE')
     p.add_argument('--cpus', type=int, default=2)
     return p
+
+
+def heap_for(size):
+    """The headless heap for a flat image: 2G plus 1G per MiB, from 2G to 14G."""
+    return '%dG' % min(14, max(2, 2 + -(-size // (1 << 20))))
 
 
 def prepare(argv):
@@ -260,6 +271,8 @@ def prepare(argv):
         die('--types applies to an export')
     if args.mdebug and args.flat:
         die('--mdebug reads an ELF object')
+    if args.heap and not re.fullmatch(r'[1-9][0-9]*[MG]', args.heap):
+        die('--heap is a size such as 14G or 4096M')
     flat, mips = None, True
     if args.sal_runtime and not args.sn2_prom:
         die('--sal-runtime reads the SAL runtime of an SN2 PROM: add --sn2-prom')
@@ -336,6 +349,9 @@ def prepare(argv):
         image = stage / obj.name
         image.write_bytes(obj.read_bytes()[args.header:])
     lines = ['set -u', 'JOB=%s' % shlex.quote(str(job))]
+    heap = args.heap or (heap_for(obj.stat().st_size) if flat else None)
+    if heap:
+        lines.append('export GHIDRA_HEADLESS_MAXMEM=%s' % heap)
     if args.bsim_db:
         for what, value in (('--bsim-db', args.bsim_db), ('--bsim-label', args.bsim_label or 'x')):
             if not PLAIN.fullmatch(value):

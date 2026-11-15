@@ -66,6 +66,25 @@ class PlanLanguage(unittest.TestCase):
         self.assertIn('-processor IA64:LE:64:default', script)
         self.assertIn('/inflated/obj ', script)
 
+    def test_flat_image_heap_follows_its_size_and_an_option_overrides_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            obj = os.path.join(d, 'prom.bin')
+            for mib, option, want in ((6, [], 'GHIDRA_HEADLESS_MAXMEM=8G'), (12, [], 'GHIDRA_HEADLESS_MAXMEM=14G'),
+                                      (30, [], 'GHIDRA_HEADLESS_MAXMEM=14G'),
+                                      (12, ['--heap', '20G'], 'GHIDRA_HEADLESS_MAXMEM=20G')):
+                with open(obj, 'wb') as f:
+                    f.truncate(mib << 20)
+                job = os.path.join(d, 'job%d%d' % (mib, len(option)))
+                os.mkdir(job)
+                ge.prepare(['--job', job, '--sn2-prom', '--decompile-all'] + option + [obj])
+                with open(os.path.join(job, 'ghidra.sh')) as f:
+                    self.assertIn('export ' + want, f.read())
+            with self.assertRaises(SystemExit):
+                ge.prepare(['--job', d, '--heap', 'big', '--sn2-prom', '--decompile-all', obj])
+
+    def test_elf_keeps_the_default_heap(self):
+        self.assertNotIn('MAXMEM', self.plan(elf32(ge.EM_IA_64, '<')))
+
     def test_mips_elf_is_unchanged(self):
         script = self.plan(elf32(ge.EM_MIPS, '>'))
         self.assertNotIn('-processor', script)
