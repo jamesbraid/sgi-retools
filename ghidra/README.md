@@ -14,6 +14,7 @@ run its components.
 | [processors/ge11/](processors/ge11/) | geometry-engine processor extension for the IMPACT GE11 | gr4 `ghidra/README.md` |
 | [processors/kona-ge/](processors/kona-ge/), [processors/kona-ged/](processors/kona-ged/) | geometry-engine microcode processor and its decoder variant | kona `ghidra/README.md` and `docs/tooling.md` |
 | [processors/odsy-buzz/](processors/odsy-buzz/) | BUZZ transform-microcode processor and its import script | odsy `ghidra/README.md` |
+| [processors/ia64/](processors/ia64/) | IA-64 (Itanium) processor for the SGI Altix and Prism system firmware | [processors/ia64/README.md](processors/ia64/README.md) |
 | [import/kona-arm/](import/kona-arm/), [import/mmsc-aout/](import/mmsc-aout/) | firmware loaders | kona `ghidra/README.md` |
 | [types/kona-types/](types/kona-types/) | data-type scripts and tables | kona `ghidra/README.md` |
 

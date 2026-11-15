@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- IA-64 (Itanium). Each slot of a 128-bit bundle is one instruction at the
+     address objdump gives it: bundle+0, +6 and +0xc; MLX's L+X is one at +6. -->
+<language_definitions>
+  <language processor="IA64"
+            endian="little"
+            size="64"
+            variant="default"
+            version="1.0"
+            slafile="ia64.sla"
+            processorspec="ia64.pspec"
+            id="IA64:LE:64:default">
+    <description>Intel IA-64 (Itanium), little-endian, 64-bit</description>
+    <compiler name="default" spec="ia64.cspec" id="default"/>
+  </language>
+</language_definitions>

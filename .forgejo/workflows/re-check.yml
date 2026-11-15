@@ -49,5 +49,9 @@ jobs:
         run: python3 tools/test_leakcheck.py
       - name: Run the directory index tests
         run: python3 tools/test_docs_index.py
+      - name: Run the IA-64 processor table tests
+        run: |
+          python3 ghidra/processors/ia64/tests/synthetic.py
+          python3 ghidra/processors/ia64/tests/test_generated.py
       - name: Run the decode-header check
         run: tools/defs/ci-check

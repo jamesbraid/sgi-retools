@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Itanium software conventions: arguments in r32..r39 as the callee sees
+     them (a call's p-code copies the caller's outputs there), result in r8,
+     return address in b0, stack pointer r12, gp r1. -->
+<compiler_spec>
+  <data_organization>
+    <pointer_size value="8"/>
+    <long_size value="8"/>
+    <float_size value="4"/>
+    <double_size value="8"/>
+    <long_double_size value="16"/>
+  </data_organization>
+  <global>
+    <range space="ram"/>
+    <range space="cpuid"/>
+    <range space="dbr"/>
+    <range space="ibr"/>
+    <range space="pkr"/>
+    <range space="pmc"/>
+    <range space="pmd"/>
+    <range space="msr"/>
+    <range space="rr"/>
+    <range space="dahr"/>
+  </global>
+  <stackpointer register="r12" space="ram"/>
+  <returnaddress>
+    <register name="b0"/>
+  </returnaddress>
+  <default_proto>
+    <prototype name="__stdcall" extrapop="0" stackshift="0">
+      <input>
+        <pentry minsize="1" maxsize="8"><register name="r32"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r33"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r34"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r35"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r36"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r37"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r38"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r39"/></pentry>
+      </input>
+      <output>
+        <pentry minsize="1" maxsize="8"><register name="r8"/></pentry>
+      </output>
+      <unaffected>
+        <register name="r1"/>
+        <register name="r4"/>
+        <register name="r5"/>
+        <register name="r6"/>
+        <register name="r7"/>
+        <register name="r12"/>
+        <register name="r13"/>
+        <register name="b1"/>
+        <register name="b2"/>
+        <register name="b3"/>
+        <register name="b4"/>
+        <register name="b5"/>
+        <register name="ar.pfs"/>
+        <register name="ar.unat"/>
+        <register name="ar.lc"/>
+        <register name="fs0"/>
+        <register name="fs1"/>
+        <register name="fs2"/>
+        <register name="fs3"/>
+        <register name="fs4"/>
+        <register name="fs5"/>
+        <register name="fs6"/>
+        <register name="fs7"/>
+      </unaffected>
+      <killedbycall>
+        <register name="r2"/>
+        <register name="r3"/>
+        <register name="r8"/>
+        <register name="r9"/>
+        <register name="r10"/>
+        <register name="r11"/>
+        <register name="r14"/>
+        <register name="r15"/>
+        <register name="r16"/>
+        <register name="r17"/>
+        <register name="r18"/>
+        <register name="r19"/>
+        <register name="r20"/>
+        <register name="r21"/>
+        <register name="r22"/>
+        <register name="r23"/>
+        <register name="r24"/>
+        <register name="r25"/>
+        <register name="r26"/>
+        <register name="r27"/>
+        <register name="r28"/>
+        <register name="r29"/>
+        <register name="r30"/>
+        <register name="r31"/>
+        <register name="b6"/>
+        <register name="b7"/>
+      </killedbycall>
+    </prototype>
+  </default_proto>
+</compiler_spec>

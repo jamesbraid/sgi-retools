@@ -19,7 +19,7 @@ Update the pin with
 | `tools/<device>/` | extractors, disassemblers and analysis scripts for one device family: `kona`, `odsy`, `crime`, `chips`, `voyager`, `kudzu`, `sysco`, `gr4`, `hdsp`. A device's `clean_asm.py`, `disasm_kernel.py` and similar are deliberate forks of the shared ones, not copies to merge |
 | `ghidra/` | start at [ghidra/README.md](ghidra/README.md), the index of the shared Ghidra code and of each workspace's own conventions |
 | `ghidra/scripts/` | the Ghidra scripts for IRIX MIPS objects and the export helpers (`Re*.java`) |
-| `ghidra/processors/<name>/` | Ghidra processor extensions with their generators and tests (`kona-ge`, `kona-ged`, `odsy-buzz`, `ge11`) |
+| `ghidra/processors/<name>/` | Ghidra processor extensions with their generators and tests (`kona-ge`, `kona-ged`, `odsy-buzz`, `ge11`, `ia64`) |
 | `ghidra/import/<name>/`, `ghidra/types/<name>/` | firmware importers and data-type scripts (`kona-arm`, `kona-types`, `mmsc-aout`) |
 
 There are no symlinks in this repository, and none are needed in a workspace. Tools that name
