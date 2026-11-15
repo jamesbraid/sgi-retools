@@ -16,7 +16,7 @@ public class DumpSymbols extends GhidraScript {
 	protected void run() throws Exception {
 		try (PrintWriter out = new PrintWriter(getScriptArgs()[0])) {
 			for (MemoryBlock b : currentProgram.getMemory().getBlocks()) {
-				out.printf("block\t%s\t%s\t%s%n", b.getStart(), b.getEnd(), b.getName());
+				out.printf("block\t%s\t%s\t%s\t%s%n", b.getStart(), b.getEnd(), b.getName(), b.isExecute() ? "x" : "-");
 			}
 			for (Symbol s : currentProgram.getSymbolTable().getAllSymbols(true)) {
 				if (s.getSource() == SourceType.IMPORTED) {

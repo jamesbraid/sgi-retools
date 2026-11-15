@@ -27,7 +27,7 @@ def main():
 
     def q(a):
         return struct.unpack('<Q', data[a - base:a - base + 8])[0]
-    labels, funcs, r1, blocks = {}, set(), [], {}
+    labels, funcs, r1, blocks, noexec = {}, set(), [], {}, set()
     for line in open(syms):
         f = line.rstrip('\n').split('\t')
         if f[0] == 'label':
@@ -38,6 +38,8 @@ def main():
             r1.append((int(f[1].split(':')[-1], 16), int(f[2].split(':')[-1], 16), f[3]))
         elif f[0] == 'block':
             blocks[f[3]] = int(f[1].split(':')[-1], 16)
+            if f[4] == '-':
+                noexec.add(f[3])
     bad = []
 
     def want(addr, name, func=False):
@@ -62,6 +64,8 @@ def main():
         start = q(e) & ~UNC
         name = '%s_%x_%02x' % (names.get(kind, 'OEM_%02x' % kind), ver >> 8, ver & 0xff)
         want(start, name)
+        if kind not in (0x01, 0x0e, 0x0f, 0x10, 0x11) and (blocks.get(name) != start or name not in noexec):
+            bad.append('%s is not a non-executable block at %#x' % (name, start))
         if kind == 0x0e:
             want(start + 0x300, name + '_entry', True)
         if kind == 0x11:

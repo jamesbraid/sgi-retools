@@ -12,6 +12,7 @@ import java.util.*;
 import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.app.cmd.function.CreateFunctionCmd;
 import ghidra.app.script.GhidraScript;
+import ghidra.program.disassemble.Disassembler;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.*;
 import ghidra.program.model.listing.*;
@@ -24,6 +25,9 @@ public class SN2PromImport extends GhidraScript {
 	// FIT types, from the SAL specification's FIT layout and the SN2 kernel's names.
 	static final Map<Integer, String> TYPES = Map.of(0x01, "PAL_B", 0x0e, "PAL_A", 0x0f, "PAL_A_generic",
 		0x10, "SAL_A", 0x11, "SAL_B", 0x12, "SAL_runtime", 0x1f, "EFI");
+
+	// FIT types that hold IA-64 code; the SAL runtime, EFI and OEM components are packed data.
+	static final Set<Integer> CODE = Set.of(0x01, 0x0e, 0x0f, 0x10, 0x11);
 
 	Memory mem;
 
@@ -91,6 +95,13 @@ public class SN2PromImport extends GhidraScript {
 		}
 
 		for (long[] c : comps) {
+			if (!CODE.contains((int) c[2])) {
+				markNotCode(c[0], c[0] + c[1], name((int) c[2], (int) c[3]));
+			}
+		}
+		currentProgram.getOptions(Program.DISASSEMBLER_PROPERTIES)
+			.setBoolean(Disassembler.RESTRICT_DISASSEMBLY_TO_EXECUTE_MEMORY_PROPERTY, true);
+		for (long[] c : comps) {
 			long start = c[0];
 			int type = (int) c[2];
 			String n = name(type, (int) c[3]);
@@ -109,6 +120,27 @@ public class SN2PromImport extends GhidraScript {
 		}
 		code(sale, "SALE_ENTRY", true);
 		currentProgram.getSymbolTable().addExternalEntryPoint(addr(sale));
+	}
+
+	// Give a data component its own non-executable block and keep disassembly out of such
+	// blocks. Otherwise analysis decodes its bytes, and a bogus call inside them splits a
+	// real function in two.
+	void markNotCode(long start, long end, String name) throws Exception {
+		MemoryBlock b = mem.getBlock(addr(start));
+		if (b == null || b.getEnd().getOffset() < end - 1) {
+			return;
+		}
+		if (b.getStart().getOffset() < start) {
+			mem.split(b, addr(start));
+			b = mem.getBlock(addr(start));
+		}
+		if (b.getEnd().getOffset() >= end) {
+			mem.split(b, addr(end));
+			mem.getBlock(addr(end)).setName(String.format("flash_%x", end));
+			b = mem.getBlock(addr(start));
+		}
+		b.setExecute(false);
+		b.setName(name);
 	}
 
 	// Move the loaded bytes so they end at 4 GiB.

@@ -92,7 +92,8 @@ processor from `ghidra/processors/ia64/` (language `IA64:LE:64:default`) and the
         -scriptPath /opt/re-scripts -preScript SN2PromImport.java
 
 The script places the image to end at 4 GiB and adds an uncached alias of it at bit 63; parses the
-FIT and labels it and every component (`PAL_B_7_79`, `SAL_A_5_04`, ...); disassembles and names the
+FIT and labels it and every component (`PAL_B_7_79`, `SAL_A_5_04`, ...), giving the packed data ones (SAL runtime, EFI, OEM)
+non-executable blocks so analysis does not disassemble them; disassembles and names the
 generic PAL_A vectors (`PALE_RESET` at `0xffffffb0`), each processor-specific PAL_A entry (image +
 `0x300`), `SALE_ENTRY` and the three SAL_B entries; finds the physical-mode SAL dispatch table in
 SAL_B by its shape, makes each handler a function named `sal_<id>`, and sets r1 over SAL_B to the
