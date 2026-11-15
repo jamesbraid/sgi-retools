@@ -341,6 +341,12 @@ class CleanProfileTest(RepoTest):
         self.assertEqual(len(line.splitlines()), 2)
         self.assertEqual(list(defines(line).values()), ["(" + "0x1234ull + " * 6 + "1)"])
 
+    def test_a_long_shift_expression_wraps_twice(self):
+        val = "(%s_MASK << %s_SHIFT)" % ("M" * 60, "M" * 60)
+        line = gen_c.define("N" * 50, val, clean=True)
+        self.assertTrue(all(len(ln) <= 90 for ln in line.splitlines()), line)
+        self.assertEqual(defines(line), {"N" * 50: val})
+
     @unittest.skipUnless(CC, "needs a C compiler")
     def test_build_compiles_the_clean_header(self):
         self.render()

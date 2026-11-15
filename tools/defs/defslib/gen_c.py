@@ -25,7 +25,13 @@ def define(name, val, comment="", clean=False):
     line = "#define %-44s %s" % (name, val)
     if not clean:
         return line + comment
-    return line if len(line) <= CLEAN_WIDTH else "#define %s \\\n    %s" % (name, val)
+    if len(line) <= CLEAN_WIDTH:
+        return line
+    line = "#define %s \\\n    %s" % (name, val)
+    if len(line.splitlines()[1]) > CLEAN_WIDTH and " << " in val:      # the in-place mask: break at the shift
+        left, right = val.split(" << ", 1)
+        line = "#define %s \\\n    %s \\\n        << %s" % (name, left, right)
+    return line
 
 
 def gen_c(u, src, helpers_include=None, clean=None):
