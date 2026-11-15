@@ -1,9 +1,13 @@
 # sgi-retools
 
-Tooling shared by the SGI reverse-engineering workspaces: container definitions and the
-wrapper that drives them, Ghidra scripts, processors and importers, the inventory and
-fact-sheet tools, and the extractors that are specific to one device family. A workspace
-holds the findings, tables and configuration; the tools live here.
+Tooling shared by every SGI reverse-engineering workspace: graphics hardware and microcode,
+system ASICs and their firmware (MIPS and IA-64 PROMs, PAL and SAL, the L1 controllers), and
+the IRIX kernel and userspace. This is the one home for our Ghidra work: processors, importers
+and scripts for any of those targets land here, whichever workspace needs them first.
+
+It also holds the container definitions and the wrapper that drives them, the inventory and
+fact-sheet tools, the hardware-definition generators, and the extractors that are specific to
+one device family. A workspace holds the findings, tables and configuration; the tools live here.
 
 A workspace pulls this repository in as the `retools/` submodule, pinned to a commit, and
 runs the tools by their submodule path (`retools/tools/re-run`, `retools/tools/inventory.py`).

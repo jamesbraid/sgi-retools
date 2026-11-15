@@ -1,8 +1,11 @@
-# Ghidra in the graphics workspaces: index
+# Ghidra in the SGI workspaces: index
 
-This directory holds the Ghidra code every workspace shares. Each workspace
-(odsy, gr4, kona, crime, chips) also keeps a `ghidra/` directory of its own with
-its own README and conventions. This page points at all of them and does not
+This directory holds the Ghidra code every workspace shares, whatever it reads:
+graphics microcode, system firmware (the IA-64 SN2 PROM, PAL and SAL, L1
+controller images) or IRIX kernel and userspace objects. New processors,
+importers and scripts land here rather than in a workspace. Some workspaces
+(odsy, gr4, kona, crime, chips) also keep a `ghidra/` directory of their own with
+their own README and conventions. This page points at all of them and does not
 repeat them; read the README of the workspace you are in for how to build and
 run its components.
 
