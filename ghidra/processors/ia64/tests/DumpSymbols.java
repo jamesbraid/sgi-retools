@@ -31,6 +31,13 @@ public class DumpSymbols extends GhidraScript {
 				BigInteger v = currentProgram.getProgramContext().getValue(r1, r.getMinAddress(), false);
 				out.printf("r1\t%s\t%s\t%s%n", r.getMinAddress(), r.getMaxAddress(), v == null ? "-" : v.toString(16));
 			}
+			Register pal = currentProgram.getRegister("pal");
+			for (var r : currentProgram.getProgramContext().getRegisterValueAddressRanges(pal)) {
+				BigInteger v = currentProgram.getProgramContext().getValue(pal, r.getMinAddress(), false);
+				if (v != null && v.signum() != 0) {
+					out.printf("pal\t%s%n", r.getMinAddress());
+				}
+			}
 			out.printf("instructions\t%d%n", currentProgram.getListing().getNumInstructions());
 		}
 	}

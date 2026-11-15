@@ -98,6 +98,15 @@ public class SN2PromImport extends GhidraScript {
 				markNotCode(c[0], c[0] + c[1], name((int) c[2], (int) c[3]));
 			}
 		}
+		// One program-tree fragment per component, so an export can take a whole component by name.
+		ProgramModule tree = currentProgram.getListing().getDefaultRootModule();
+		for (long[] c : comps) {
+			if (CODE.contains((int) c[2])) {
+				String n = name((int) c[2], (int) c[3]);
+				ProgramFragment f = tree.createFragment(n);
+				f.move(addr(c[0]), addr(c[0] + c[1] - 1));
+			}
+		}
 		for (long[] c : comps) {
 			if (c[2] == 0x0e || c[2] == 0x0f) {
 				markPalServiceCalls(c[0], c[0] + c[1]);

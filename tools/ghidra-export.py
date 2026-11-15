@@ -9,7 +9,13 @@ Options (after OBJECT, a path inside the workspace):
   --decompile-symbol NAME|GLOB|@0xADDR   a function by name, a glob with *, or an
                                           address (not for a relocatable object);
                                           repeatable
-  --decompile-list FILE                   one name, glob or @address per line
+                                          @0xLO-0xHI is every function entered in that range
+  --decompile-component GLOB              every function in the program-tree fragment named
+                                          GLOB (repeatable). The SN2 import makes one per FIT
+                                          component: PAL_A_generic, PAL_A_7_31, PAL_B_7_79,
+                                          SAL_A_5_04, SAL_B_5_04; read one image's names from
+                                          the import log or its FIT labels
+  --decompile-list FILE                   one name, glob, @address or @range per line
   --decompile-all                         every function Ghidra found
   --decompile-timeout SECONDS             per function (default 60)
   --types SPEC.json                       structure types to apply first (see
@@ -83,6 +89,7 @@ FLAT_DEFAULT_LANGUAGE = 'MIPS:BE:64:default'
 SN2_LANGUAGE = 'IA64:LE:64:default'
 WIDE_WINDOW = 0xc000000000000000
 PLAIN = re.compile(r'[A-Za-z0-9._-]+')
+RANGE = re.compile(r'@0x[0-9a-fA-F]+-0x[0-9a-fA-F]+')
 
 
 def die(message):
@@ -193,6 +200,7 @@ def types_spec(path, relocatable):
 def parser():
     p = argparse.ArgumentParser(prog='retools/tools/re-run --ghidra-export OBJECT')
     p.add_argument('--decompile-symbol', action='append', default=[], metavar='NAME')
+    p.add_argument('--decompile-component', action='append', default=[], metavar='GLOB')
     p.add_argument('--decompile-list', metavar='FILE')
     p.add_argument('--decompile-all', action='store_true')
     p.add_argument('--decompile-timeout', type=int, default=60)
@@ -222,9 +230,9 @@ def prepare(argv):
     if not obj.is_file():
         die('no object %s' % args.object)
     job = pathlib.Path(args.job).resolve()
-    exporting = bool(args.decompile_symbol or args.decompile_list or args.decompile_all)
+    exporting = bool(args.decompile_symbol or args.decompile_list or args.decompile_all or args.decompile_component)
     if not exporting and not args.bsim_db:
-        die('name functions with --decompile-symbol, --decompile-list or --decompile-all, or give --bsim-db')
+        die('name functions with --decompile-symbol, --decompile-component, --decompile-list or --decompile-all, or give --bsim-db')
     if args.bsim_label and not args.bsim_db:
         die('--bsim-label needs --bsim-db')
     if args.types and not exporting:
@@ -275,10 +283,13 @@ def prepare(argv):
         except OSError as error:
             die('cannot read %s: %s' % (args.decompile_list, error.strerror))
         wanted += [l.strip() for l in lines if l.strip() and not l.startswith('#')]
-    names, globs, addresses = [], [], []
+    names, globs, addresses, ranges = [], [], [], []
     for item in wanted:
         item = pattern(item, relocatable)
-        if item.startswith('@0x'):
+        if RANGE.fullmatch(item):
+            lo, hi = (int(x, 16) + (flat['window'] if flat else 0) for x in item[1:].split('-'))
+            ranges.append('0x%x-0x%x' % (lo, hi))
+        elif item.startswith('@0x'):
             native = int(item[1:], 16) + (flat['window'] if flat else 0)
             addresses.append('0x%x' % native)
         elif '*' in item:
@@ -286,7 +297,8 @@ def prepare(argv):
         else:
             names.append(item)
     request = {'all': args.decompile_all, 'names': names, 'glob': globs,
-               'addresses': addresses, 'timeout': args.decompile_timeout,
+               'addresses': addresses, 'ranges': ranges, 'components': args.decompile_component,
+               'timeout': args.decompile_timeout,
                'types': types_spec(args.types, relocatable) if args.types else None}
     (job / 'export.json').write_text(json.dumps(request, indent=1) + '\n')
 

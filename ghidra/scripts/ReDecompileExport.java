@@ -5,7 +5,7 @@
  * which tools/ghidra-export.py writes:
  *
  *   { "all": bool, "names": [..], "addresses": ["0x.."], "glob": [..],
- *     "timeout": seconds, "types": { ...spec... } | null }
+ *     "ranges": ["0xLO-0xHI"], "components": [glob..], "timeout": seconds, "types": { ...spec... } | null }
  *
  * Addresses are Ghidra's own (the converter moves them to the published
  * address space on the way out). The types spec is documented in
@@ -194,10 +194,45 @@ public class ReDecompileExport extends GhidraScript {
         }
     }
 
+    /* Every function entered inside a program-tree fragment whose name matches the glob.
+     * The SN2 import makes one fragment per FIT component (PAL_B_7_79, SAL_A_5_04, ..). */
+    private void addComponent(ghidra.program.model.listing.Group group, String glob, Set<Function> out) {
+        if (group instanceof ghidra.program.model.listing.ProgramFragment
+                && Pattern.matches(globRegex(glob), group.getName())) {
+            for (Function function : currentProgram.getFunctionManager().getFunctions(
+                    ((ghidra.program.model.listing.ProgramFragment) group), true)) {
+                out.add(function);
+            }
+        }
+        if (group instanceof ghidra.program.model.listing.ProgramModule) {
+            for (ghidra.program.model.listing.Group child
+                    : ((ghidra.program.model.listing.ProgramModule) group).getChildren()) {
+                addComponent(child, glob, out);
+            }
+        }
+    }
+
+    private static String globRegex(String glob) {
+        StringBuilder regex = new StringBuilder();
+        for (String piece : glob.split("\\*", -1)) {
+            if (regex.length() > 0) {
+                regex.append(".*");
+            }
+            regex.append(Pattern.quote(piece));
+        }
+        return regex.toString();
+    }
+
     private List<Function> matching(String pattern) {
         List<Function> out = new ArrayList<>();
         if (pattern.startsWith("@0x")) {
-            Function function = getFunctionContaining(toAddr(Long.parseUnsignedLong(pattern.substring(3), 16)));
+            Address at = toAddr(Long.parseUnsignedLong(pattern.substring(3), 16));
+            Function function = getFunctionContaining(at);
+            if (function == null && currentProgram.getMemory().contains(at)) {
+                // An entry analysis never reached (an indirect call's target): make it one.
+                disassemble(at);
+                function = createFunction(at, null);
+            }
             if (function != null) {
                 out.add(function);
             }
@@ -439,6 +474,35 @@ public class ReDecompileExport extends GhidraScript {
                 unmatched.add("@" + address.getAsString());
             }
             chosen.addAll(found);
+        }
+        if (request.has("ranges")) {
+            for (JsonElement range : request.getAsJsonArray("ranges")) {
+                String[] bounds = range.getAsString().split("-");
+                Address lo = toAddr(Long.parseUnsignedLong(bounds[0].substring(2), 16));
+                Address hi = toAddr(Long.parseUnsignedLong(bounds[1].substring(2), 16));
+                int before = chosen.size();
+                FunctionIterator in = currentProgram.getFunctionManager().getFunctions(lo, true);
+                while (in.hasNext()) {
+                    Function function = in.next();
+                    if (function.getEntryPoint().compareTo(hi) >= 0) {
+                        break;
+                    }
+                    chosen.add(function);
+                }
+                if (chosen.size() == before) {
+                    unmatched.add("@" + range.getAsString());
+                }
+            }
+        }
+        if (request.has("components")) {
+            for (JsonElement component : request.getAsJsonArray("components")) {
+                int before = chosen.size();
+                addComponent(currentProgram.getListing().getDefaultRootModule(), component.getAsString(),
+                    chosen);
+                if (chosen.size() == before) {
+                    unmatched.add("component " + component.getAsString());
+                }
+            }
         }
         DecompInterface engine = new DecompInterface();
         boolean opened = engine.openProgram(currentProgram);
