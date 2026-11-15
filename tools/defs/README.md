@@ -297,12 +297,15 @@ source = "example.org/some/repo"            # what the rust-regs banner names; d
 [gen.export.units.some_unit]
 base = 0x780000                             # where the unit's registers start; default 0
 constants = ["SOME_CONSTANT"]               # optional: constants of the unit to carry into rust-regs, by name
+rust_file = "some_block"                    # optional: write the unit's rust-regs to rust-regs/some_block.rs
 ```
 
 A unit is one block. `base` is the unit's start in the node's address space, and every offset is
 relative to it, so `base` plus the offset is the full offset. A register below `base` is an error. The whole
 unit is written; only constants are chosen, by name, because a unit's constants are mostly masks and values
-that are not registers. Naming a constant the unit lacks is an error.
+that are not registers. Naming a constant the unit lacks is an error. Units that name the same `rust_file`
+share one `regs!` invocation, in unit-name order: they need one `base`, and a register or constant name that
+two of them define is an error. The C header stays one per unit.
 
 | Profile | File | Contents |
 |---|---|---|

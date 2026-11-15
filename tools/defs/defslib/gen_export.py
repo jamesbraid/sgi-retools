@@ -15,6 +15,11 @@ offset in the unit's own address space). The settings are in defs-check.toml:
   [gen.export.units.some_unit]
   base = 0x780000
   constants = ["SOME_CONSTANT"]       # optional: constants of the unit to carry into rust-regs, by name
+  rust_file = "some_block"            # optional: write the unit's rust-regs into <gen>/rust-regs/some_block.rs
+
+Units that name the same `rust_file` share one `regs!` invocation, in unit-name order. They must have the same
+`base` and no register or constant name twice; either is an error that names both units. The C header is
+still one per unit.
 
 The first line of every file is an `@generated` banner naming the source repository (the `source` setting for
 rust-regs, else the project) and the commit the sources were read at. The commit is the one thing that changes without the content changing, so staleness
@@ -71,13 +76,28 @@ def _named_constants(m, names):
     return out
 
 
-def gen_rust_regs(m, base, source, commit, names=()):
-    """One `regs!` invocation for the whole unit. Grades, prose and the unit's other constants are not written:
-    they stay in the register map and its reference page."""
+def _merged(group):
+    """The (name, constant) and (name, register) lists of the units that share a rust-regs file. A name that
+    two units both define is an error: the consumer would get two definitions of one name."""
+    consts, regs, seen = [], [], {}
+    for m, names in group:
+        items = [(n, c, "const") for n, c in _named_constants(m, names)] + [(n, r, "reg") for n, r in m["registers"].items()]
+        for n, v, kind in items:
+            if n.upper() in seen:
+                raise GenError("rust-regs: %s is defined by both %s and %s" % (n.upper(), seen[n.upper()], m["unit"]))
+            seen[n.upper()] = m["unit"]
+            (consts if kind == "const" else regs).append((n, v))
+    return consts, regs
+
+
+def gen_rust_regs(group, base, source, commit):
+    """One `regs!` invocation for the units of `group`, a list of (model, constant names). Grades, prose and the
+    other constants are not written: they stay in the register map and its reference page."""
     out = [export_banner(source, commit, "//"), "regs! {", "    base 0x%x;" % base]
-    for n, c in _named_constants(m, names):
+    consts, regs = _merged(group)
+    for n, c in consts:
         out.append("    const %s 0x%x;" % (n.upper(), c["value"]))
-    for n, r in m["registers"].items():
+    for n, r in regs:
         off = r["offset"] - base
         parts = ["%s 0x%04x" % (n.upper(), off)]
         if r["width"] != 64:
@@ -134,6 +154,7 @@ def render_export(repo, models, commit):
             errors.append("gen.export.units is set but gen.export.profiles is empty")
         return files, errors
     lay = repo.layout
+    rust = {}       # rust-regs file name -> (base, [(model, constant names)])
     for name in sorted(units):
         if name not in models:
             errors.append("gen.export.units.%s: not a unit" % name)
@@ -141,13 +162,27 @@ def render_export(repo, models, commit):
         try:
             base = unit_base(models[name], units[name])
             if RUST_DIR in profiles:
-                files["%s/%s/%s.rs" % (lay.gen_root(), RUST_DIR, name)] = gen_rust_regs(
-                    models[name], base, cfg.get("source") or repo.project, commit, units[name].get("constants", ()))
+                fbase, group = rust.setdefault(rust_file(units, name), (base, []))
+                if fbase != base:
+                    raise GenError("rust-regs: %s has base 0x%x, but %s shares its file at base 0x%x" % (
+                        name, base, group[0][0]["unit"], fbase))
+                group.append((models[name], units[name].get("constants", ())))
             if C_DIR in profiles:
                 files["%s/%s/%s.h" % (lay.gen_root(), C_DIR, name)] = gen_c_regfields(models[name], base, repo.project, commit)
         except GenError as e:
             errors.append(str(e))
+    for fname, (base, group) in sorted(rust.items()):
+        try:
+            files["%s/%s/%s.rs" % (lay.gen_root(), RUST_DIR, fname)] = gen_rust_regs(
+                group, base, cfg.get("source") or repo.project, commit)
+        except GenError as e:
+            errors.append(str(e))
     return files, errors
+
+
+def rust_file(units, name):
+    """The rust-regs file name a unit's registers are written to."""
+    return units[name].get("rust_file") or name
 
 
 def export_dirs(repo):

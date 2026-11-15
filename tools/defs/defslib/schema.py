@@ -203,7 +203,7 @@ CHECK = Obj({
                 "export": Obj({
                     "profiles": Arr(Choice(*EXPORT_PROFILES)),
                     "source": Str(minlen=1),
-                    "units": Map(RE_UNIT.pattern, Obj({"base": UINT, "constants": Arr(Str(r"^[A-Za-z_][A-Za-z0-9_]*$"))}), "unit name"),
+                    "units": Map(RE_UNIT.pattern, Obj({"base": UINT, "constants": Arr(Str(r"^[A-Za-z_][A-Za-z0-9_]*$")), "rust_file": Str(RE_UNIT.pattern)}), "unit name"),
                 })}),
     "checks": Obj({"address_bits": Int(1), "max_reg_offset": UINT}),
     "banned": Obj({

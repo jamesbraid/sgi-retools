@@ -106,6 +106,35 @@ class ExportTest(RepoTest):
         self.assertIn("#define DATA_COUNT 16", text)
         self.assertNotIn("registerfields", text)     # the generated header must not name another header
 
+    PAD = ('unit = "pad"\nprefix = "PAD"\ntitle = "second fixture block"\ndoc = "A second block."\n'
+           'from = "fixture notes (docs/uart.md)"\npublic_from = ["fixture notes"]\n\n[registers.%s]\n'
+           'offset = 0x400\naccess = "r"\nwidth = 32\ngrade = "unknown"\n')
+
+    def merge(self, reg):
+        self.write("defs/pad.toml", self.PAD % reg)
+        self.enable('rust_file = "both"\n\n[gen.export.units.pad]\nbase = 0x10\nrust_file = "both"\n')
+        return gen.render(loader.load_repo(self.root))
+
+    def test_units_naming_one_rust_file_share_it(self):
+        files, errors = self.merge("extra")
+        self.assertEqual(errors, [])
+        both = files["gen/rust-regs/both.rs"]
+        self.assertEqual(both.count("regs! {"), 1)
+        self.assertIn("    CTL 0x0000 width 32", both)
+        self.assertIn("    EXTRA 0x03f0 width 32;", both)
+        self.assertNotIn("gen/rust-regs/uart.rs", files)
+        self.assertIn("gen/c-regfields/pad.h", files)       # the C header stays one per unit
+
+    def test_a_name_in_two_merged_units_is_an_error(self):
+        _files, errors = self.merge("ctl")
+        self.assertTrue(any("CTL is defined by both" in e for e in errors), errors)
+
+    def test_merged_units_need_one_base(self):
+        self.write("defs/pad.toml", self.PAD % "extra")
+        self.enable('rust_file = "both"\n\n[gen.export.units.pad]\nbase = 0x20\nrust_file = "both"\n')
+        _files, errors = gen.render(loader.load_repo(self.root))
+        self.assertTrue(any("shares its file at base" in e for e in errors), errors)
+
     def test_base_above_a_register_is_an_error(self):
         self.enable()
         self.edit("defs/check.toml", "base = 0x10", "base = 0x11")
