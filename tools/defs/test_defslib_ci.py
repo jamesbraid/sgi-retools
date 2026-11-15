@@ -10,6 +10,7 @@ from testkit import HERE, CurrentRepoTest, OldRepoTest, RepoTest, which  # noqa:
 
 CI = os.path.join(HERE, "ci-check")
 GEN = os.path.join(HERE, "defs-gen")
+DOCS_INDEX = os.path.join(os.path.dirname(HERE), "docs-index")
 CC = which("cc", "gcc")
 
 
@@ -53,6 +54,8 @@ class CurrentLayoutTest(CurrentRepoTest):
     def setUp(self):
         super().setUp()
         subprocess.run([sys.executable, GEN, "--root", self.root], check=True, capture_output=True)
+        # ci-check fails on a missing directory index, so generate the ones a real repo has.
+        subprocess.run([sys.executable, DOCS_INDEX, "--repo", self.root], check=True, capture_output=True)
 
     def test_clean_repo_passes(self):
         r = ci(self.root)
