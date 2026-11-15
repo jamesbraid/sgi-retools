@@ -382,6 +382,9 @@ def gen(chip, spec):
                         x['sites'], x['functions'], x['access_seen'], ', indexed' if x['idx'] == '1' else '') for x in group)
             reg = {'offset': base + off, 'access': access, 'width': width, 'grade': 'established', 'fields': {},
                    'tests': [], 'from': origin}
+            arr = cfg.get('register_arrays', {}).get(r['offset'])      # {"count": N, "stride": S}: a family at its base
+            if arr:
+                reg.update(count=arr['count'], stride=arr['stride'])
             if space:
                 sp = '%s_%s' % (chip, re.sub(r'[^a-z0-9]+', '_', space.lower()).strip('_'))
                 reg['space'] = sp

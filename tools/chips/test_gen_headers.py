@@ -159,6 +159,11 @@ class Resets(unittest.TestCase):
         reg = unit['registers']['get_slice']
         self.assertEqual((reg['reset'], reg['reset_grade'], reg['reset_from']), (5, 'established', 'a table'))
 
+    def test_register_arrays_gives_count_and_stride(self):
+        json.dump({'register_arrays': {'0x20': {'count': 15, 'stride': 0x20}}}, open('tools/configs/bedrock.json', 'w'))
+        reg = gen_headers.gen('bedrock', gen_headers.CHIPS['bedrock'])[0]['registers']['get_slice']
+        self.assertEqual((reg['count'], reg['stride']), (15, 0x20))
+
     def test_a_register_the_census_lacks_is_an_error(self):
         self.config({'no_such_register': {'value': 1, 'from': 'a table'}})
         with self.assertRaises(SystemExit):
