@@ -79,8 +79,9 @@ the table holds no type records for it. `tools/mdebug.py` decodes the same table
 Limits: no parameter types for a pointer to function, `long` is 4 bytes, bit fields that straddle their
 storage unit are dropped, and aggregates with the same tag are merged (the first definition with members wins).
 
-`--ghidra-export` reads ELF objects for big-endian MIPS and little-endian ARM (language `ARM:LE:32:v4`, for
-example the SN2 L1 controller firmware); an IA-64 SN2 PROM goes in with `--sn2-prom` below.
+`--ghidra-export` reads ELF objects for big-endian MIPS, little-endian ARM (language `ARM:LE:32:v4`, for
+example the SN2 L1 controller firmware) and IA-64 (an SN2 Linux kernel); an IA-64 SN2 PROM goes in with
+`--sn2-prom` below.
 
 ## SN2 PROM (IA-64) in Ghidra
 
@@ -103,8 +104,8 @@ SAL_B by its shape, makes each handler a function named `sal_<id>`, and sets r1 
 global pointer the table's descriptors carry. Full analysis of a 6 MiB image takes about 15 minutes.
 
 What the processor does not do, in short (its README has the detail): the register stack is
-approximated (no renaming or rotation; calls copy up to eight output registers into r32..), NaT bits
-are not tracked, floating-point registers hold 64 bits, and instructions the architecture leaves to
+modelled by moving values (frames, rotation and the RSE's cover, flushrs, loadrs and rfi; no backing store in
+memory), NaT bits are not tracked, floating-point registers hold 64 bits, and instructions the architecture leaves to
 the implementation are named p-code ops. Slot addresses
 are objdump's (bundle + 0, 6, 0xc), so objdump-based notes and Ghidra agree on every address.
 
