@@ -825,7 +825,8 @@ def check_rust(ctx):
                 if not contiguous and lit.lower().lstrip('0') not in hdr:
                     rep.fail(where, 'hex literal 0x%s is neither in %s nor a bit mask: %s'
                              % (lit, os.path.basename(header), line.strip()))
-            if re.search(r'\b\d{7,}\b', line):
+            # The banner's commit hash can be all digits; the banner check owns line 1.
+            if n > 1 and re.search(r'\b\d{7,}\b', line):
                 rep.fail(where, 'decimal literal of seven or more digits: %s' % line.strip())
 
 

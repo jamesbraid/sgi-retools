@@ -132,6 +132,13 @@ class DefsTest(unittest.TestCase):
         r = self.check()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_banner_commit_of_digits_is_clean(self):
+        self.assertEqual(self.generate('--commit', '746622210297').returncode, 0)
+        git(self.root, 'add', '.')
+        git(self.root, 'commit', '-q', '-m', 'generated')
+        r = self.check()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_leak_in_header_fails(self):
         self.committed_rust()
         self.edit(self.header, '#define UART_FIFO_DEPTH 16', '#define UART_FIFO_DEPTH 16 /* see stand/src/uart.c */')
