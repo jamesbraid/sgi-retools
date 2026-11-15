@@ -60,6 +60,12 @@ class PlanLanguage(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 ge.prepare(['--job', d, '--sal-runtime', '--decompile-all', obj])
 
+    def test_gzip_kernel_is_inflated_and_planned_by_its_machine(self):
+        import gzip
+        script = self.plan(gzip.compress(elf32(ge.EM_IA_64, '<')))
+        self.assertIn('-processor IA64:LE:64:default', script)
+        self.assertIn('/inflated/obj ', script)
+
     def test_mips_elf_is_unchanged(self):
         script = self.plan(elf32(ge.EM_MIPS, '>'))
         self.assertNotIn('-processor', script)

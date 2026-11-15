@@ -35,7 +35,8 @@ entry per function with the decompiler's C, warnings and signature. Decompiler
 output and BSim similarity are navigation, not evidence: a committed claim still
 rests on the disassembly.
 
-An ELF object (a linked library, a kernel or a relocatable driver object) takes its
+An ELF object (a linked library, a kernel or a relocatable driver object, or a gzip-compressed
+kernel such as vmlinuz, which is inflated first) takes its
 language and calling convention from its header; big-endian MIPS, little-endian
 ARM (read as ARM:LE:32:v4) and IA-64 ELF files are accepted. Names the loader ignores
 (.mdebug) are seeded before analysis.
@@ -72,6 +73,7 @@ JSON is the machine address (--load), `ghidra_address` is where Ghidra holds it,
 the C text uses Ghidra's addresses.
 """
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -238,6 +240,17 @@ def prepare(argv):
     if not obj.is_file():
         die('no object %s' % args.object)
     job = pathlib.Path(args.job).resolve()
+    original = obj
+    if not (args.flat or args.sn2_prom) and original.open('rb').read(2) == b'\x1f\x8b':
+        # A compressed kernel (vmlinuz) is a gzip stream holding the ELF file.
+        stage = job / 'inflated'
+        stage.mkdir()
+        obj = stage / re.sub(r'\.gz$', '', obj.name)
+        try:
+            with gzip.open(original) as src, open(obj, 'wb') as out:
+                out.write(src.read(1 << 30))
+        except (OSError, EOFError) as error:
+            die('cannot inflate %s: %s' % (args.object, error))
     exporting = bool(args.decompile_symbol or args.decompile_list or args.decompile_all or args.decompile_component)
     if not exporting and not args.bsim_db:
         die('name functions with --decompile-symbol, --decompile-component, --decompile-list or --decompile-all, or give --bsim-db')
@@ -315,7 +328,7 @@ def prepare(argv):
     seeds = [] if relocatable or flat or args.mdebug or not mips else mdebug_seeds(obj)
     (job / 'seeds.tsv').write_text(''.join('0x%016x\t0\t%s\n' % (a, n) for a, n in seeds))
 
-    sha = hashlib.sha256(obj.read_bytes()).hexdigest()
+    sha = hashlib.sha256(original.read_bytes()).hexdigest()
     image = obj
     if flat:
         stage = job / 'flat'
@@ -383,7 +396,7 @@ def prepare(argv):
     lines.append('echo $? > "$JOB/rc"')
     (job / 'ghidra.sh').write_text('\n'.join(lines) + '\n')
     (job / 'plan.json').write_text(json.dumps({
-        'object': str(obj), 'image_sha256': sha, 'language': language or 'default (from the ELF header)',
+        'object': str(original), 'image_sha256': sha, 'language': language or 'default (from the ELF header)',
         'compiler_spec_requested': spec, 'relocatable': relocatable, 'exporting': exporting,
         'bsim': bool(args.bsim_db), 'mdebug_seeds': len(seeds), 'object_path': args.object,
         'flat': flat}, indent=1) + '\n')
