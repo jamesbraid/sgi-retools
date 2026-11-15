@@ -130,8 +130,18 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
   `msr:0xd4`.
 - Floating-point registers hold 64 bits: the significand for the integer forms
   (`setf.sig`, `getf.sig`, `xma`, which compilers use for multiplication, so it decompiles
-  as `*`), a double for arithmetic. The 82-bit register format is not modelled;
-  `ldf.fill` and `stf.spill` move 8 of their 16 bytes.
+  as `*`), a double for arithmetic. The 82-bit register format (sign, 17-bit exponent,
+  64-bit significand; SDM vol 1 5.1.2, 1:85) is not modelled, because Ghidra has no float format
+  for it (its 10-byte format is x87's, with a 15-bit exponent) and the decompiler's float
+  operations need one. Firmware and kernels use the FP registers for integer multiply and
+  divide and for saving context, neither of which needs the exponent. `ldf.fill` and
+  `stf.spill` move 8 of their 16 bytes: the half with the sign and exponent is not kept.
+- NaT bits are not stored. `tnat` and `chk.s` ask the `nat` op, which the decompiler
+  keeps opaque, so both paths of a NaT test stay in the C. A speculative load is a plain
+  load (no fault is deferred, so the NaT it would set is clear), `st8.spill` and
+  `ld8.fill` move the value and leave `ar.unat` alone, and the register stack does not
+  collect NaT bits in `ar.rnat`. The emulator has no `nat`: emulated code stops at a NaT
+  test.
 - `br.ia` is a plain jump to an IA-32 entry (an opaque `br_ia` op, then a branch to b2), except where the
   `pal` context bit is set: there it is `r1 = pal_special_service(r5, r2, r3)` and execution continues at the
   next bundle. `SN2PromImport.java` sets the bit at every `br.ia` in the PAL_A components, where the PAL
