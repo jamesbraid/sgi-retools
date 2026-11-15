@@ -12,7 +12,7 @@ Options (after OBJECT, a path inside the workspace):
                                           @0xLO-0xHI is every function entered in that range
   --decompile-component GLOB              every function in the program-tree fragment named
                                           GLOB (repeatable). The SN2 import makes one per FIT
-                                          component: PAL_A_generic, PAL_A_7_31, PAL_B_7_79,
+                                          component: PAL_A_generic_7_31, PAL_A_7_31, PAL_B_7_79,
                                           SAL_A_5_04, SAL_B_5_04; read one image's names from
                                           the import log or its FIT labels
   --decompile-list FILE                   one name, glob, @address or @range per line
