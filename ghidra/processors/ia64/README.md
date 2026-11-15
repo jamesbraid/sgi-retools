@@ -49,8 +49,8 @@ Numbers print in Ghidra's hexadecimal.
   decoder (no arguments) or for Ghidra (`write`, then `check`). `write` also writes `emu.tsv`:
   short sequences that `EmuSynthetic.java` runs in Ghidra's emulator and `check-emu` compares
   with the SDM (signed `extr` with pos+len over 64, `ld` post-incrementing by its own target),
-  and two register stack programs run until a given address: nested calls with different
-  frames, and `cover`, `flushrs`, `loadrs` and `rfi`.
+  and three register stack programs run until a given address: nested calls with different
+  frames, a software-pipelined loop and `clrrrb`, and `cover`, `flushrs`, `loadrs` and `rfi`.
   It also lays out functions for `DecompileAt.java`: a status function that must not
   decompile as `void` (`check-dec`), a call that must pass one argument, not the gp beside it
   (`check-call`), and the register stack programs' functions (`frames`, `check-frames`).
@@ -141,8 +141,7 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
   does not keep, is a named p-code op and never a guess: `frcpa`, `frsqrta` and their
   parallel forms, `nat` (NaT bits are not tracked, so `tnat` and `chk.s` ask it), `tf_bit`,
   `fclass`, `probe_*`, `thash`, `ttag`, `tpa`, `tak`, TLB and cache maintenance,
-  `rotate_regs`, the multimedia instructions, and `unknown_insn` for an unassigned
-  encoding.
+  the multimedia instructions, and `unknown_insn` for an unassigned encoding.
 
 ## Register stack
 
@@ -154,7 +153,7 @@ below the current one live in an address space of their own, `rse`, from `bof`: 
 physical stacked registers, without the hardware's limit, so the model never needs to
 spill to the backing store.
 
-- `alloc` sets CFM, and records sol and sof - sol in flowing context.
+- `alloc` sets CFM, and records sol, sof - sol and sor in flowing context.
 - `br.call` saves CFM, `ar.ec` and psr.cpl in `ar.pfs`, moves the caller's locals to `rse`,
   moves its outputs down to r32.., where the callee reads them, gives the rest of r32..r39
   `noarg` (a register nothing writes, unaffected in the cspec, so a saved gp or other stale
@@ -168,6 +167,9 @@ spill to the backing store.
   covered frame back when `cr.ifs` is valid, and resumes at slot psr.ri of `cr.iip`.
 - `flushrs` sets `ar.bspstore` to `ar.bsp`. `loadrs` sets it to `ar.bsp` less RSC.loadrs.
   Writing `ar.bspstore` moves `ar.bsp` with it, keeping the dirty registers (table 6-4).
+- `br.ctop`, `br.cexit`, `br.wtop` and `br.wexit` rotate r32..r(32+sor-1), f32..f127 and
+  p16..p63 one place up when the hardware would, so p63 lands in p16, and count the rrb's
+  down (vol 1 4.5.1, 1:76). `clrrrb` and `clrrrb.pr` rotate on round to rrb 0.
 
 The decompiler sees the same p-code. Its copies into `rse` are dead because `rse` is not
 global memory and `bof` is a constant in every function: the cspec sets it, and the rrb's,
@@ -187,8 +189,11 @@ Limits:
 - `cover` keeps all 96 stacked registers whatever the frame's size, so `rfi` takes back
   what a matching `cover` saved. An `rfi` with a `cr.ifs` that software built takes back
   whatever is in `rse` below.
-- Rotating registers do not rotate: `br.ctop` and the other modulo-scheduled branches
-  call the `rotate_regs` op, which has no effect, and `clrrrb` is an op.
+- `br.call` does not un-rotate f32..f127 and p16..p63 for the callee. Only a callee that
+  reads rotating registers its caller had rotated could tell.
+- A software-pipelined loop reads rotating registers before any iteration writes them
+  (the stage predicates keep those reads from mattering), so the decompiler can show them
+  as parameters.
 
 A callee's argument count is not known, so a call passes every output register the caller's
 frame declares, and one set on only some paths (or in a loop) shows up as an argument

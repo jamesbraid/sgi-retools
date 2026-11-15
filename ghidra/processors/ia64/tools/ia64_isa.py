@@ -710,8 +710,8 @@ def build_b():
     bh('B', 'br.ia', {**b0, **C(x6=0x20, btype=1)}, ['b2'], 'r1 = pal_special_service(r5, r2, r3);',
        flags=('pal',))
     bh('B', 'br.ret', {**b0, **C(x6=0x21, btype=4)}, ['b2'], 'RET')
-    for x6, nm, sem in ((0x02, 'cover', 'COVER'), (0x04, 'clrrrb', 'clrrrb();'),
-                        (0x05, 'clrrrb.pr', 'clrrrb_pr();'), (0x08, 'rfi', 'RFI'),
+    for x6, nm, sem in ((0x02, 'cover', 'COVER'), (0x04, 'clrrrb', 'CLRRRB'),
+                        (0x05, 'clrrrb.pr', 'CLRRRB_PR'), (0x08, 'rfi', 'RFI'),
                         (0x0c, 'bsw.0', 'bsw_0();'), (0x0d, 'bsw.1', 'bsw_1();'),
                         (0x10, 'epc', 'epc();'), (0x18, 'vmsw.0', 'vmsw_0();'),
                         (0x19, 'vmsw.1', 'vmsw_1();')):

@@ -236,6 +236,10 @@ def mov_i_ar(ar, r2):                   # I26
     return slot(op(0), (27, 6, 0x2a), (20, 7, ar), (13, 7, r2))
 
 
+def mov_i_ar_imm(ar, imm):              # I27
+    return slot(op(0), (27, 6, 0x0a), (20, 7, ar), (13, 7, imm), (36, 1, imm < 0))
+
+
 def mov_m_ar(ar, r2):                   # M29
     return slot(op(1), (27, 6, 0x2a), (20, 7, ar), (13, 7, r2))
 
@@ -244,12 +248,26 @@ def mov_m_from_ar(r1, ar):              # M31
     return slot(op(1), (27, 6, 0x22), (6, 7, r1), (20, 7, ar))
 
 
+def mov_pr_rot(value):                  # I24: value is the predicate mask from p16
+    return slot(op(0), (33, 3, 2), (6, 27, value >> 16), (36, 1, value < 0))
+
+
+def ld8_inc(r1, r3, imm, qp=0):        # M3
+    return slot(op(5), (30, 6, 0x03), (6, 7, r1), (20, 7, r3), (13, 7, imm), (27, 1, imm >> 7), (36, 1, imm < 0),
+                qp=qp)
+
+
 def br_call(target, here):              # B3
     return slot(op(5), (12, 1, 1), *rel(target, here, (13, 20), (36, 1)))
 
 
+def br_loop(btype, target, here):       # B1: 7 ctop, 6 cexit, 3 wtop, 2 wexit
+    return slot(op(4), (6, 3, btype), (12, 1, 1), *rel(target, here, (13, 20), (36, 1)))
+
+
 BR_RET = slot(op(0), (27, 6, 0x21), (6, 3, 4), (12, 1, 1))
 COVER = slot(op(0), (27, 6, 0x02))
+CLRRRB = slot(op(0), (27, 6, 0x04))
 RFI = slot(op(0), (27, 6, 0x08))
 FLUSHRS = slot(op(0), (27, 4, 0xc))
 LOADRS = slot(op(0), (27, 4, 0xa))
@@ -314,10 +332,25 @@ def programs():
          [(0, 'mov.m r20=ar.bsp'), (6, 'nop.i 0x0'), (12, 'rfi;;')]),
         (bundle(0x01, NOP_M, NOP_I, NOP_I), [(0, 'nop.m 0x0'), (6, 'nop.i 0x0'), (12, 'nop.i 0x0;;')]),
     ]))
+    # A modulo-scheduled sum of three qwords at [r14]: stage 1 loads into r32,
+    # stage 2 adds what rotation has moved to r33 (sof 16, sol 16, sor 8), then clrrrb.
+    loop = a['loop']
+    body = loop + 0x20
+    out.append(('loop', [
+        (bundle(0x01, alloc(47, 16, 16, 8), mov_i_ar_imm(AR['lc'], 2), mov_i_ar_imm(AR['ec'], 2)),
+         [(0, 'alloc r47=ar.pfs,16,16,8'), (6, 'mov.i ar.lc=2'), (12, 'mov.i ar.ec=2;;')]),
+        (bundle(0x01, adds(8, 0), mov_pr_rot(0x10000), NOP_I),
+         [(0, 'mov r8=r0'), (6, 'mov pr.rot=0x10000'), (12, 'nop.i 0x0;;')]),
+        (bundle(0x11, ld8_inc(32, 14, 8, qp=16), add(8, 8, 33, qp=17), br_loop(7, body, body)),
+         [(0, '(p16) ld8 r32=[r14],8'), (6, '(p17) add r8=r8,r33'), (12, 'br.ctop.sptk.many %#x;;' % body)]),
+        (bundle(0x11, NOP_M, NOP_I, CLRRRB), [(0, 'nop.m 0x0'), (6, 'nop.i 0x0'), (12, 'clrrrb;;')]),
+        (bundle(0x11, NOP_M, mov_i_ar(AR['pfs'], 47), BR_RET),
+         [(0, 'nop.m 0x0'), (6, 'mov.i ar.pfs=r47'), (12, 'br.ret.sptk.many b0;;')]),
+    ]))
     return out
 
 
-PROG_SIZES = {'calls': 12, 'cover': 9}
+PROG_SIZES = {'calls': 12, 'cover': 9, 'loop': 5}
 
 
 def prog_addrs():
@@ -331,7 +364,7 @@ def prog_addrs():
 def prog_runs():
     """Emulator runs over programs(): (name, start, stop, regs, memory, expected)."""
     a = prog_addrs()
-    calls, cov = a['calls'], a['cover']
+    calls, cov, loop = a['calls'], a['cover'], a['loop']
     return [
         # f2 returns 12 + 3; f1 adds its preserved r35 (12) and r33 (7); main adds its r32.
         # main's outputs come back as f1's r32 and r33 when f1 returned (SDM vol 3 br.ret).
@@ -348,6 +381,14 @@ def prog_runs():
          {'r16': '1020', 'r17': '1020', 'r18': '1008', 'r20': '2018', 'cr.ifs': '8000000000000204',
           'r32': '11', 'r33': '22', 'cfm_sof': '4', 'cfm_sol': '4', 'ar.bsp': '1ff0',
           'psr': '20000000000'}),
+        # Four rotations: the loads (1, 2, 4) went to the registers r32 named at rrb 0, -1, -2.
+        ('loop rotates gr fr and pr', loop, loop + 0x30, {'r14': '100000', 'f32': '1234'},
+         {'100000': '1', '100008': '2', '100010': '4'},
+         {'r8': '7', 'r36': '1', 'r35': '2', 'r34': '4', 'f36': '1234', 'p16': '0', 'p20': '1',
+          'rrb_gr': '4', 'rrb_fr': '5c', 'rrb_pr': '2c', 'ar.lc': '0', 'ar.ec': '0'}),
+        ('clrrrb puts the rotation back', loop, loop + 0x40, {'r14': '100000', 'f32': '1234'},
+         {'100000': '1', '100008': '2', '100010': '4'},
+         {'r32': '1', 'r39': '2', 'r38': '4', 'f32': '1234', 'rrb_gr': '0', 'rrb_fr': '0', 'rrb_pr': '0'}),
     ]
 
 
@@ -426,14 +467,15 @@ def check_plain(path):
 
 
 def frame_functions():
-    """The functions of programs() a decompiler check reads: main, f1, f2."""
+    """The functions of programs() a decompiler check reads: main, f1, f2, the loop."""
     a = prog_addrs()
-    return [a['calls'], a['calls'] + 0x50, a['calls'] + 0xa0]
+    return [a['calls'], a['calls'] + 0x50, a['calls'] + 0xa0] + [a['loop']]
 
 
 def check_frames(d):
-    """Each call passes exactly the callee's arguments and each function returns r8."""
-    main, f1, f2 = (open(os.path.join(d, '%#x.c' % a)).read() for a in frame_functions())
+    """Each call passes exactly the callee's arguments, each function returns r8, and
+    the pipelined loop adds what it loaded."""
+    main, f1, f2, *more = (open(os.path.join(d, '%#x.c' % a)).read() for a in frame_functions())
     checks = [
         ('main passes f1 5 and 7', re.search(r'= \w+_%08x\(5,7\);' % frame_functions()[1], main)),
         ('main returns what f1 did plus its own r32', re.search(r'return \w+ \+ 0x11;', main)),
@@ -441,6 +483,7 @@ def check_frames(d):
         ('f1 passes f2 its sum and 3', re.search(r'\w+_%08x\(param_1 \+ param_2,3\);' % frame_functions()[2], f1)),
         ('f2 returns the sum of its two', re.search(r'return param_1 \+ param_2;', f2)),
     ]
+    checks.append(('the loop accumulates and returns', re.search(r'(\w+) = \1 \+ \w+;(?s:.*)return \1;', more[0])))
     bad = 0
     for name, ok in checks:
         if not ok:

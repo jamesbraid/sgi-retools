@@ -412,22 +412,16 @@ def rfi_sem():
 
 
 def loop_sem(kind, tgt):
-    rot = 'rotate_regs();'
-    if kind == 'CTOP' or kind == 'CEXIT':
-        taken, fall = ('goto %s;' % tgt, 'goto inst_next;')
-        if kind == 'CEXIT':
-            taken, fall = fall, taken
-        return ('if (ar.lc == 0) goto <epi>; ar.lc = ar.lc - 1; p63 = 1; %s %s '
-                '<epi> if (ar.ec <= 1) goto <last>; ar.ec = ar.ec - 1; p63 = 0; %s %s '
-                '<last> if (ar.ec == 0) goto <none>; ar.ec = ar.ec - 1; p63 = 0; %s %s '
-                '<none> %s' % (rot, taken, rot, taken, rot, fall, fall))
-    taken, fall = ('goto %s;' % tgt, 'goto inst_next;')
-    if kind == 'WEXIT':
-        taken, fall = fall, taken
-    return ('if (!$qp) goto <epi>; p63 = 0; %s %s '
-            '<epi> if (ar.ec <= 1) goto <last>; ar.ec = ar.ec - 1; p63 = 0; %s %s '
-            '<last> if (ar.ec == 0) goto <none>; ar.ec = ar.ec - 1; p63 = 0; %s %s '
-            '<none> %s' % (rot, taken, rot, taken, rot, fall, fall))
+    """The modulo-scheduled loop branches (SDM vol 3 br, 3:26-27): counters and p63
+    without branches, so one guard decides whether the registers rotate."""
+    if kind in ('CTOP', 'CEXIT'):
+        head = ('local go:1 = ar.lc != 0; local tk:1 = go || (ar.ec > 1); local rt:1 = go || (ar.ec != 0); '
+                'ar.ec = ar.ec - zext(!go && (ar.ec != 0)); ar.lc = ar.lc - zext(go); p63 = go;')
+    else:
+        head = ('local go:1 = $qp; local tk:1 = go || (ar.ec > 1); local rt:1 = go || (ar.ec != 0); '
+                'ar.ec = ar.ec - zext(!go && (ar.ec != 0)); p63 = 0;')
+    taken = 'tk' if kind in ('CTOP', 'WTOP') else '!tk'
+    return '%s if (!rt) goto <n>; build Rot; <n> if (%s) goto %s;' % (head, taken, tgt)
 
 
 TOKEN_RE = re.compile(r'([$@])([A-Za-z][A-Za-z0-9_.]*[A-Za-z0-9_])')
@@ -460,6 +454,7 @@ def constructor(e, layout, unit):
         tgt = '$tgt25c' if 'tgt25c' in e.ops else ('$tgt64' if 'tgt64' in e.ops else '[$b2]')
         sem = call_sem(tgt, '@b1')
     elif sem in ('CTOP', 'CEXIT', 'WTOP', 'WEXIT'):
+        kind = 'LOOP'
         sem = loop_sem(sem, '$tgt25c')
     elif sem == 'RET':
         sem = ret_sem('[$b2]')
@@ -467,6 +462,8 @@ def constructor(e, layout, unit):
         sem = cover_sem()
     elif sem == 'RFI':
         sem = rfi_sem()
+    elif sem in ('CLRRRB', 'CLRRRB_PR'):
+        kind, sem = sem, ''
 
     def repl(m):
         sigil, nm = m.group(1), m.group(2)
@@ -499,9 +496,10 @@ def constructor(e, layout, unit):
     if 'alloc' in e.flags:
         sof = fparts(layout, 13, 7)[0][0]
         sol = fparts(layout, 20, 7)[0][0]
-        action = (' [ sol = %s; globalset(inst_next, sol); soo = %s - %s; globalset(inst_next, soo); ]'
-                  % (sol, sof, sol))
-        cons += [sof, sol]
+        sor = fparts(layout, 27, 4)[0][0]
+        action = (' [ sol = %s; globalset(inst_next, sol); soo = %s - %s; globalset(inst_next, soo); '
+                  'sor = %s; globalset(inst_next, sor); ]' % (sol, sof, sol, sor))
+        cons += [sof, sol, sor]
     if e.excl:
         raise ValueError('exclusions are not generated')
     mnem = '"%s"' % e.name
@@ -519,6 +517,14 @@ def constructor(e, layout, unit):
     extra = ''
     if kind in ('CALL', 'CALLIND'):
         extra = ' & CallIn & CallOut'
+    elif kind == 'LOOP':
+        extra = ' & Rot'
+    elif kind == 'CLRRRB':
+        extra = ' & Unrot'
+        body += 'build Unrot;'
+    elif kind == 'CLRRRB_PR':
+        extra = ' & UnrotPr'
+        body += 'build UnrotPr;'
     return '%s_%s: %s %s is %s%s%s { %s }' % (unit, layout, mnem, display, patt, extra, action, body)
 
 
@@ -597,6 +603,58 @@ def call_frame_subs():
                         'ar.bsp = fsbsp; %s ar.ec = (ar.pfs >> 52) & 0x3f; }' % cfm_from('ar.pfs')])
 
 
+def rotate(names):
+    """Values move one register up, the last wraps to the first (SDM vol 1 4.5.1, 1:76)."""
+    if not names:
+        return []
+    out = ['local %s_t = %s;' % (names[0], names[-1])]
+    out += ['%s = %s;' % (names[i], names[i - 1]) for i in range(len(names) - 1, 0, -1)]
+    out.append('%s = %s_t;' % (names[0], names[0]))
+    return out
+
+
+# clrrrb's scratch area in rse, far above any frame bof reaches.
+UNROT = 0xf0000000
+
+
+def unrotate(names, rrb, size):
+    """Rotate up by rrb, back to rrb 0 (clrrrb): through a scratch area in rse, so
+    the decompiler drops the copies it does not need and folds them for a known rrb."""
+    n = len(names)
+    out = ['*[rse]:%d %#x:4 = %s;' % (size, UNROT + 8 * i, names[i]) for i in range(n)]
+    out.append('local %s_k:4 = %d - %s:4;' % (rrb, n, rrb))
+    out += ['%s = *[rse]:%d (%#x + ((%d + %s_k) %% %d) * 8);' % (names[i], size, UNROT, i, rrb, n)
+            for i in range(n)]
+    out.append('%s = 0;' % rrb)
+    return out
+
+
+GR_ROT = lambda n: ["r%d" % (32 + i) for i in range(n)]  # noqa: E731
+FR_ROT = ['f%d' % i for i in range(32, 128)]
+PR_ROT = ['p%d' % i for i in range(16, 64)]
+
+
+def rotation_subs():
+    """Rot: one rotation of the rotating registers, for br.ctop and the other
+    modulo-scheduled branches; the rrb's count down as in CFM. Unrot (clrrrb)
+    and UnrotPr (clrrrb.pr) rotate the rest of the way round, back to rrb 0."""
+    rot, unrot = [], []
+    # sor above 12 (more than 96 rotating) is an illegal alloc: rotate no general registers.
+    for sor in range(16):
+        n = 8 * sor if sor < 13 else 0
+        body = rotate(GR_ROT(n)) + rotate(FR_ROT) + rotate(PR_ROT)
+        if n:
+            body.append('rrb_gr = (rrb_gr + %d) %% %d;' % (n - 1, n))
+        body += ['rrb_fr = (rrb_fr + 95) % 96;', 'rrb_pr = (rrb_pr + 47) % 48;']
+        rot.append('Rot: is sor=%d { %s }' % (sor, ' '.join(body)))
+        body = unrotate(GR_ROT(n), 'rrb_gr', 8) if n else ['rrb_gr = 0;']
+        body += unrotate(FR_ROT, 'rrb_fr', 8) + unrotate(PR_ROT, 'rrb_pr', 1)
+        unrot.append('Unrot: is sor=%d { %s }' % (sor, ' '.join(body)))
+    add_sub('Rot', rot)
+    add_sub('Unrot', unrot)
+    add_sub('UnrotPr', ['UnrotPr: is sor { %s }' % ' '.join(unrotate(PR_ROT, 'rrb_pr', 1))])
+
+
 def main():
     cons = []
     for unit in 'MIFBX':
@@ -605,6 +663,7 @@ def main():
                 cons.append(constructor(e, layout, unit))
     cons += unknown_constructors()
     call_frame_subs()
+    rotation_subs()
     write(cons + dispatch())
 
 
@@ -660,6 +719,7 @@ def write(cons):
     out.append('  sol=(32,38)')
     out.append('  soo=(39,45)')
     out.append('  pal=(46,46) noflow')
+    out.append('  sor=(47,50)')
     out.append(';')
     for tok, fields in sorted(token_fields.items()):
         n = {'s0tok': 48, 's1tok': 48, 's2tok': 32, 'lxtok': 80}[tok]
