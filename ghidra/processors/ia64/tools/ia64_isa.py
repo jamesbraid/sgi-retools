@@ -878,6 +878,18 @@ build_b()
 build_f()
 build_x()
 
+
+def build_break_zero():
+    """An unpredicated `break 0` is the kernel's BUG(): it traps and never falls through.
+    More specific than the generic break, so SLEIGH picks it; a nonzero immediate (a system
+    call) and a predicated break still fall through."""
+    for e in [e for e in ENTRIES if e.name in ('break.i', 'break.m', 'break.b', 'break.f')]:
+        ENTRIES.append(Entry(e.unit, e.name, {**e.cons, (0, 6): 0, (6, 20): 0, (36, 1): 0}, e.ops, 0,
+                             'break_insn($immu21); goto inst_start;', ('nopred',)))
+
+
+build_break_zero()
+
 # Unit membership: A-unit entries run in both M and I slots.
 UNIT_ENTRIES = {
     'M': [e for e in ENTRIES if e.unit in ('M', 'A')],

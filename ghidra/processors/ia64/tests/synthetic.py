@@ -14,6 +14,8 @@
                              code decompiled without the pal flag
   synthetic.py predloop      the address of the predicate save and restore loop
   synthetic.py check-predloop C  check DecompileAt.java's C for it: it decompiles
+  synthetic.py breaks        the addresses of the two break functions (BUG and a system call)
+  synthetic.py check-breaks DIR  check DecompileAt.java's C for them: `break 0` ends its function
   synthetic.py frames        the addresses of the register stack programs' functions
   synthetic.py check-frames DIR  check DecompileAt.java's C for them
 
@@ -378,6 +380,29 @@ def predloop_function():
             bundle(0x11, NOP_M, NOP_I, loop), bundle(0x17, BR_RET, NOP_B, NOP_B)]
 
 
+def breaks_addr():
+    return predloop_addr() + 16 * 4
+
+
+def break_functions():
+    """Two functions that run `break.m IMM` and then `r8 = 0x77`: with IMM 0 (the kernel's BUG())
+    the code behind the break is not part of the function; with a system call's immediate it is."""
+    out = []
+    for imm in (0, 0x1234):
+        brk = slot(op(0), (6, 20, imm), (36, 1, imm >> 20))
+        mov8 = slot(op(8), (34, 2, 2), (6, 7, 8), (20, 7, 0), (13, 7, 0x77))
+        out += [bundle(0x00, brk, NOP_I, NOP_I), bundle(0x11, NOP_M, mov8, BR_RET)]
+    return out
+
+
+def check_breaks(d):
+    a = breaks_addr()
+    bug, sysc = (open(os.path.join(d, '%#x.c' % x)).read() for x in (a, a + 32))
+    ok = '0x77' not in bug and '0x77' in sysc and 'decompile failed' not in bug + sysc
+    print('%s: break 0 ends the function, a system call break does not' % ('ok' if ok else 'FAIL break'))
+    return 0 if ok else 1
+
+
 def prog_runs():
     """Emulator runs over programs(): (name, start, stop, regs, memory, expected)."""
     a = prog_addrs()
@@ -412,7 +437,8 @@ def prog_runs():
 def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
-            + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function()))
+            + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function())
+            + b''.join(break_functions()))
 
 
 def expected():
@@ -591,6 +617,11 @@ def main():
         return 0
     if sys.argv[1] == 'check-predloop':
         return check_predloop(sys.argv[2])
+    if sys.argv[1] == 'breaks':
+        print('%#x %#x' % (breaks_addr(), breaks_addr() + 32))
+        return 0
+    if sys.argv[1] == 'check-breaks':
+        return check_breaks(sys.argv[2])
     if sys.argv[1] == 'frames':
         print(' '.join('%#x' % a for a in frame_functions()))
         return 0
