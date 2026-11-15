@@ -181,8 +181,9 @@ class IngestTest(unittest.TestCase):
         rc, out, _, calls = self.run_tool("8", "--push")
         self.assertEqual(rc, 0, out)
         self.assertIn("Already on origin/main (every commit has an equivalent patch", out)
-        self.assertIn("Matching forge commit: " + git(self.ws, "rev-parse", "HEAD"), out)
+        self.assertIn("Matching origin/main commit: " + git(self.ws, "rev-parse", "HEAD"), out)
         self.assertNotIn("Forge commits:", out)
+        self.assertNotIn("forge.git/", out.split("On GitHub")[-1])
         self.assertEqual(calls, [])
         self.assertEqual(self.forge_main(), git(self.ws, "rev-parse", "HEAD"))
 
@@ -205,11 +206,31 @@ class IngestTest(unittest.TestCase):
         rc, out, _, calls = self.run_tool("9", "--push")
         self.assertEqual(rc, 0, out)
         self.assertIn("identical there, as after a squash merge", out)
-        self.assertIn("Matching forge commit: " + squash, out)
+        self.assertIn("Matching origin/main commit: " + squash, out)
         self.assertIn("Close PR #9 as already merged", out)
         self.assertNotIn("Forge commits:", out)
+        self.assertNotIn("forge.git/", out.split("On GitHub")[-1])
         self.assertEqual(calls, [])
         self.assertEqual(self.forge_main(), squash)
+
+    def test_advice_links_the_github_mirror_never_the_forge(self):
+        c = self.contributor()
+        git(c, "checkout", "-q", "-B", "pr10", "origin/main")
+        self.commit(c, "m.txt", "m\n", "add m")
+        git(c, "push", "-q", self.github, "pr10:refs/pull/10/head")
+        git(self.ws, "fetch", "-q", self.github, "refs/pull/10/head")
+        git(self.ws, "cherry-pick", "FETCH_HEAD")
+        git(self.ws, "commit", "-q", "--amend", "-m", "add m (forge copy)")
+        git(self.ws, "push", "-q", "origin", "HEAD:main")
+        sha = git(self.ws, "rev-parse", "HEAD")
+        old = ip.mirror_commit_base
+        ip.mirror_commit_base = lambda mirror: "https://github.com/o/r/commit/"
+        self.addCleanup(setattr, ip, "mirror_commit_base", old)
+        rc, out, _, _ = self.run_tool("10")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("linking https://github.com/o/r/commit/" + sha, out)
+        self.assertIn("appears on the mirror once the publication run has pushed", out)
+        self.assertNotIn(self.forge, out.split("On GitHub")[-1])
 
     def test_dirty_tree_is_a_tool_error(self):
         self.make_pr(7)
@@ -280,10 +301,10 @@ class UrlTest(unittest.TestCase):
         self.assertEqual(ip.https_github("https://github.com/o/r"), "https://github.com/o/r.git")
         self.assertEqual(ip.https_github("file:///tmp/x.git"), "file:///tmp/x.git")
 
-    def test_forge_commit_base(self):
-        self.assertEqual(ip.forge_commit_base("ssh://git@forge.example.test/team/repo.git"),
-                         "https://forge.example.test/team/repo/commit/")
-        self.assertIsNone(ip.forge_commit_base("file:///tmp/forge.git"))
+    def test_mirror_commit_base(self):
+        self.assertEqual(ip.mirror_commit_base("https://github.com/o/r.git"), "https://github.com/o/r/commit/")
+        self.assertEqual(ip.mirror_commit_base("git@github.com:o/r.git"), "https://github.com/o/r/commit/")
+        self.assertIsNone(ip.mirror_commit_base("file:///tmp/github.git"))
 
 
 if __name__ == "__main__":

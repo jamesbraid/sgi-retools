@@ -74,12 +74,13 @@ def github_url(ws, explicit):
     raise ToolError('no GitHub mirror: give --github URL or add a remote named github or gh')
 
 
-def forge_commit_base(origin):
-    """https://HOST/OWNER/REPO/commit/ for the origin URL, or None when it has no recognisable shape."""
-    m = re.fullmatch(r'(?:ssh://[^@/]+@|[^@/:]+@|https?://)([^/:]+)(?::\d+)?[/:](.+?)(?:\.git)?/?', origin)
-    if not m or '/' not in m.group(2):
-        return None
-    return 'https://%s/%s/commit/' % (m.group(1), m.group(2))
+def mirror_commit_base(mirror):
+    """https://github.com/OWNER/REPO/commit/ for the mirror URL, or None when it is not a GitHub URL.
+
+    GitHub-facing advice links only here: the forge host is private and must not appear in a public comment.
+    """
+    m = re.fullmatch(r'https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?', https_github(mirror))
+    return 'https://github.com/%s/%s/commit/' % m.groups() if m else None
 
 
 def commit_list(ws, rng):
@@ -198,17 +199,21 @@ def find_equivalent(ws, main, head, rows):
     return None
 
 
-def report_present(ws, origin, args, head, found):
+def report_present(mirror, args, found):
     how, sha = found
     print('Already on origin/main (%s); nothing to ingest, nothing pushed.' % how)
-    base = forge_commit_base(origin)
     if sha:
-        print('Matching forge commit: %s' % (base + sha if base else sha))
+        print('Matching origin/main commit: %s' % sha)
     else:
-        print('No single forge commit could be identified by subject or author.')
+        print('No single origin/main commit could be identified by subject or author.')
     if not args.github_main:
+        base = mirror_commit_base(mirror)
         print('\nOn GitHub (nothing is posted for you):')
-        print('  Close PR #%d as already merged%s.' % (args.number, ', pointing at the forge commit above' if sha else ''))
+        if sha:
+            print('  Close PR #%d as already merged, linking %s . That commit appears on the mirror once '
+                  'the publication run has pushed.' % (args.number, (base + sha) if base else sha))
+        else:
+            print('  Close PR #%d as already merged.' % args.number)
     return 0
 
 
@@ -235,7 +240,7 @@ def ingest(ws, args):
     show_commits(rows)
     found = already_present(ws, main, head, rows)
     if found:
-        return report_present(ws, origin, args, head, found)
+        return report_present(mirror, args, found)
 
     fast_forward = git('merge-base', main, head, cwd=ws) == main
     rebased = not fast_forward
@@ -256,7 +261,7 @@ def ingest(ws, args):
         if not kept:
             git('checkout', '-q', main, cwd=ws)
             git('branch', '-q', '-D', branch, cwd=ws)
-            return report_present(ws, origin, args, head, ('the rebase left no commits', find_equivalent(ws, main, head, rows)))
+            return report_present(mirror, args, ('the rebase left no commits', find_equivalent(ws, main, head, rows)))
         print('The commits now have new hashes; GitHub will not see them as merged and will not close the PR.')
         show_commits(kept)
 
@@ -298,13 +303,15 @@ def ingest(ws, args):
             print('  Nothing. The PR head %s is now in main by the same hash; GitHub marks the PR merged '
                   'once the publication run pushes.' % head[:12])
     else:
-        base = forge_commit_base(origin)
+        base = mirror_commit_base(mirror)
         links = ['  ' + (base + h if base else h) for h in new]
         if args.github_main:
             print('  The mirror\'s main holds the original hashes, which origin/main will not have. The '
-                  'publication run will not fast-forward it: reconcile the mirror deliberately. Forge commits:')
+                  'publication run will not fast-forward it: reconcile the mirror deliberately. The rebased commits, which '
+                  'appear on the mirror once the publication run has pushed:')
         else:
-            print('  Close PR #%d with a note that it was ingested with new hashes. Forge commits:' % args.number)
+            print('  Close PR #%d with a note that it was ingested with new hashes, linking the commits below. They appear on the mirror once the '
+                  'publication run has pushed:' % args.number)
         print('\n'.join(links))
     return 0
 

@@ -49,14 +49,15 @@ mirror (`--github URL`, else the remote named `github` or `gh`), lists the commi
 fast-forward onto `origin/main`. If not it rebases them with authorship kept; the hashes change, so GitHub
 will not close the PR by itself. `--github-main` takes the commits on the mirror's `main` that `origin/main`
 lacks, for a change already merged there. A change that is already on `origin/main` under other hashes (an
-equivalent patch, or a squash merge) is reported with the matching forge commit, and nothing is ingested.
+equivalent patch, or a squash merge) is reported with the matching `origin/main` commit, and nothing is ingested.
 
 It then runs four checks and prints PASS or FAIL for each: every submodule pin the change adds can be fetched
 from its `.gitmodules` URL, `leakcheck.py` over the new commits, `tools/setup-clone.sh` (`--root` is passed
 on) and `ci-check`. The default is a dry run that leaves the result on the local branch `ingest/pr-N`.
 `--push` fast-forwards `origin` `main` (never a force) and only when every check passed; `--allow-failing`
 pushes anyway and names the failures. The last lines say what to do on GitHub: nothing when the PR head is in
-`main` by the same hash, otherwise close the PR with a link to the forge commits. The tool never posts to
+`main` by the same hash, otherwise close the PR with a link to the commits on the GitHub mirror (they appear there once the
+publication run has pushed). Advice never links the forge, whose host is private. The tool never posts to
 GitHub. Its tests are `python3 -m unittest test_ingest_pr` in `tools/`.
 
 ## For agents without containers
