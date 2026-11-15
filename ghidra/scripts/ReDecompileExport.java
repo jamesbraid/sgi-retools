@@ -480,7 +480,7 @@ public class ReDecompileExport extends GhidraScript {
                 String[] bounds = range.getAsString().split("-");
                 Address lo = toAddr(Long.parseUnsignedLong(bounds[0].substring(2), 16));
                 Address hi = toAddr(Long.parseUnsignedLong(bounds[1].substring(2), 16));
-                int before = chosen.size();
+                boolean any = false;
                 FunctionIterator in = currentProgram.getFunctionManager().getFunctions(lo, true);
                 while (in.hasNext()) {
                     Function function = in.next();
@@ -488,18 +488,20 @@ public class ReDecompileExport extends GhidraScript {
                         break;
                     }
                     chosen.add(function);
+                    any = true;
                 }
-                if (chosen.size() == before) {
+                if (!any) {
                     unmatched.add("@" + range.getAsString());
                 }
             }
         }
         if (request.has("components")) {
             for (JsonElement component : request.getAsJsonArray("components")) {
-                int before = chosen.size();
+                Set<Function> found = new LinkedHashSet<>();
                 addComponent(currentProgram.getListing().getDefaultRootModule(), component.getAsString(),
-                    chosen);
-                if (chosen.size() == before) {
+                    found);
+                chosen.addAll(found);
+                if (found.isEmpty()) {
                     unmatched.add("component " + component.getAsString());
                 }
             }
