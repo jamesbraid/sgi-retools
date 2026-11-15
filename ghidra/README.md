@@ -18,7 +18,7 @@ run its components.
 | [processors/kona-ge/](processors/kona-ge/), [processors/kona-ged/](processors/kona-ged/) | geometry-engine microcode processor and its decoder variant | kona `ghidra/README.md` and `docs/tooling.md` |
 | [processors/odsy-buzz/](processors/odsy-buzz/) | BUZZ transform-microcode processor and its import script | odsy `ghidra/README.md` |
 | [processors/ia64/](processors/ia64/) | IA-64 (Itanium) processor for the SGI Altix and Prism system firmware | [processors/ia64/README.md](processors/ia64/README.md) |
-| [import/sn2-prom/](import/sn2-prom/) | layout script for an SN2 flash PROM: FIT, PAL and SAL entries, SAL dispatch table, gp | `tools/README-analysis.md` |
+| [import/sn2-prom/](import/sn2-prom/) | layout script for an SN2 flash PROM: FIT, PAL and SAL entries, SAL dispatch table, gp, and with `--sal-runtime` the SAL runtime ELF | [import/sn2-prom/README.md](import/sn2-prom/README.md); `tools/README-analysis.md` for the export options |
 | [import/kona-arm/](import/kona-arm/), [import/mmsc-aout/](import/mmsc-aout/) | firmware loaders | kona `ghidra/README.md` |
 | [types/kona-types/](types/kona-types/) | data-type scripts and tables | kona `ghidra/README.md` |
 

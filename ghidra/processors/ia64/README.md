@@ -55,7 +55,14 @@ Numbers print in Ghidra's hexadecimal.
   decompile as `void` (`check-dec`), a call that must pass one argument, not the gp beside it
   (`check-call`), and the register stack programs' functions (`frames`, `check-frames`).
   A `br.ia` function checks the flagged form (`pal=ADDRESS` argument to `DecompileAt.java`; `check-pal`) and
-  the plain one (`check-plain`).
+  the plain one (`check-plain`). A loop that saves the predicates with `mov r=pr` and restores them with
+  `mov pr=r,mask` must decompile (`predloop`, `check-predloop`). Two functions run `break.m 0` and
+  `break.m` with a system call's immediate, then set r8: only the second keeps the code behind it
+  (`breaks`, `check-breaks`). `DecompileAt.java` with `sigs` first runs `IA64Signatures.java`: a store function
+  and its caller must come out `void`, a function that sets r8 must not (`voids`, `check-voids`).
+- `tests/DecompileAt.java`: makes a function at each address it is given in a flat image and writes its C and
+  listing. The synthetic tests and a quick look at one function of a PROM use it; for a whole ELF or PROM
+  go through `tools/ghidra-export.py` (`tools/README-analysis.md`).
 - `tests/test_generated.py`: the generator runs and writes a file with the expected landmarks.
 
 ## Running
@@ -107,7 +114,9 @@ python3 retools/ghidra/processors/ia64/tests/synthetic.py check-predloop \
 Measured with binutils 2.44 on `shub1snprom.bin` (SAL 5.04, sha256 `51ccf9ad...3a34617`):
 over PAL_B 7.79, 5.73 and 2.25, the three processor-specific PAL_A images, SAL_A, SAL_B
 and the generic PAL_A, objdump decodes 731,511 slots and Ghidra gives the same mnemonic,
-completers, operands, predicate and stop for all of them.
+completers, operands, predicate and stop for all of them. The same check on `shub2snprom.bin` of that
+release (914,540 slots) and on the older SAL 4.43 `snprom.bin` (694,790) also finds 0 mismatches; the
+p-code changes do not touch the decoded text.
 
 objdump cannot decode 105,508 slots there (it prints `data8`). Most are data between
 code, and a reserved template makes all three slots of its bundle undecodable. Ghidra shows
@@ -127,6 +136,9 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
 - Compares and tests write their predicate pair by compare type: normal, `unc` (both
   cleared when the qualifying predicate is false), `and`, `or` and `or.andcm`.
   `mov pr=r,mask`, `mov r=pr` and `mov pr.rot` act on the 63 single predicates.
+- `mov r=pr` builds the 64-bit value as one OR expression of the predicates, not as 63 writes to the
+  register: a loop that saved the predicates with it and restored them with `mov pr=r,mask` (the PAL's FIT
+  walk) made the decompiler stop with "Unable to find unique hash for varnode".
 - Loads and stores, with post-increment by register or immediate. Acquire and release
   forms are plain accesses; the module keeps their order only for uncached addresses
   (bit 63 set, declared volatile in the pspec), which is where SAL's device registers are.
@@ -134,6 +146,9 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
 - Branches: conditional, indirect, `br.call` (return address in b1 is the next bundle),
   `br.ret`, `br.cloop` on ar.lc, and the modulo-scheduled `br.ctop`, `br.cexit`,
   `br.wtop`, `br.wexit` on ar.lc, ar.ec and p63.
+- `break` with an immediate of 0 and no qualifying predicate (Linux's `BUG()`) never falls through: its
+  p-code is a jump to itself, so flow, and the function, end there. A nonzero immediate (a system call) and a
+  predicated `break` fall through as before.
 - Application, control and branch registers are named registers (`ar.lc`, `cr.lid`,
   `b0`). `msr`, `cpuid`, `pmc`, `pmd`, `rr`, `dbr`, `ibr`, `pkr` and `dahr` are address
   spaces indexed by the general register, so `mov r9=msr[r10]` with r10 known shows as
@@ -218,7 +233,16 @@ Limits:
 A call's arguments are the callee's parameters when the callee's signature is known.
 `ghidra/scripts/IA64Signatures.java` sets one from each function's own body, callees first;
 `tools/ghidra-export.py` runs it for IA-64. Without it, every output register the caller's
-frame declares counts, and one set on only some paths shows up as an argument (`in_r40`).
+frame declares counts, and one set on only some paths shows up as an argument (`in_r40`). It also gives a
+function that never writes r8, and calls and jumps only to functions it has made void, a `void` return.
+Any other function keeps its return open, because a caller that returns through complementary predicated
+writes still needs a possible r8 from the call.
+
+Call limits. A decompiled caller does not see what a callee does to the callee's own input registers: the
+copy of r32.. back after the call restores the caller's values, although emulation, where the callee's
+`br.ret` restores the frame, does show them. An indirect call, a call to a function with no committed
+signature and the arguments a varargs callee takes beyond its fixed ones are not known, so a call can show
+arguments the callee never reads or miss ones it does.
 
 Banked registers: r16..r31 are one set here, so code that runs between `bsw.0` and `bsw.1` (PAL, interruption
 handlers) reads the other bank's values as `in_r*` or `extraout_r*`. `psr.bn` is not tracked in context.
@@ -227,11 +251,32 @@ Limits that matter when reading PAL and SAL. A PAL procedure called with the sta
 (index in r28, arguments r29 to r31, status in r8 to r11) is an indirect call with no arguments: the
 index is visible only in the r28 write before it, and the status branches after it test whatever the decompiler
 last saw in r8. No convention for it is modelled. A routine entered by a branch rather than `br.call` has no
-caller's frame, so which of r32..r127 it reads before writing (the FIT walk at the generic PAL_A) shows as
-unwritten locals (`in_r*`).
+caller's frame, so which of r32..r127 it reads before writing (the FIT walk at the generic PAL_A,
+`pale_reset_fit_walk`, which decompiles in full with the `pal_special_service` call and the test of its
+result) shows as unwritten locals (`in_r*`).
 
 r8 is also listed as a ninth input register. The decompiler decides what a function returns
 before it can prove that two predicated writes (`(p6) mov r8=0` / `(p7) mov r8=-33`) are
 complementary, and rejects r8 because the path where neither runs leaves the function's input
 r8; an input that could be a parameter is accepted. Without this such a function came out
 `void`. The cost is a function that reads r8 before writing it can get a ninth parameter.
+
+Not imported. An EFI driver in a PROM (`drv_fpswa.efi` in SAL 5.04) is a PE32+ file for IA-64, and
+`ghidra-export.py` reads ELF files only, so such a driver can be header-parsed but not read in Ghidra. The
+SAL runtime and two more gzip components of an SN2 PROM are IA-64 ELF files; the import maps the runtime
+(`ghidra/import/sn2-prom/README.md`).
+
+## Checks
+
+Each runs in the Ghidra image through `retools/tools/re-run --ghidra --` unless it is marked Python.
+
+| Check | Command (from the workspace, retools as `retools/`) | Passes when |
+|---|---|---|
+| Table and decoder (Python) | `python3 retools/ghidra/processors/ia64/tests/synthetic.py` and `tests/test_generated.py` | every hand-encoded slot gives its expected text; the generator writes the landmarks (CI runs both) |
+| Agreement with objdump | `run-ghidra.sh .cache/ia64 IMAGE BASE`, then `python3 retools/ghidra/processors/ia64/tests/check.py .cache/ia64/slots.tsv IMAGE` | the summary line reads `mismatches: 0` (see below) |
+| Ghidra on the synthetic image | `synthetic.py write DIR`, `run-ghidra.sh DIR DIR/synthetic.bin 0x80000`, then `synthetic.py check DIR/slots.tsv` | every slot in the listing is as expected |
+| Emulator | `run-ghidra.sh ... EmuSynthetic.java DIR/emu.tsv DIR/emu.out`, then `synthetic.py check-emu DIR/emu.out` | each short sequence and register stack program ends as the SDM says |
+| Decompiler | `run-ghidra.sh ... DecompileAt.java DIR ADDRESS...`, then `synthetic.py check-dec`, `check-call`, `check-frames`, `check-pal`, `check-plain`, `check-predloop`, `check-breaks` or `check-voids` | the C is as each check describes; `synthetic.py` with a function name prints the addresses (see Running) |
+| SN2 PROM import | `ghidra/import/sn2-prom/tests/run-ghidra.sh IMAGE DIR` and `check.py DIR/symbols.tsv IMAGE` | `0 failures` (`ghidra/import/sn2-prom/README.md`) |
+
+A check that needs an image skips, with a message, where the workspace has no PROM root.

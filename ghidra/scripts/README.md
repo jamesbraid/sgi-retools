@@ -147,8 +147,9 @@ filtered imports.
 `ReBSimAdd`, `ReDecompileExport`, `ReMdebugImport`, `ReMipsGp` and `ReObjectSymbols` are the
 scripts `tools/re-run --ghidra-export` drives: global-pointer seeding, `.mdebug` names, decompile
 export as JSON and function-similarity records. For an IA-64 ELF, `IA64Elf` seeds r1 from
-`__gp` and keeps Ghidra from guessing that `printk` never returns (Linux's BUG() is a call
-followed by `break`), and `IA64Signatures` gives each function the parameters and return its
-own body shows, callees first, so a call passes exactly its callee's arguments. The Ghidra
+`__gp` (the processor ends a function at Linux's `BUG()`, an unpredicated `break 0`, so Ghidra's
+own discovery of functions that do not return stays on), and `IA64Signatures` gives each function the
+parameters and return its own body shows, callees first, so a call passes exactly its callee's
+arguments, and a `void` return to a function that never writes r8. The Ghidra
 image carries them under
 `/opt/re-scripts`; `tools/README-analysis.md` describes their output.

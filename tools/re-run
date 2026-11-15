@@ -27,16 +27,19 @@
 # toolchain: run Python tools without --ghidra. The image also carries the
 # Ghidra scripts under /opt/re-scripts, built from retools/ghidra/scripts/.
 #
-# --ghidra-export OBJECT runs Ghidra over OBJECT, an ELF file in the
-# workspace, relative to its top (a linked library, a kernel, a relocatable driver object, or with
-# --sn2-prom an SGI Altix or Prism flash PROM), and
-# writes decompiled C per function as JSON under .cache/ghidra-export/, naming
-# the file on stdout. OPTIONS: --decompile-symbol NAME|GLOB|@0xADDR (repeat),
-# --decompile-list FILE, --decompile-component GLOB (a FIT component of an SN2 PROM), --decompile-all, --decompile-timeout S, --types
-# SPEC.json, --mdebug (import the object's .mdebug table), --bsim-db NAME --bsim-label LABEL (similarity database under
-# .cache/ghidra-bsim), --timeout S, --cpus N. It builds both images. Decompiler
-# and BSim output is
-# navigation, not evidence. retools/tools/ghidra-export.py has the full list.
+# --ghidra-export OBJECT runs Ghidra over OBJECT, a file in the workspace, relative to its top: an ELF
+# object for big-endian MIPS, little-endian ARM or IA-64 (a linked library, a kernel, a gzip-compressed
+# kernel such as vmlinuz, a relocatable driver object), or a flat image with --flat or --sn2-prom (an SGI
+# Altix or Prism flash PROM). It writes decompiled C per function as JSON under .cache/ghidra-export/,
+# naming the file on stdout. OPTIONS: --decompile-symbol NAME|GLOB|@0xADDR|@0xLO-0xHI (repeat),
+# --decompile-list FILE, --decompile-component GLOB (a FIT component of an SN2 PROM), --decompile-all,
+# --decompile-timeout S, --types SPEC.json, --mdebug (import the object's .mdebug table),
+# --bsim-db NAME --bsim-label LABEL --bsim-dir DIR --bsim-min S (similarity database, default
+# .cache/ghidra-bsim), --flat --load ADDR --header N --processor LANG --window ADDR (a raw image),
+# --sn2-prom, --sal-runtime (with --sn2-prom, also map the SAL runtime ELF), --timeout S, --cpus N,
+# --heap SIZE (Ghidra's Java heap; sized from the image for a flat one), --no-analysis (skip auto-analysis).
+# It builds both images. Decompiler and BSim output is navigation, not evidence.
+# retools/tools/ghidra-export.py has the full list.
 #
 # --syscalls KERNEL... runs retools' syscall_table.py: the system call table of each linked
 # kernel as TSV on stdout. --syssgi KERNEL... runs syssgi_selectors.py: the syssgi()

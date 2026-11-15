@@ -79,9 +79,39 @@ the table holds no type records for it. `tools/mdebug.py` decodes the same table
 Limits: no parameter types for a pointer to function, `long` is 4 bytes, bit fields that straddle their
 storage unit are dropped, and aggregates with the same tag are merged (the first definition with members wins).
 
-`--ghidra-export` reads ELF objects for big-endian MIPS, little-endian ARM (language `ARM:LE:32:v4`, for
-example the SN2 L1 controller firmware) and IA-64 (an SN2 Linux kernel); an IA-64 SN2 PROM goes in with
-`--sn2-prom` below.
+## Decompile export
+
+    tools/re-run --ghidra-export OBJECT OPTIONS
+
+Ghidra analyses OBJECT and writes decompiled C per function as JSON under `.cache/ghidra-export/` (the
+file is named on stdout; decompiler output is navigation, not evidence). It reads ELF objects for
+big-endian MIPS, little-endian ARM (language `ARM:LE:32:v4`, for example the SN2 L1 controller firmware) and
+IA-64 (an SN2 Linux kernel, linked or compressed as `vmlinuz`, which is inflated first); the language and
+calling convention come from the ELF header. A PE32+ file is not read. A flat image, such as a PROM, has no
+header, so say what it is with `--flat` or `--sn2-prom`. `python3 retools/tools/ghidra-export.py prepare --help`
+lists the options, and the top of `tools/ghidra-export.py` explains each.
+
+| Option | What it does |
+|---|---|
+| `--decompile-symbol NAME\|GLOB\|@0xADDR\|@0xLO-0xHI` | one function by name, those matching a glob, the function at an address, or every function entered in an address range; repeatable. For a flat image the address is the machine address (`--load`) |
+| `--decompile-component GLOB` | every function in the program-tree fragment named GLOB; an SN2 PROM has one per FIT component (`SAL_B_5_04`, `PAL_A_generic_7_31`, ...) |
+| `--decompile-list FILE` | one name, glob, `@address` or `@range` per line |
+| `--decompile-all` | every function Ghidra found |
+| `--decompile-timeout SECONDS` | per function (60) |
+| `--types SPEC.json` | structure types to apply first (`ghidra/README.md`) |
+| `--mdebug` | import the `.mdebug` table of a 32-bit MIPSpro object (next section) |
+| `--bsim-db NAME --bsim-label LABEL`, `--bsim-dir DIR`, `--bsim-min S` | match against a BSim database, then add under the label (default directory `.cache/ghidra-bsim`, lowest similarity 0.7) |
+| `--flat`, `--load ADDR`, `--header N`, `--processor LANG`, `--window ADDR` | read OBJECT as raw bytes: the address of the first byte after N header bytes, the Ghidra language (default MIPS 64-bit) and, for a 64-bit MIPS language, the upper address bits of the window it runs in |
+| `--sn2-prom` | OBJECT is an SN2 PROM: IA-64, loaded to end at 4 GiB, laid out by `SN2PromImport.java` (below) |
+| `--sal-runtime` | with `--sn2-prom`, also map the SAL runtime ELF (below) |
+| `--timeout SECONDS`, `--cpus N` | analysis limits (3600, 2) |
+| `--heap SIZE` | the Java heap of Ghidra, such as `14G`. Default 2G for an ELF object; for a flat image 2G plus 1G per MiB of it, at most 14G (the 12 MiB SHub 2 PROM runs out at 2G). The container's memory cap is `RE_GHIDRA_MEMORY` (16g), so raise that for a larger heap |
+| `--no-analysis` | skip Ghidra's automatic analysis. Only what the import lays out (an SN2 PROM's entries and labels, an ELF's symbols) and each `@0xADDR` asked for are functions, and callee signatures come only from those; it is the fast way to read known addresses (the SHub 2 PROM's `SALE_ENTRY` and FIT walk take under a minute) |
+
+For IA-64 the export first runs `IA64Elf.java` (an ELF object: r1 from `__gp`) and `IA64Signatures.java` (the
+parameters and return each function's body shows, callees first), so a call passes exactly its callee's
+arguments. `ghidra/processors/ia64/tests/DecompileAt.java` is the test helper that makes and decompiles
+functions at addresses in a small flat image; it is not part of the export.
 
 ## SN2 PROM (IA-64) in Ghidra
 
@@ -101,7 +131,17 @@ non-executable blocks so analysis does not disassemble them; disassembles and na
 generic PAL_A vectors (`PALE_RESET` at `0xffffffb0`), each processor-specific PAL_A entry (image +
 `0x300`), `SALE_ENTRY` and the three SAL_B entries; finds the physical-mode SAL dispatch table in
 SAL_B by its shape, makes each handler a function named `sal_<id>`, and sets r1 over SAL_B to the
-global pointer the table's descriptors carry. Full analysis of a 6 MiB image takes about 15 minutes.
+global pointer the table's descriptors carry. Full analysis of a 6 MiB image takes minutes, longer on a
+busy host. `ghidra/import/sn2-prom/README.md` lists everything it seeds and labels.
+
+With `--sal-runtime` it also inflates the gzip SAL runtime component (FIT type 0x12) and maps its IA-64 ELF at
+`0x100000000` with its dynamic symbols as functions under their own names (1032 in SAL 5.04):
+
+    tools/re-run --ghidra-export root/sn2/snprom-10.54-70399/boot/efi/efi/sgi/snprom/shub1snprom.bin \
+        --sn2-prom --sal-runtime --decompile-symbol strcpy --decompile-symbol cpu_halt
+
+A runtime address is the ELF's link address plus `0x100000000`; the gzip stream itself is at image offset
+`0x252000` in SAL 5.04. SAL allocates the real address at run time, and relocations are not applied.
 
 What the processor does not do, in short (its README has the detail): the register stack is
 modelled by moving values (frames, rotation and the RSE's cover, flushrs, loadrs and rfi; no backing store in
