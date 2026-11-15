@@ -1,7 +1,8 @@
 // Make a function at each address (disassembling from it) and decompile it
 // into OUTDIR/<address>.c, with the listing beside it as <address>.s.
-// Args: OUTDIR [r1=GP] [pal=ADDRESS]... ADDRESS...
+// Args: OUTDIR [r1=GP] [pal=ADDRESS]... [sigs] ADDRESS...
 // pal=ADDRESS marks the bundle at ADDRESS as a PAL service call site (context bit `pal`).
+// sigs runs IA64Signatures.java over the functions first.
 // @category IA64
 import java.io.*;
 import java.math.BigInteger;
@@ -32,10 +33,17 @@ public class DecompileAt extends GhidraScript {
 				at.add(12), BigInteger.ONE);
 			first++;
 		}
+		boolean sigs = a.length > first && a[first].equals("sigs");
+		if (sigs) {
+			first++;
+		}
 		for (int i = first; i < a.length; i++) {
 			Address ad = toAddr(a[i]);
 			new DisassembleCommand(ad, null, true).applyTo(currentProgram, monitor);
 			new CreateFunctionCmd(ad).applyTo(currentProgram, monitor);
+		}
+		if (sigs) {
+			runScript("IA64Signatures.java", java.util.Arrays.copyOfRange(a, first, a.length));
 		}
 		DecompInterface d = new DecompInterface();
 		d.openProgram(currentProgram);

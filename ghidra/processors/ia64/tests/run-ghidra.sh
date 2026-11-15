@@ -6,7 +6,8 @@
 # Runs in the Ghidra image (tools/re-run --ghidra). Writes OUTDIR/slots.tsv,
 # every bundle of IMAGE (loaded at BASE) disassembled, one instruction a line.
 # With SCRIPT, runs that post-script from tests/ instead, with ARGS. With
-# PRESCRIPT=FILE.java in the environment, runs that pre-script first.
+# PRESCRIPT=FILE.java in the environment, runs that pre-script first. The scripts in
+# ghidra/scripts are on the script path too.
 set -eu
 MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$1 IMAGE=$2 BASE=$3
@@ -39,7 +40,7 @@ else
     script=DumpSlots.java
     set -- "$OUT/slots.tsv"
 fi
-spath="$MOD/tests"
+spath="$MOD/tests;$(cd "$MOD/../../scripts" && pwd)"
 if [ -n "${PRESCRIPT:-}" ]; then
     spath="$spath;$(cd "$(dirname "$PRESCRIPT")" && pwd)"
     set -- -preScript "$(basename "$PRESCRIPT")" -postScript "$script" "$@"

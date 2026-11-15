@@ -16,6 +16,8 @@
   synthetic.py check-predloop C  check DecompileAt.java's C for it: it decompiles
   synthetic.py breaks        the addresses of the two break functions (BUG and a system call)
   synthetic.py check-breaks DIR  check DecompileAt.java's C for them: `break 0` ends its function
+  synthetic.py voids         the addresses of the store, caller and r8 functions (run DecompileAt with sigs)
+  synthetic.py check-voids DIR  check their C: the first two are void, the third returns a value
   synthetic.py frames        the addresses of the register stack programs' functions
   synthetic.py check-frames DIR  check DecompileAt.java's C for them
 
@@ -403,6 +405,28 @@ def check_breaks(d):
     return 0 if ok else 1
 
 
+def voids_addr():
+    return breaks_addr() + 16 * 4
+
+
+def void_functions():
+    """A function that only stores through r32, one that calls it, and one that sets r8:
+    IA64Signatures makes the first two return void and leaves the third a value."""
+    here = voids_addr()
+    st8 = slot(op(4), (30, 6, 0x34), (20, 7, 32), (13, 7, 33))
+    call = br_call(here, here + 0x20)
+    return [bundle(0x01, st8, NOP_I, NOP_I), bundle(0x17, BR_RET, NOP_B, NOP_B),
+            bundle(0x17, call, NOP_B, NOP_B), bundle(0x17, BR_RET, NOP_B, NOP_B)] + status_function()
+
+
+def check_voids(d):
+    a = voids_addr()
+    store, caller, status = (open(os.path.join(d, '%#x.c' % x)).read() for x in (a, a + 0x20, a + 0x40))
+    ok = all(t.lstrip().startswith('void ') for t in (store, caller)) and not status.lstrip().startswith('void ')
+    print('%s: functions that never write r8 return void' % ('ok' if ok else 'FAIL void return'))
+    return 0 if ok else 1
+
+
 def prog_runs():
     """Emulator runs over programs(): (name, start, stop, regs, memory, expected)."""
     a = prog_addrs()
@@ -438,7 +462,7 @@ def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
             + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function())
-            + b''.join(break_functions()))
+            + b''.join(break_functions()) + b''.join(void_functions()))
 
 
 def expected():
@@ -622,6 +646,11 @@ def main():
         return 0
     if sys.argv[1] == 'check-breaks':
         return check_breaks(sys.argv[2])
+    if sys.argv[1] == 'voids':
+        print(' '.join('%#x' % (voids_addr() + o) for o in (0, 0x20, 0x40)))
+        return 0
+    if sys.argv[1] == 'check-voids':
+        return check_voids(sys.argv[2])
     if sys.argv[1] == 'frames':
         print(' '.join('%#x' % a for a in frame_functions()))
         return 0

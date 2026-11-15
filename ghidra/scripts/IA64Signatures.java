@@ -10,6 +10,8 @@
  * processor or for a function whose signature came from symbols or a user.
  * Args: none for every function, or function names and 0x addresses to do just
  * those and the functions they call.
+ * A function that never writes r8, and calls and jumps only to functions already committed as
+ * void, gets a void return.
  *
  * @category IA64
  */
@@ -23,9 +25,11 @@ import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.Undefined;
 import ghidra.program.model.data.VoidDataType;
 import ghidra.program.model.lang.Register;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.listing.Function.FunctionUpdateType;
 import ghidra.program.model.pcode.*;
+import ghidra.program.model.symbol.FlowType;
 import ghidra.program.model.symbol.SourceType;
 
 public class IA64Signatures extends GhidraScript {
@@ -140,7 +144,10 @@ public class IA64Signatures extends GhidraScript {
 		// With no r8 return, leave the return open rather than void: a caller that returns
 		// through complementary predicated writes still needs a possible r8 from the call.
 		DataType rt = proto.getReturnType();
-		if (rt == null || proto.getReturnStorage() == null || proto.getReturnStorage().isVoidStorage()
+		if (neverWritesR8(f)) {
+			rt = VoidDataType.dataType;
+		}
+		else if (rt == null || proto.getReturnStorage() == null || proto.getReturnStorage().isVoidStorage()
 				|| rt.getLength() > 8 || rt instanceof VoidDataType) {
 			rt = DataType.DEFAULT;
 		}
@@ -151,6 +158,35 @@ public class IA64Signatures extends GhidraScript {
 			new ReturnParameterImpl(rt, currentProgram), params,
 			FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, true, SourceType.ANALYSIS);
 		f.setVarArgs(varargs);
+		return true;
+	}
+
+	// No instruction of f writes r8, and every call or jump out of f goes to a function this
+	// script already made void: nothing can leave a value there for the caller.
+	boolean neverWritesR8(Function f) throws Exception {
+		Register r8 = currentProgram.getRegister("r8");
+		for (Instruction in : currentProgram.getListing().getInstructions(f.getBody(), true)) {
+			for (PcodeOp op : in.getPcode()) {
+				Varnode out = op.getOutput();
+				if (out != null && out.isRegister() && out.getAddress().equals(r8.getAddress())) {
+					return false;
+				}
+			}
+			FlowType ft = in.getFlowType();
+			Address[] flows = in.getFlows();
+			if (!ft.isCall() && !(ft.isJump() && (flows.length != 1 || !f.getBody().contains(flows[0])))) {
+				continue;
+			}
+			if (flows.length == 0) {
+				return false;
+			}
+			for (Address a : flows) {
+				Function g = getFunctionAt(a);
+				if (g == null || g == f || !(g.getReturnType() instanceof VoidDataType)) {
+					return false;
+				}
+			}
+		}
 		return true;
 	}
 
