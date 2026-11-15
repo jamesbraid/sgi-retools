@@ -56,8 +56,8 @@ Numbers print in Ghidra's hexadecimal.
   (`check-call`), and the register stack programs' functions (`frames`, `check-frames`).
   A `br.ia` function checks the flagged form (`pal=ADDRESS` argument to `DecompileAt.java`; `check-pal`) and
   the plain one (`check-plain`). A loop that saves the predicates with `mov r=pr` and restores them with
-  `mov pr=r,mask` must decompile (`predloop`, `check-predloop`). Two functions run `break.m 0` and
-  `break.m` with a system call's immediate, then set r8: only the second keeps the code behind it
+  `mov pr=r,mask` must decompile (`predloop`, `check-predloop`). Three functions run `break.m 0`,
+  `break.m` with a system call's immediate and `(p6) break.m 0`, then set r8: only the first loses the code behind it
   (`breaks`, `check-breaks`). `DecompileAt.java` with `sigs` first runs `IA64Signatures.java`: a store function
   and its caller must come out `void`, a function that sets r8 must not (`voids`, `check-voids`).
 - `tests/DecompileAt.java`: makes a function at each address it is given in a flat image and writes its C and

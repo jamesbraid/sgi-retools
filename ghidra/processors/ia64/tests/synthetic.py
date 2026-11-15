@@ -14,7 +14,7 @@
                              code decompiled without the pal flag
   synthetic.py predloop      the address of the predicate save and restore loop
   synthetic.py check-predloop C  check DecompileAt.java's C for it: it decompiles
-  synthetic.py breaks        the addresses of the two break functions (BUG and a system call)
+  synthetic.py breaks        the addresses of the three break functions (BUG, a system call, predicated)
   synthetic.py check-breaks DIR  check DecompileAt.java's C for them: `break 0` ends its function
   synthetic.py voids         the addresses of the store, caller and r8 functions (run DecompileAt with sigs)
   synthetic.py check-voids DIR  check their C: the first two are void, the third returns a value
@@ -387,11 +387,12 @@ def breaks_addr():
 
 
 def break_functions():
-    """Two functions that run `break.m IMM` and then `r8 = 0x77`: with IMM 0 (the kernel's BUG())
-    the code behind the break is not part of the function; with a system call's immediate it is."""
+    """Three functions that run `break.m IMM` and then `r8 = 0x77`: with IMM 0 (the kernel's BUG())
+    the code behind the break is not part of the function; with a system call's immediate, or with
+    a qualifying predicate, it is."""
     out = []
-    for imm in (0, 0x1234):
-        brk = slot(op(0), (6, 20, imm), (36, 1, imm >> 20))
+    for imm, qp in ((0, 0), (0x1234, 0), (0, 6)):
+        brk = slot(op(0), (6, 20, imm), (36, 1, imm >> 20), qp=qp)
         mov8 = slot(op(8), (34, 2, 2), (6, 7, 8), (20, 7, 0), (13, 7, 0x77))
         out += [bundle(0x00, brk, NOP_I, NOP_I), bundle(0x11, NOP_M, mov8, BR_RET)]
     return out
@@ -399,14 +400,14 @@ def break_functions():
 
 def check_breaks(d):
     a = breaks_addr()
-    bug, sysc = (open(os.path.join(d, '%#x.c' % x)).read() for x in (a, a + 32))
-    ok = '0x77' not in bug and '0x77' in sysc and 'decompile failed' not in bug + sysc
-    print('%s: break 0 ends the function, a system call break does not' % ('ok' if ok else 'FAIL break'))
+    bug, sysc, pred = (open(os.path.join(d, '%#x.c' % x)).read() for x in (a, a + 32, a + 64))
+    ok = '0x77' not in bug and '0x77' in sysc and '0x77' in pred and 'decompile failed' not in bug + sysc + pred
+    print('%s: break 0 ends the function, a system call break or a predicated break does not' % ('ok' if ok else 'FAIL break'))
     return 0 if ok else 1
 
 
 def voids_addr():
-    return breaks_addr() + 16 * 4
+    return breaks_addr() + 16 * 6
 
 
 def void_functions():
@@ -642,7 +643,7 @@ def main():
     if sys.argv[1] == 'check-predloop':
         return check_predloop(sys.argv[2])
     if sys.argv[1] == 'breaks':
-        print('%#x %#x' % (breaks_addr(), breaks_addr() + 32))
+        print('%#x %#x %#x' % (breaks_addr(), breaks_addr() + 32, breaks_addr() + 64))
         return 0
     if sys.argv[1] == 'check-breaks':
         return check_breaks(sys.argv[2])
