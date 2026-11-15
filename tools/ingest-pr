@@ -168,6 +168,50 @@ def run_checks(ws, base, origin, root):
     return results
 
 
+def already_present(ws, main, head, rows):
+    """None, or (how, sha-or-None): the change is already on origin/main, by patch or as a squash."""
+    cherry = git('cherry', main, head, cwd=ws).splitlines()
+    if cherry and all(line.startswith('-') for line in cherry):
+        how = 'every commit has an equivalent patch there'
+    else:
+        base = git('merge-base', main, head, cwd=ws)
+        files = sorted({f for r in rows for f in r[3]})
+        if not files or git('diff', '--quiet', head, main, '--', *files, cwd=ws, check=False).returncode != 0:
+            return None
+        how = 'the files it changes are identical there, as after a squash merge'
+    return how, find_equivalent(ws, main, head, rows)
+
+
+def find_equivalent(ws, main, head, rows):
+    """Best guess at the origin/main commit that carries the change: same subject, else same author and files."""
+    base = git('merge-base', main, head, cwd=ws)
+    log = commit_list(ws, base + '..' + main)
+    subjects = [r[2].lower() for r in rows]
+    for h, _, subject, _ in reversed(log):
+        if any(s and s in subject.lower() for s in subjects):
+            return h
+    emails = {re.search(r'<(.*)>', r[1]).group(1) for r in rows}
+    files = {f for r in rows for f in r[3]}
+    for h, author, _, changed in reversed(log):
+        if re.search(r'<(.*)>', author).group(1) in emails and files & set(changed):
+            return h
+    return None
+
+
+def report_present(ws, origin, args, head, found):
+    how, sha = found
+    print('Already on origin/main (%s); nothing to ingest, nothing pushed.' % how)
+    base = forge_commit_base(origin)
+    if sha:
+        print('Matching forge commit: %s' % (base + sha if base else sha))
+    else:
+        print('No single forge commit could be identified by subject or author.')
+    if not args.github_main:
+        print('\nOn GitHub (nothing is posted for you):')
+        print('  Close PR #%d as already merged%s.' % (args.number, ', pointing at the forge commit above' if sha else ''))
+    return 0
+
+
 def ingest(ws, args):
     origin = remote_url(ws, 'origin')
     if not origin:
@@ -187,8 +231,11 @@ def ingest(ws, args):
     if not rows:
         print('Nothing to ingest: every commit is already on origin/main.')
         return 0
-    print('%d commit(s) not on origin/main:' % len(rows))
+    print('%d commit(s) not on origin/main by hash:' % len(rows))
     show_commits(rows)
+    found = already_present(ws, main, head, rows)
+    if found:
+        return report_present(ws, origin, args, head, found)
 
     fast_forward = git('merge-base', main, head, cwd=ws) == main
     rebased = not fast_forward
@@ -205,8 +252,13 @@ def ingest(ws, args):
             print('REBASE FAILED: conflicts with origin/main. %s is the unrebased change; resolve by hand.\n%s'
                   % (branch, p.stdout.strip() or p.stderr.strip()))
             return 1
+        kept = commit_list(ws, 'origin/main..HEAD')
+        if not kept:
+            git('checkout', '-q', main, cwd=ws)
+            git('branch', '-q', '-D', branch, cwd=ws)
+            return report_present(ws, origin, args, head, ('the rebase left no commits', find_equivalent(ws, main, head, rows)))
         print('The commits now have new hashes; GitHub will not see them as merged and will not close the PR.')
-        show_commits(commit_list(ws, 'origin/main..HEAD'))
+        show_commits(kept)
 
     results = run_checks(ws, main, origin, args.root)
     print()

@@ -168,6 +168,49 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(calls, ["/some/root"])
         self.assertEqual(self.forge_main(), git(self.ws, "rev-parse", "ingest/pr-6"))
 
+    def test_cherry_equivalent_commit_is_already_present(self):
+        self.make_pr(8, "pr.txt")
+        self.advance_forge()
+        # same patch landed on the forge under another hash
+        git(self.ws, "fetch", "-q", "origin")
+        git(self.ws, "reset", "-q", "--hard", "origin/main")
+        git(self.ws, "fetch", "-q", self.github, "refs/pull/8/head")
+        git(self.ws, "cherry-pick", "FETCH_HEAD")
+        git(self.ws, "commit", "-q", "--amend", "-m", "add pr.txt (forge copy)")
+        git(self.ws, "push", "-q", "origin", "HEAD:main")
+        rc, out, _, calls = self.run_tool("8", "--push")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Already on origin/main (every commit has an equivalent patch", out)
+        self.assertIn("Matching forge commit: " + git(self.ws, "rev-parse", "HEAD"), out)
+        self.assertNotIn("Forge commits:", out)
+        self.assertEqual(calls, [])
+        self.assertEqual(self.forge_main(), git(self.ws, "rev-parse", "HEAD"))
+
+    def test_squash_merged_multi_commit_pr_is_already_present(self):
+        c = self.contributor()
+        git(c, "checkout", "-q", "-B", "pr9", "origin/main")
+        self.commit(c, "a.txt", "one\n", "start a")
+        self.commit(c, "a.txt", "one\ntwo\n", "finish a")
+        self.commit(c, "b.txt", "b\n", "add b")
+        git(c, "push", "-q", self.github, "pr9:refs/pull/9/head")
+        self.advance_forge()
+        # squash on the forge: one commit with the net effect and a different message
+        git(self.ws, "fetch", "-q", "origin")
+        git(self.ws, "reset", "-q", "--hard", "origin/main")
+        git(self.ws, "fetch", "-q", self.github, "refs/pull/9/head")
+        git(self.ws, "merge", "-q", "--squash", "FETCH_HEAD")
+        git(self.ws, "commit", "-q", "-m", "add a and b (#9)")
+        git(self.ws, "push", "-q", "origin", "HEAD:main")
+        squash = git(self.ws, "rev-parse", "HEAD")
+        rc, out, _, calls = self.run_tool("9", "--push")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("identical there, as after a squash merge", out)
+        self.assertIn("Matching forge commit: " + squash, out)
+        self.assertIn("Close PR #9 as already merged", out)
+        self.assertNotIn("Forge commits:", out)
+        self.assertEqual(calls, [])
+        self.assertEqual(self.forge_main(), squash)
+
     def test_dirty_tree_is_a_tool_error(self):
         self.make_pr(7)
         with open(os.path.join(self.ws, "base.txt"), "a") as f:

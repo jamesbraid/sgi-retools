@@ -48,7 +48,8 @@ Run it from a clean clone of the workspace whose `origin` is the forge. It fetch
 mirror (`--github URL`, else the remote named `github` or `gh`), lists the commits and says whether they
 fast-forward onto `origin/main`. If not it rebases them with authorship kept; the hashes change, so GitHub
 will not close the PR by itself. `--github-main` takes the commits on the mirror's `main` that `origin/main`
-lacks, for a change already merged there.
+lacks, for a change already merged there. A change that is already on `origin/main` under other hashes (an
+equivalent patch, or a squash merge) is reported with the matching forge commit, and nothing is ingested.
 
 It then runs four checks and prints PASS or FAIL for each: every submodule pin the change adds can be fetched
 from its `.gitmodules` URL, `leakcheck.py` over the new commits, `tools/setup-clone.sh` (`--root` is passed
