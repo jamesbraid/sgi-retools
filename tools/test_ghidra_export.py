@@ -38,6 +38,12 @@ class PlanLanguage(unittest.TestCase):
         self.assertIn('-processor ARM:LE:32:v4', script)
         self.assertNotIn('ReMipsGp', script)
 
+    def test_ia64_elf_gets_ia64_language_and_its_gp_script(self):
+        script = self.plan(elf32(ge.EM_IA_64, '<'))
+        self.assertIn('-processor IA64:LE:64:default', script)
+        self.assertIn('-preScript IA64Elf.java', script)
+        self.assertNotIn('ReMipsGp', script)
+
     def test_mips_elf_is_unchanged(self):
         script = self.plan(elf32(ge.EM_MIPS, '>'))
         self.assertNotIn('-processor', script)
@@ -48,7 +54,7 @@ class PlanLanguage(unittest.TestCase):
         self.assertIn('-processor MIPS:BE:64:64-32addr -cspec n32', script)
 
     def test_other_machines_and_byte_orders_are_refused(self):
-        for blob in (elf32(3, '<'), elf32(ge.EM_ARM, '>'), elf32(ge.EM_MIPS, '<')):
+        for blob in (elf32(3, '<'), elf32(ge.EM_ARM, '>'), elf32(ge.EM_MIPS, '<'), elf32(ge.EM_IA_64, '>')):
             with self.assertRaises(SystemExit):
                 self.plan(blob)
 

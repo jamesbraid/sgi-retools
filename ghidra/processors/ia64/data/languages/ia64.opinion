@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- An ELF object with e_machine EM_IA_64 (50) loads with this language. -->
+<opinions>
+  <constraint loader="Executable and Linking Format (ELF)" compilerSpecID="default">
+    <constraint primary="50" processor="IA64" endian="little" size="64"/>
+  </constraint>
+</opinions>

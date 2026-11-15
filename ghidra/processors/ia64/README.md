@@ -69,6 +69,11 @@ retools/tools/re-run python3 retools/ghidra/processors/ia64/tests/check.py \
     .cache/ia64/slots.tsv root/sn2/snprom-10.54-70399/boot/efi/efi/sgi/snprom/shub1snprom.bin
 ```
 
+An IA-64 ELF object, such as an SN2 Linux kernel, loads through Ghidra's ELF loader
+(`data/languages/ia64.opinion` maps EM_IA_64 to this language) and is read the same way as a
+MIPS one: `retools/tools/re-run --ghidra-export vmlinux --decompile-symbol sn_setup`. The
+kernel is linked, so nothing is relocated; calls through function descriptors stay indirect.
+
 Where the image is absent (a workspace without a PROM root), `check.py` prints that it
 skipped and exits 0. The synthetic test needs no image:
 

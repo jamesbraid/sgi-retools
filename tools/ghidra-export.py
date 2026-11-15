@@ -36,9 +36,9 @@ output and BSim similarity are navigation, not evidence: a committed claim still
 rests on the disassembly.
 
 An ELF object (a linked library, a kernel or a relocatable driver object) takes its
-language and calling convention from its header; big-endian MIPS and little-endian
-ARM (read as ARM:LE:32:v4) ELF files are accepted. Names the loader ignores (.mdebug)
-are seeded before analysis.
+language and calling convention from its header; big-endian MIPS, little-endian
+ARM (read as ARM:LE:32:v4) and IA-64 ELF files are accepted. Names the loader ignores
+(.mdebug) are seeded before analysis.
 
 A flat image, such as a PROM, has no header Ghidra can read, so say what it is:
   --flat                 read OBJECT as raw bytes
@@ -81,12 +81,12 @@ SCRIPTS = '/opt/re-scripts'
 # EF_MIPS_ARCH values (flags & 0xf0000000) whose ELF32 files hold 64-bit instructions.
 WIDE_ARCH = {0x20000000, 0x30000000, 0x40000000, 0x60000000, 0x80000000}
 EF_MIPS_ABI2 = 0x20
-EM_MIPS, EM_ARM = 8, 40
+EM_MIPS, EM_ARM, EM_IA_64 = 8, 40, 50
 ARM_LANGUAGE = 'ARM:LE:32:v4'
 SHF_EXECINSTR = 4
 ET_REL = 1
 FLAT_DEFAULT_LANGUAGE = 'MIPS:BE:64:default'
-SN2_LANGUAGE = 'IA64:LE:64:default'
+IA64_LANGUAGE = 'IA64:LE:64:default'
 WIDE_WINDOW = 0xc000000000000000
 PLAIN = re.compile(r'[A-Za-z0-9._-]+')
 RANGE = re.compile(r'@0x[0-9a-fA-F]+-0x[0-9a-fA-F]+')
@@ -105,8 +105,8 @@ def read_header(path):
     if order is None:
         die('%s has no byte order in its ELF header' % path)
     etype, machine = struct.unpack(order + 'HH', d[16:20])
-    if (machine, d[5]) not in ((EM_MIPS, 2), (EM_ARM, 1)):
-        die('%s is not big-endian MIPS or little-endian ARM' % path)
+    if (machine, d[5]) not in ((EM_MIPS, 2), (EM_ARM, 1), (EM_IA_64, 1)):
+        die('%s is not big-endian MIPS, little-endian ARM or IA-64' % path)
     klass = d[4]
     flags, = struct.unpack(order + 'I', d[0x24:0x28] if klass == 1 else d[0x30:0x34])
     return machine, klass, etype, flags
@@ -116,6 +116,8 @@ def plan_language(machine, klass, flags):
     """(processor, compiler spec): None for both lets Ghidra's ELF loader choose."""
     if machine == EM_ARM:
         return ARM_LANGUAGE, None
+    if machine == EM_IA_64:
+        return IA64_LANGUAGE, None
     if klass != 1 or (flags & 0xf0000000) not in WIDE_ARCH:
         return None, None
     # ELF32 gives the pointer width, not the instruction width: the 64-bit
@@ -243,7 +245,7 @@ def prepare(argv):
     if args.sn2_prom:
         if args.flat or args.load is not None or args.processor or args.header:
             die('--sn2-prom sets the layout itself; drop --flat, --load, --processor and --header')
-        args.flat, args.processor, args.window = True, SN2_LANGUAGE, 0
+        args.flat, args.processor, args.window = True, IA64_LANGUAGE, 0
         args.load = (1 << 32) - obj.stat().st_size
     if args.flat:
         if args.load is None:
@@ -347,6 +349,8 @@ def prepare(argv):
         argv += ['-scriptPath', SCRIPTS]
         if mips:
             argv += ['-preScript', 'ReMipsGp.java', 'loader', '-']
+        elif language == IA64_LANGUAGE:
+            argv += ['-preScript', 'IA64Elf.java']
     if seeds:
         argv += ['-preScript', 'ReObjectSymbols.java', str(job / 'seeds.tsv')]
     if args.mdebug:
