@@ -480,8 +480,9 @@ def build_m():
     sys0 = [('invala', 0, 1, [], 'invala();'), ('fwb', 0, 2, [], 'fwb();'),
             ('mf', 2, 2, [], 'mf();'), ('mf.a', 3, 2, [], 'mf_a();'),
             ('srlz.d', 0, 3, [], 'srlz_d();'), ('srlz.i', 1, 3, [], 'srlz_i();'),
-            ('sync.i', 3, 3, [], 'sync_i();'), ('flushrs', 0xc, 0, [], 'flushrs();'),
-            ('loadrs', 0xa, 0, [], 'loadrs();'), ('invala.e', 2, 1, ['r1'], 'invala_e($r1);'),
+            ('sync.i', 3, 3, [], 'sync_i();'), ('flushrs', 0xc, 0, [], 'ar.bspstore = ar.bsp;'),
+            ('loadrs', 0xa, 0, [], 'ar.bspstore = ar.bsp - ((ar.rsc >> 16) & 0x3ff8);'),
+            ('invala.e', 2, 1, ['r1'], 'invala_e($r1);'),
             ('invala.e', 3, 1, ['f1'], 'invala_e($f1);')]
     for name, x4, x2, ops, sem in sys0:
         flags = ('nopred',) if name in ('flushrs', 'loadrs') else ()
@@ -505,7 +506,12 @@ def build_m():
     mx(0x2c, 'mov', ['cr3', 'r2'], 1, '@cr3 = $r2;')
     mx(0x24, 'mov', ['r1', 'cr3'], 1, '@r1 = $cr3;')
     E('M', 'alloc', {**C(op=1), **C(x3=6)}, ['r1', 'ar.pfs', 'sof', 'sol', 'sor'], 1,
-      '@r1 = ar.pfs;', flags=('nopred', 'alloc'))
+      '@r1 = ar.pfs; cfm_sof = $sof; cfm_sol = $sol; cfm_sor = $sor >> 3;', flags=('nopred', 'alloc'))
+    # Writing ar.bspstore keeps the dirty partition: BSP moves with it (SDM vol 2 table 6-4).
+    E('M', 'mov.m', {**m1, **C(x6=0x2a, r3=18)}, ['ar3', 'r2'], 1,
+      'local a:8 = $r2 & ~7:8; local w:8 = (ar.bsp >> 3) - (ar.bspstore >> 3); '
+      'local d:8 = w - ((ar.bsp >> 9) - (ar.bspstore >> 9)); ar.bspstore = a; '
+      'ar.bsp = a + 8 * (d + (((a >> 3) & 63) + d) / 63);')
     mx(0x2d, 'mov', ['psr.l', 'r2'], 1, 'psr = (psr & 0xffffffff00000000) | zext($r2:4);')
     mx(0x29, 'mov', ['psr.um', 'r2'], 1, 'psr = (psr & ~0x3f) | ($r2 & 0x3f);')
     mx(0x25, 'mov', ['r1', 'psr'], 1, '@r1 = psr;')
@@ -703,9 +709,9 @@ def build_b():
     # returns r1 and continues at the next bundle (inferred, see README).
     bh('B', 'br.ia', {**b0, **C(x6=0x20, btype=1)}, ['b2'], 'r1 = pal_special_service(r5, r2, r3);',
        flags=('pal',))
-    bh('B', 'br.ret', {**b0, **C(x6=0x21, btype=4)}, ['b2'], 'return [$b2];')
-    for x6, nm, sem in ((0x02, 'cover', 'cover();'), (0x04, 'clrrrb', 'clrrrb();'),
-                        (0x05, 'clrrrb.pr', 'clrrrb_pr();'), (0x08, 'rfi', 'psr = cr.ipsr; return [cr.iip];'),
+    bh('B', 'br.ret', {**b0, **C(x6=0x21, btype=4)}, ['b2'], 'RET')
+    for x6, nm, sem in ((0x02, 'cover', 'COVER'), (0x04, 'clrrrb', 'clrrrb();'),
+                        (0x05, 'clrrrb.pr', 'clrrrb_pr();'), (0x08, 'rfi', 'RFI'),
                         (0x0c, 'bsw.0', 'bsw_0();'), (0x0d, 'bsw.1', 'bsw_1();'),
                         (0x10, 'epc', 'epc();'), (0x18, 'vmsw.0', 'vmsw_0();'),
                         (0x19, 'vmsw.1', 'vmsw_1();')):

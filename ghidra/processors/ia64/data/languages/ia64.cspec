@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Itanium software conventions: arguments in r32..r39 as the callee sees
      them (a call's p-code copies the caller's outputs there), result in r8,
-     return address in b0, stack pointer r12, gp r1. -->
+     return address in b0, stack pointer r12, gp r1. The register stack keeps
+     the caller's stacked registers, so r40..r127 survive a call. -->
 <compiler_spec>
   <data_organization>
     <pointer_size value="8"/>
@@ -58,17 +59,16 @@
         <register name="b4"/>
         <register name="b5"/>
         <register name="noarg"/>
+        <register name="fsbsp"/>
+        <register name="bof"/>
+        <register name="ar.bsp"/>
+        <!-- r40..r127 -->
+        <varnode space="register" offset="0x140" size="0x2c0"/>
         <register name="ar.pfs"/>
         <register name="ar.unat"/>
         <register name="ar.lc"/>
-        <register name="fs0"/>
-        <register name="fs1"/>
-        <register name="fs2"/>
-        <register name="fs3"/>
-        <register name="fs4"/>
-        <register name="fs5"/>
-        <register name="fs6"/>
-        <register name="fs7"/>
+        <!-- fs0..fs95 -->
+        <varnode space="register" offset="0x3200" size="0x300"/>
       </unaffected>
       <killedbycall>
         <register name="r2"/>
@@ -98,6 +98,16 @@
         <register name="b6"/>
         <register name="b7"/>
       </killedbycall>
+      <!-- A function is entered by br.call: its rrb's are 0 (SDM vol 3 br, 3:25). bof places the
+           model's physical stacked registers; any constant lets the decompiler drop their copies. -->
+      <pcode inject="uponentry">
+        <body><![CDATA[
+          bof = 0;
+          rrb_gr = 0;
+          rrb_fr = 0;
+          rrb_pr = 0;
+        ]]></body>
+      </pcode>
     </prototype>
   </default_proto>
 </compiler_spec>

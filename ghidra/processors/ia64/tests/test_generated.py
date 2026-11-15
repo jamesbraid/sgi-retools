@@ -10,7 +10,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GEN = os.path.join(HERE, '..', 'tools', 'gen_slaspec.py')
 
 LANDMARKS = ['define endian=little;', 'define context contextreg', 'define pcodeop unknown_insn;',
-             'CallIn:', 'CallOut:', '"br.call.dpnt.few"', '"alloc"', '"extr.u"']
+             'CallIn:', 'CallOut:', 'CallSpill:', '"br.call.dpnt.few"', '"alloc"', '"extr.u"']
 
 
 class Generated(unittest.TestCase):

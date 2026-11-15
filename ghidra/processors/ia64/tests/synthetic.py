@@ -12,6 +12,8 @@
   synthetic.py pal           the address of the br.ia function (run DecompileAt with pal=ADDR)
   synthetic.py check-pal C   check DecompileAt.java's C for it, and check-plain C for the same
                              code decompiled without the pal flag
+  synthetic.py frames        the addresses of the register stack programs' functions
+  synthetic.py check-frames DIR  check DecompileAt.java's C for them
 
 The encodings are built here from the instruction formats of the Intel
 Itanium Architecture SDM rev 2.3 vol 3 (323207) chapter 4; the expected text
@@ -209,9 +211,150 @@ def pal_function():
     return [bundle(0x11, NOP_M, mov5, br_ia), bundle(0x10, NOP_M, mov8, ret)]
 
 
+# Encoders for the register stack programs (SDM vol 3 chapter 4 formats).
+def adds(r1, imm, r3=0, qp=0):         # A4
+    return slot(op(8), (34, 2, 2), (6, 7, r1), (20, 7, r3), (13, 7, imm), (27, 6, imm >> 7), (36, 1, imm < 0), qp=qp)
+
+
+def add(r1, r2, r3, qp=0):              # A1
+    return slot(op(8), (6, 7, r1), (13, 7, r2), (20, 7, r3), qp=qp)
+
+
+def alloc(r1, sof, sol, sor=0):         # M34
+    return slot(op(1), (33, 3, 6), (6, 7, r1), (13, 7, sof), (20, 7, sol), (27, 4, sor >> 3))
+
+
+def mov_from_b(r1, b2):                 # I22
+    return slot(op(0), (27, 6, 0x31), (6, 7, r1), (13, 3, b2))
+
+
+def mov_to_b(b1, r2):                   # I21
+    return slot(op(0), (33, 3, 7), (20, 2, 1), (6, 3, b1), (13, 7, r2))
+
+
+def mov_i_ar(ar, r2):                   # I26
+    return slot(op(0), (27, 6, 0x2a), (20, 7, ar), (13, 7, r2))
+
+
+def mov_m_ar(ar, r2):                   # M29
+    return slot(op(1), (27, 6, 0x2a), (20, 7, ar), (13, 7, r2))
+
+
+def mov_m_from_ar(r1, ar):              # M31
+    return slot(op(1), (27, 6, 0x22), (6, 7, r1), (20, 7, ar))
+
+
+def br_call(target, here):              # B3
+    return slot(op(5), (12, 1, 1), *rel(target, here, (13, 20), (36, 1)))
+
+
+BR_RET = slot(op(0), (27, 6, 0x21), (6, 3, 4), (12, 1, 1))
+COVER = slot(op(0), (27, 6, 0x02))
+RFI = slot(op(0), (27, 6, 0x08))
+FLUSHRS = slot(op(0), (27, 4, 0xc))
+LOADRS = slot(op(0), (27, 4, 0xa))
+AR = {'bsp': 17, 'bspstore': 18, 'pfs': 64, 'lc': 65, 'ec': 66}
+
+
+def programs_addr():
+    return pal_addr() + 16 * len(pal_function())
+
+
+def programs():
+    """Multi-bundle programs for the register stack: [(name, [(bundle, [(slot offset,
+    text)])])], laid out after caller_function(). Addresses come from prog_addrs()."""
+    a = prog_addrs()
+    calls, cov = a['calls'], a['cover']
+    f1, f2 = calls + 0x50, calls + 0xa0
+    out = []
+    # Nested calls. main (sof 6, sol 4) passes 5 and 7 to f1 (sof 10, sol 7), which
+    # passes 12 and 3 to f2 (sof 5, sol 5), which clobbers its own r33 (f1's r40).
+    main = [
+        (bundle(0x01, alloc(35, 6, 4), adds(32, 0x11), adds(33, 0x22)),
+         [(0, 'alloc r35=ar.pfs,6,4,0'), (6, 'adds r32=17,r0'), (12, 'adds r33=34,r0;;')]),
+        (bundle(0x01, adds(36, 5), adds(37, 7), mov_from_b(34, 0)),
+         [(0, 'adds r36=5,r0'), (6, 'adds r37=7,r0'), (12, 'mov r34=b0;;')]),
+        (bundle(0x17, br_call(f1, calls + 0x20), NOP_B, NOP_B),
+         [(0, 'br.call.sptk.many b0=%#x' % f1), (6, 'nop.b 0x0'), (12, 'nop.b 0x0;;')]),
+        (bundle(0x01, add(8, 8, 32), NOP_I, NOP_I), [(0, 'add r8=r8,r32'), (6, 'nop.i 0x0'), (12, 'nop.i 0x0;;')]),
+        (bundle(0x11, NOP_M, mov_i_ar(AR['pfs'], 35), BR_RET),
+         [(0, 'nop.m 0x0'), (6, 'mov.i ar.pfs=r35'), (12, 'br.ret.sptk.many b0;;')]),
+        (bundle(0x01, alloc(38, 10, 7), mov_from_b(34, 0), add(35, 32, 33)),
+         [(0, 'alloc r38=ar.pfs,10,7,0'), (6, 'mov r34=b0'), (12, 'add r35=r32,r33;;')]),
+        (bundle(0x01, adds(39, 0, 35), adds(40, 3), adds(32, 1, 32)),
+         [(0, 'mov r39=r35'), (6, 'adds r40=3,r0'), (12, 'adds r32=1,r32;;')]),
+        (bundle(0x17, br_call(f2, calls + 0x70), NOP_B, NOP_B),
+         [(0, 'br.call.sptk.many b0=%#x' % f2), (6, 'nop.b 0x0'), (12, 'nop.b 0x0;;')]),
+        (bundle(0x01, add(8, 8, 35), add(8, 8, 33), mov_i_ar(AR['pfs'], 38)),
+         [(0, 'add r8=r8,r35'), (6, 'add r8=r8,r33'), (12, 'mov.i ar.pfs=r38;;')]),
+        (bundle(0x11, NOP_M, mov_to_b(0, 34), BR_RET),
+         [(0, 'nop.m 0x0'), (6, 'mov b0=r34'), (12, 'br.ret.sptk.many b0;;')]),
+        (bundle(0x01, alloc(34, 5, 5), add(8, 32, 33), adds(33, 100)),
+         [(0, 'alloc r34=ar.pfs,5,5,0'), (6, 'add r8=r32,r33'), (12, 'adds r33=100,r0;;')]),
+        (bundle(0x11, NOP_M, mov_i_ar(AR['pfs'], 34), BR_RET),
+         [(0, 'nop.m 0x0'), (6, 'mov.i ar.pfs=r34'), (12, 'br.ret.sptk.many b0;;')]),
+    ]
+    out.append(('calls', main))
+    # cover, flushrs, loadrs, a move to ar.bspstore, and rfi back into the covered frame.
+    out.append(('cover', [
+        (bundle(0x01, alloc(35, 4, 4), adds(32, 0x11), adds(33, 0x22)),
+         [(0, 'alloc r35=ar.pfs,4,4,0'), (6, 'adds r32=17,r0'), (12, 'adds r33=34,r0;;')]),
+        (bundle(0x11, NOP_M, NOP_I, COVER), [(0, 'nop.m 0x0'), (6, 'nop.i 0x0'), (12, 'cover;;')]),
+        (bundle(0x01, alloc(34, 3, 3), adds(32, 0x55), adds(33, 0x66)),
+         [(0, 'alloc r34=ar.pfs,3,3,0'), (6, 'adds r32=85,r0'), (12, 'adds r33=102,r0;;')]),
+        (bundle(0x09, FLUSHRS, mov_m_from_ar(16, AR['bsp']), NOP_I),
+         [(0, 'flushrs'), (6, 'mov.m r16=ar.bsp'), (12, 'nop.i 0x0;;')]),
+        (bundle(0x09, mov_m_from_ar(17, AR['bspstore']), NOP_M, NOP_I),
+         [(0, 'mov.m r17=ar.bspstore'), (6, 'nop.m 0x0'), (12, 'nop.i 0x0;;')]),
+        (bundle(0x09, LOADRS, mov_m_from_ar(18, AR['bspstore']), NOP_I),
+         [(0, 'loadrs'), (6, 'mov.m r18=ar.bspstore'), (12, 'nop.i 0x0;;')]),
+        (bundle(0x09, mov_m_ar(AR['bspstore'], 19), NOP_M, NOP_I),
+         [(0, 'mov.m ar.bspstore=r19'), (6, 'nop.m 0x0'), (12, 'nop.i 0x0;;')]),
+        (bundle(0x11, mov_m_from_ar(20, AR['bsp']), NOP_I, RFI),
+         [(0, 'mov.m r20=ar.bsp'), (6, 'nop.i 0x0'), (12, 'rfi;;')]),
+        (bundle(0x01, NOP_M, NOP_I, NOP_I), [(0, 'nop.m 0x0'), (6, 'nop.i 0x0'), (12, 'nop.i 0x0;;')]),
+    ]))
+    return out
+
+
+PROG_SIZES = {'calls': 12, 'cover': 9}
+
+
+def prog_addrs():
+    a, out = programs_addr(), {}
+    for name in PROG_SIZES:
+        out[name] = a
+        a += 16 * PROG_SIZES[name]
+    return out
+
+
+def prog_runs():
+    """Emulator runs over programs(): (name, start, stop, regs, memory, expected)."""
+    a = prog_addrs()
+    calls, cov = a['calls'], a['cover']
+    return [
+        # f2 returns 12 + 3; f1 adds its preserved r35 (12) and r33 (7); main adds its r32.
+        # main's outputs come back as f1's r32 and r33 when f1 returned (SDM vol 3 br.ret).
+        ('nested calls keep each frame', calls, calls + 0x40, {'ar.bsp': '1000'}, {},
+         {'r8': '33', 'r32': '11', 'r33': '22', 'r36': '6', 'r37': '7', 'ar.bsp': '1000',
+          'ar.pfs': '206', 'cfm_sof': '6', 'cfm_sol': '4'}),
+        # cover adds the 4-register frame to the dirty partition and records it in cr.ifs;
+        # loadrs leaves 0x18 bytes dirty; the move to ar.bspstore keeps them; rfi takes the
+        # frame back (the last of its registers below a NaT collection slot) and resumes at
+        # slot 1 of cr.iip.
+        ('cover flushrs loadrs rfi', cov, calls + 6,
+         {'ar.bsp': '1000', 'ar.bspstore': '1000', 'ar.rsc': '180000', 'r19': '2000',
+          'cr.iip': '%x' % calls, 'cr.ipsr': '20000000000'}, {},
+         {'r16': '1020', 'r17': '1020', 'r18': '1008', 'r20': '2018', 'cr.ifs': '8000000000000204',
+          'r32': '11', 'r33': '22', 'cfm_sof': '4', 'cfm_sol': '4', 'ar.bsp': '1ff0',
+          'psr': '20000000000'}),
+    ]
+
+
 def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
-            + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function()))
+            + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
+            + b''.join(b for _, prog in programs() for b, _ in prog))
 
 
 def expected():
@@ -223,6 +366,12 @@ def expected():
     for i, c in enumerate(emu_cases()):
         for off, text in c[1]:
             res[BASE + 16 * (n + i) + off] = text
+    a = programs_addr()
+    for _, prog in programs():
+        for b, exp in prog:
+            for off, text in exp:
+                res[a + off] = text
+            a += 16
     return res
 
 
@@ -233,6 +382,11 @@ def emu_spec():
     for i, (_, _, name, steps, regs, mem, want) in enumerate(emu_cases()):
         lines.append('\t'.join([
             name.replace(' ', '_'), '%x' % (BASE + 16 * (n + i)), str(steps),
+            ','.join('%s=%s' % kv for kv in regs.items()), ','.join('%s=%s' % kv for kv in mem.items()),
+            ','.join('%s=%s' % kv for kv in want.items())]))
+    for name, start, stop, regs, mem, want in prog_runs():
+        lines.append('\t'.join([
+            name.replace(' ', '_'), '%x' % start, '@%x' % stop,
             ','.join('%s=%s' % kv for kv in regs.items()), ','.join('%s=%s' % kv for kv in mem.items()),
             ','.join('%s=%s' % kv for kv in want.items())]))
     return '\n'.join(lines) + '\n'
@@ -271,15 +425,41 @@ def check_plain(path):
     return 0 if ok else 1
 
 
+def frame_functions():
+    """The functions of programs() a decompiler check reads: main, f1, f2."""
+    a = prog_addrs()
+    return [a['calls'], a['calls'] + 0x50, a['calls'] + 0xa0]
+
+
+def check_frames(d):
+    """Each call passes exactly the callee's arguments and each function returns r8."""
+    main, f1, f2 = (open(os.path.join(d, '%#x.c' % a)).read() for a in frame_functions())
+    checks = [
+        ('main passes f1 5 and 7', re.search(r'= \w+_%08x\(5,7\);' % frame_functions()[1], main)),
+        ('main returns what f1 did plus its own r32', re.search(r'return \w+ \+ 0x11;', main)),
+        ('f1 takes two parameters', re.search(r'\w+_%08x\(\w+ param_1,\w+ param_2\)' % frame_functions()[1], f1)),
+        ('f1 passes f2 its sum and 3', re.search(r'\w+_%08x\(param_1 \+ param_2,3\);' % frame_functions()[2], f1)),
+        ('f2 returns the sum of its two', re.search(r'return param_1 \+ param_2;', f2)),
+    ]
+    bad = 0
+    for name, ok in checks:
+        if not ok:
+            print('FAIL %s' % name)
+            bad += 1
+    print('%d of %d register stack decompile checks as expected' % (len(checks) - bad, len(checks)))
+    return 1 if bad else 0
+
+
 def check_emu(path):
     bad = 0
     got = dict(line.rstrip('\n').split(' ', 1) for line in open(path))
-    for _, _, name, *_ in emu_cases():
+    names = [c[2] for c in emu_cases()] + [r[0] for r in prog_runs()]
+    for name in names:
         res = got.get(name.replace(' ', '_'), 'missing')
         if res != 'PASS':
             print('FAIL %s: %s' % (name, res))
             bad += 1
-    print('%d of %d emulated cases as expected' % (len(emu_cases()) - bad, len(emu_cases())))
+    print('%d of %d emulated cases as expected' % (len(names) - bad, len(names)))
     return 1 if bad else 0
 
 
@@ -338,6 +518,11 @@ def main():
         return check_pal(sys.argv[2])
     if sys.argv[1] == 'check-plain':
         return check_plain(sys.argv[2])
+    if sys.argv[1] == 'frames':
+        print(' '.join('%#x' % a for a in frame_functions()))
+        return 0
+    if sys.argv[1] == 'check-frames':
+        return check_frames(sys.argv[2])
     if sys.argv[1] == 'check-call':
         return check_call(sys.argv[2])
     if sys.argv[1] == 'check-dec':

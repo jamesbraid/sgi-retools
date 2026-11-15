@@ -333,9 +333,82 @@ def dispatch():
 SPECIAL_SEM = {}
 
 
+# The frames below the current one live in the rse space, indexed by bof (the
+# bottom of the current frame, in bytes): a physical register file without the
+# hardware's limit, so the model never spills to the backing store.
+NSTACKED = 96
+
+
+def phys(k):
+    return '*[rse]:8 (bof + %#x)' % (8 * k)
+
+
+def cfm_from(v):
+    """Set CFM from a frame marker value (pfm in ar.pfs, ifm in cr.ifs)."""
+    return ('cfm_sof = %s & 0x7f; cfm_sol = (%s >> 7) & 0x7f; cfm_sor = (%s >> 14) & 0xf; '
+            'rrb_gr = (%s >> 18) & 0x7f; rrb_fr = (%s >> 25) & 0x7f; rrb_pr = (%s >> 32) & 0x3f;'
+            % ((v,) * 6))
+
+
+CFM_VALUE = ('(cfm_sof | (cfm_sol << 7) | (cfm_sor << 14) | (rrb_gr << 18) | (rrb_fr << 25)'
+             ' | (rrb_pr << 32))')
+CFM_CLEAR = 'cfm_sol = 0; cfm_sor = 0; rrb_gr = 0; rrb_fr = 0; rrb_pr = 0;'
+
+
+def bsp_grow(n):
+    """ar.bsp after n more registers join the dirty partition (SDM vol 2 table 6-2)."""
+    return 'ar.bsp = ar.bsp + 8 * (%s + (((ar.bsp >> 3) & 63) + %s) / 63);' % (n, n)
+
+
+def bsp_shrink(n):
+    return 'ar.bsp = ar.bsp - 8 * (%s + ((62 - ((ar.bsp >> 3) & 63)) + %s) / 63);' % (n, n)
+
+
 def call_sem(target, b1):
-    return ('%s = (inst_start & 0xfffffffffffffff0) + 16; build CallIn; call %s; build CallOut;'
-            % (b1, target))
+    # SDM vol 3 br (3:25): ar.pfs takes CFM, ar.ec and psr.cpl; the callee's frame is the outputs.
+    return ('%s = (inst_start & 0xfffffffffffffff0) + 16; '
+            'ar.pfs = %s | (ar.ec << 52) | (((psr >> 32) & 3) << 62); fsbsp = ar.bsp; %s '
+            'build CallIn; cfm_sof = cfm_sof - cfm_sol; %s call %s; build CallOut;'
+            % (b1, CFM_VALUE, bsp_grow('cfm_sol'), CFM_CLEAR, target))
+
+
+def ret_sem(target):
+    """br.ret: put the callee's frame where the caller's outputs are, take the
+    caller's frame back from below it, and restore CFM and ar.ec from ar.pfs.
+    Every one of the 96 is moved, because the caller's sol is only known at run time."""
+    body = [phys(k) + ' = r%d;' % (32 + k) for k in range(NSTACKED)]
+    body.append('local s:8 = (ar.pfs >> 7) & 0x7f; bof = bof - s:4 * 8;')
+    body += ['r%d = %s;' % (32 + k, phys(k)) for k in range(NSTACKED)]
+    body.append(bsp_shrink('((ar.pfs >> 7) & 0x7f)'))
+    body.append(cfm_from('ar.pfs'))
+    body.append('ar.ec = (ar.pfs >> 52) & 0x3f;')
+    body.append('return %s;' % target)
+    return ' '.join(body)
+
+
+# cover saves the whole register stack, so rfi can take it back without knowing
+# the covered frame's size before CFM is restored.
+def cover_sem():
+    body = [phys(k) + ' = r%d;' % (32 + k) for k in range(NSTACKED)]
+    body.append('bof = bof + %d;' % (8 * NSTACKED))
+    body.append(bsp_grow('cfm_sof'))
+    # SDM vol 3 cover (3:48): with interruption collection off, CFM goes to cr.ifs.
+    body.append('if ((psr & 0x2000) != 0) goto <ic>; cr.ifs = 0x8000000000000000 | %s; <ic>' % CFM_VALUE)
+    body.append('cfm_sof = 0; ' + CFM_CLEAR)
+    return ' '.join(body)
+
+
+def rfi_sem():
+    """rfi (SDM vol 3 3:236): psr from cr.ipsr; with cr.ifs.v the covered frame
+    comes back; resume at cr.iip's bundle, slot psr.ri."""
+    body = ['psr = cr.ipsr;', 'if ((cr.ifs >> 63) == 0) goto <nofr>;',
+            'bof = bof - %d;' % (8 * NSTACKED)]
+    body += ['r%d = %s;' % (32 + k, phys(k)) for k in range(NSTACKED)]
+    body.append(bsp_shrink('(cr.ifs & 0x7f)'))
+    body.append(cfm_from('cr.ifs'))
+    body.append('<nofr> local t:8 = (cr.iip & 0xfffffffffffffff0) + ((cr.ipsr >> 41) & 3) * 6;')
+    body.append('return [t];')
+    return ' '.join(body)
 
 
 def loop_sem(kind, tgt):
@@ -388,6 +461,12 @@ def constructor(e, layout, unit):
         sem = call_sem(tgt, '@b1')
     elif sem in ('CTOP', 'CEXIT', 'WTOP', 'WEXIT'):
         sem = loop_sem(sem, '$tgt25c')
+    elif sem == 'RET':
+        sem = ret_sem('[$b2]')
+    elif sem == 'COVER':
+        sem = cover_sem()
+    elif sem == 'RFI':
+        sem = rfi_sem()
 
     def repl(m):
         sigil, nm = m.group(1), m.group(2)
@@ -438,7 +517,7 @@ def constructor(e, layout, unit):
         body += 'build %s; ' % qp
     body += sem
     extra = ''
-    if kind:
+    if kind in ('CALL', 'CALLIND'):
         extra = ' & CallIn & CallOut'
     return '%s_%s: %s %s is %s%s%s { %s }' % (unit, layout, mnem, display, patt, extra, action, body)
 
@@ -471,32 +550,51 @@ def unknown_constructors():
     return out
 
 
-# sol and soo before any alloc (the pspec's default; no alloc makes either 127): a call
-# there passes r32.. on as they are.
+# soo before any alloc (the pspec's default; no alloc makes it 127): the frame's
+# size is unknown, so a call passes r32.. on as they are.
 NO_FRAME = 127
 
 
 def call_frame_subs():
     """The register stack renames the caller's outputs r(32+sol).. to the
-    callee's r32..; copy up to eight of them there for the call, give the rest
-    of r32..r39 the never-written `noarg` so no stale caller value (a saved gp)
-    reads as an argument, and put the caller's r32..r39 back afterwards. sol and
-    soo come from the frame's alloc; before one, a call leaves r32.. alone."""
-    cin, cout = [], []
-    for sol in range(97):
-        for soo in range(10):
-            n = min(soo, 8, 96 - sol)
-            body = ['fs%d = r%d;' % (i, 32 + i) for i in range(8)]
-            body += ['r%d = r%d;' % (32 + i, 32 + sol + i) for i in range(n)]
-            body += ['r%d = noarg;' % (32 + i) for i in range(n, 8)]
-            cond = 'sol=%d & soo=%d' % (sol, soo) if soo < 9 else 'sol=%d' % sol
-            cin.append('CallIn: is %s { %s }' % (cond, ' '.join(body)))
-    cin.append('CallIn: is sol { }')     # sol above 96 is no frame alloc can make
-    body = ' '.join('r%d = fs%d;' % (32 + i, i) for i in range(8))
-    cout.append('CallOut: is soo { %s }' % body)
-    cout.append('CallOut: is soo=%d { }' % NO_FRAME)
-    add_sub('CallIn', cin)
-    add_sub('CallOut', cout)
+    callee's r32... The callee's view is made by copying: the caller's locals go
+    to the physical registers below the callee's frame, the outputs move down,
+    the rest of r32..r39 get the never-written `noarg` so no stale caller value
+    (a saved gp) reads as an argument, and after the call the caller's r32..
+    come back from fs* (what the decompiler sees; under emulation br.ret does
+    it). sol and soo come from the frame's alloc."""
+    spill, unspill, move, rest, noarg, save, restore = [], [], [], [], [], [], []
+    for sol in range(NSTACKED + 1):
+        body = [phys(i) + ' = r%d;' % (32 + i) for i in range(sol)]
+        body.append('bof = bof + %d;' % (8 * sol))
+        spill.append('CallSpill: is sol=%d { %s }' % (sol, ' '.join(body)))
+        unspill.append('CallUnspill: is sol=%d { bof = bof - %d; }' % (sol, 8 * sol))
+        n = NSTACKED - sol
+        move.append('CallMove: is sol=%d { %s }'
+                    % (sol, ' '.join('r%d = r%d;' % (32 + i, 32 + sol + i) for i in range(min(n, 8)))))
+        rest.append('CallMoveRest: is sol=%d & soo>8 & soo<%d { %s }'
+                    % (sol, NO_FRAME, ' '.join('r%d = r%d;' % (32 + i, 32 + sol + i) for i in range(8, n))))
+    rest.append('CallMoveRest: is soo<9 { }')
+    rest.append('CallMoveRest: is soo=%d { }' % NO_FRAME)
+    rest.append('CallMoveRest: is sol { }')     # sol above 96 is no frame alloc can make
+    for soo in range(NSTACKED + 1):
+        n = max(8, soo)
+        save.append('CallSave: is soo=%d { %s }' % (soo, ' '.join('fs%d = r%d;' % (i, 32 + i) for i in range(n))))
+        restore.append('CallRestore: is soo=%d { %s }'
+                       % (soo, ' '.join('r%d = fs%d;' % (32 + i, i) for i in range(n))))
+        noarg.append('CallNoarg: is soo=%d { %s }' % (soo, ' '.join('r%d = noarg;' % (32 + i) for i in range(soo, 8))))
+    for t in (save, restore, noarg):
+        t.append('%s: is soo { }' % t[0].split(':')[0])
+    for t in (spill, unspill, move):
+        t.append('%s: is sol { }' % t[0].split(':')[0])
+    for name, t in (('CallSpill', spill), ('CallUnspill', unspill), ('CallMove', move),
+                    ('CallMoveRest', rest), ('CallSave', save), ('CallRestore', restore),
+                    ('CallNoarg', noarg)):
+        add_sub(name, t)
+    add_sub('CallIn', ['CallIn: is CallSpill & CallSave & CallMove & CallMoveRest & CallNoarg { build CallSpill; '
+                       'build CallSave; build CallMove; build CallMoveRest; build CallNoarg; }'])
+    add_sub('CallOut', ['CallOut: is CallRestore & CallUnspill { build CallRestore; build CallUnspill; '
+                        'ar.bsp = fsbsp; %s ar.ec = (ar.pfs >> 52) & 0x3f; }' % cfm_from('ar.pfs')])
 
 
 def main():
@@ -521,16 +619,21 @@ def header():
            'define endian=little;', 'define alignment=2;',
            'define space ram type=ram_space size=8 default;',
            'define space register type=register_space size=4;',
+           '# The physical stacked registers below the current frame, indexed by bof.',
+           'define space rse type=ram_space size=4;',
            '# Register files indexed by a general register (mov r1=msr[r3] and the like).']
     out += ['define space %s type=ram_space size=8;' % sp for sp in INDEXED_SPACES]
     out += reg_defs(0, 8, REGS['gr']) + reg_defs(0x1000, 8, REGS['fr']) + reg_defs(0x2000, 1, REGS['pr'])
     out += reg_defs(0x2100, 8, REGS['br']) + reg_defs(0x2200, 8, REGS['ar']) + reg_defs(0x2800, 8, REGS['cr'])
     out += reg_defs(0x3000, 8, REGS['dahr'])
-    out.append('define register offset=0x3100 size=8 [ ip psr cfm ];')
-    out.append("# The caller's r32..r39 while a call lends them to the callee as arguments, and a")
+    out.append('define register offset=0x3100 size=8 [ ip psr ];')
+    out.append("# The caller's r32.. and ar.bsp while a call lends the registers to the callee, and a")
     out.append("# register nothing writes (the cspec lists it as unaffected, so it is never an argument).")
-    out += reg_defs(0x3200, 8, ['fs%d' % i for i in range(8)])
-    out.append('define register offset=0x3300 size=8 [ noarg ];')
+    out += reg_defs(0x3200, 8, ['fs%d' % i for i in range(NSTACKED)])
+    out.append('define register offset=0x3600 size=8 [ fsbsp noarg ];')
+    out.append('# CFM by field (SDM vol 1 3.1.7), and bof, the byte offset of the current frame in rse.')
+    out.append('define register offset=0x3700 size=8 [ cfm_sof cfm_sol cfm_sor rrb_gr rrb_fr rrb_pr ];')
+    out.append('define register offset=0x3800 size=4 [ bof ];')
     out.append('define register offset=0x4000 size=8 [ contextreg ];')
     return '\n'.join(out) + '\n'
 

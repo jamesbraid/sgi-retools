@@ -1,6 +1,7 @@
 // Run short instruction sequences in Ghidra's emulator and compare registers
 // and memory with what the SDM says they must hold afterwards.
-// Args: SPEC OUTFILE. SPEC lines, tab separated: name, address, steps,
+// Args: SPEC OUTFILE. SPEC lines, tab separated: name, address, steps (or @address to
+// run until the next instruction is there),
 // reg=hex,... to set, addr=hex,... memory qwords to set, reg=hex,... or
 // mem:addr=hex,... expected after the steps. Writes "name PASS" or "name FAIL ...".
 // @category IA64
@@ -45,10 +46,19 @@ public class EmuSynthetic extends GhidraScript {
 				emu.writeMemory(toAddr(p[0]), qword(new BigInteger(p[1], 16)));
 			}
 			emu.writeRegister(emu.getPCRegister(), start.getOffset());
-			for (int i = 0; i < Integer.parseInt(f[2]); i++) {
+			boolean until = f[2].startsWith("@");
+			Address stop = until ? toAddr(f[2].substring(1)) : null;
+			int steps = until ? 10000 : Integer.parseInt(f[2]);
+			for (int i = 0; i < steps; i++) {
+				if (until && emu.getExecutionAddress().equals(stop)) {
+					break;
+				}
 				if (!emu.step(monitor)) {
 					return "FAIL emulator stopped at step " + i + ": " + emu.getLastError();
 				}
+			}
+			if (until && !emu.getExecutionAddress().equals(stop)) {
+				return "FAIL never reached " + stop + ", at " + emu.getExecutionAddress();
 			}
 			StringBuilder bad = new StringBuilder();
 			for (String kv : pairs(f[5])) {

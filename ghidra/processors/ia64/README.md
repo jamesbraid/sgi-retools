@@ -48,10 +48,12 @@ Numbers print in Ghidra's hexadecimal.
 - `tests/synthetic.py`: hand-encoded bundles with their expected text, for the reference
   decoder (no arguments) or for Ghidra (`write`, then `check`). `write` also writes `emu.tsv`:
   short sequences that `EmuSynthetic.java` runs in Ghidra's emulator and `check-emu` compares
-  with the SDM (signed `extr` with pos+len over 64, `ld` post-incrementing by its own target).
-  It also lays out two functions for `DecompileAt.java`: a status function that must not
-  decompile as `void` (`check-dec`) and a call that must pass one argument, not the gp beside it
-  (`check-call`).
+  with the SDM (signed `extr` with pos+len over 64, `ld` post-incrementing by its own target),
+  and two register stack programs run until a given address: nested calls with different
+  frames, and `cover`, `flushrs`, `loadrs` and `rfi`.
+  It also lays out functions for `DecompileAt.java`: a status function that must not
+  decompile as `void` (`check-dec`), a call that must pass one argument, not the gp beside it
+  (`check-call`), and the register stack programs' functions (`frames`, `check-frames`).
   A `br.ia` function checks the flagged form (`pal=ADDRESS` argument to `DecompileAt.java`; `check-pal`) and
   the plain one (`check-plain`).
 - `tests/test_generated.py`: the generator runs and writes a file with the expected landmarks.
@@ -84,6 +86,10 @@ retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghi
     .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn r1=1000 0x80130 0x80150
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-dec .cache/ia64-syn/0x80130.c
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-call .cache/ia64-syn/0x80150.c
+retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
+    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn \
+    $(python3 retools/ghidra/processors/ia64/tests/synthetic.py frames)
+python3 retools/ghidra/processors/ia64/tests/synthetic.py check-frames .cache/ia64-syn
 ```
 
 ## Agreement with objdump
@@ -126,7 +132,6 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
   (`setf.sig`, `getf.sig`, `xma`, which compilers use for multiplication, so it decompiles
   as `*`), a double for arithmetic. The 82-bit register format is not modelled;
   `ldf.fill` and `stf.spill` move 8 of their 16 bytes.
-- `rfi` restores psr from cr.ipsr and returns to cr.iip.
 - `br.ia` is a plain jump to an IA-32 entry (an opaque `br_ia` op, then a branch to b2), except where the
   `pal` context bit is set: there it is `r1 = pal_special_service(r5, r2, r3)` and execution continues at the
   next bundle. `SN2PromImport.java` sets the bit at every `br.ia` in the PAL_A components, where the PAL
@@ -139,19 +144,55 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
   `rotate_regs`, the multimedia instructions, and `unknown_insn` for an unassigned
   encoding.
 
-The register stack is approximated. r32..r127 are fixed registers: `alloc` renames
-nothing, `br.call` does not save the frame and `br.ret` does not restore it, rotation is
-the `rotate_regs` op without effect, and `flushrs`, `loadrs` and `cover` are ops. To keep
-call arguments right, `alloc` records the frame's locals (sol) and outputs (sof - sol) in
-flowing context, and each call saves r32..r39, copies up to eight output registers
-r(32+sol).. into r32.., sets the rest of r32..r39 to `noarg` (a register nothing writes,
-unaffected in the cspec, so a saved gp or other stale local is never an argument), and puts
-r32..r39 back after the call. The callee therefore sees its arguments where its own code reads
-them, r32..r39, and the cspec passes arguments there and returns them in r8. A call reached
-before any `alloc` in its function passes r32.. as they are.
+## Register stack
 
-Limit: a callee's argument count is not known, so every output register the frame declares
-counts, and one set on only some paths (or in a loop) shows up as an argument (`in_r40`).
+The register stack and the register stack engine (SDM vol 2 chapter 6, 2:133-2:150) are
+modelled by moving values, not by renaming registers, so each function's p-code reads its
+own frame as r32..r127, which is what the decompiler and the emulator both need. CFM is
+kept by field (`cfm_sof`, `cfm_sol`, `cfm_sor`, `rrb_gr`, `rrb_fr`, `rrb_pr`). The frames
+below the current one live in an address space of their own, `rse`, from `bof`: the
+physical stacked registers, without the hardware's limit, so the model never needs to
+spill to the backing store.
+
+- `alloc` sets CFM, and records sol and sof - sol in flowing context.
+- `br.call` saves CFM, `ar.ec` and psr.cpl in `ar.pfs`, moves the caller's locals to `rse`,
+  moves its outputs down to r32.., where the callee reads them, gives the rest of r32..r39
+  `noarg` (a register nothing writes, unaffected in the cspec, so a saved gp or other stale
+  local is never an argument), and advances `ar.bsp` as the hardware does, with a NaT
+  collection slot every 63 registers (vol 2 table 6-2).
+- `br.ret` puts the callee's frame where the caller's outputs are, takes the caller's locals
+  back from `rse`, and restores CFM, `ar.ec` and `ar.bsp` from `ar.pfs`. So after a call
+  the caller's outputs hold what the callee left in its inputs, as on the hardware.
+- `cover` moves the whole frame to `rse`, copies CFM to `cr.ifs` with the valid bit when
+  psr.ic is 0, and starts an empty frame. `rfi` restores psr from `cr.ipsr`, takes the
+  covered frame back when `cr.ifs` is valid, and resumes at slot psr.ri of `cr.iip`.
+- `flushrs` sets `ar.bspstore` to `ar.bsp`. `loadrs` sets it to `ar.bsp` less RSC.loadrs.
+  Writing `ar.bspstore` moves `ar.bsp` with it, keeping the dirty registers (table 6-4).
+
+The decompiler sees the same p-code. Its copies into `rse` are dead because `rse` is not
+global memory and `bof` is a constant in every function: the cspec sets it, and the rrb's,
+to 0 on entry, as `br.call` leaves them. A call also copies r32.. to fs0..fs95 before it and
+back after it, which stands in for the callee's `br.ret`. Under emulation that copy back
+never runs, because the emulator continues at the return address; `br.ret` restores the
+frame instead. The cspec lists r40..r127 as unaffected: the register stack preserves the
+caller's locals.
+
+A call reached before any `alloc` in its function passes r32.. as they are, since the
+frame's size is not known.
+
+Limits:
+
+- The backing store in memory is never written or read. Code that reads spilled
+  registers from memory after `flushrs` sees memory as it was.
+- `cover` keeps all 96 stacked registers whatever the frame's size, so `rfi` takes back
+  what a matching `cover` saved. An `rfi` with a `cr.ifs` that software built takes back
+  whatever is in `rse` below.
+- Rotating registers do not rotate: `br.ctop` and the other modulo-scheduled branches
+  call the `rotate_regs` op, which has no effect, and `clrrrb` is an op.
+
+A callee's argument count is not known, so a call passes every output register the caller's
+frame declares, and one set on only some paths (or in a loop) shows up as an argument
+(`in_r40`).
 
 Banked registers: r16..r31 are one set here, so code that runs between `bsw.0` and `bsw.1` (PAL, interruption
 handlers) reads the other bank's values as `in_r*` or `extraout_r*`. `psr.bn` is not tracked in context.
@@ -165,9 +206,9 @@ holds the flagged `br.ia` at the generic PAL_A's FIT walk (0xffff872c in SAL 5.0
 Limits that matter when reading PAL and SAL. A PAL procedure called with the static register convention
 (index in r28, arguments r29 to r31, status in r8 to r11) is an indirect call with no arguments: the
 index is visible only in the r28 write before it, and the status branches after it test whatever the decompiler
-last saw in r8. No convention for it is modelled. Registers are not renamed by `alloc`, so which of r32..r127 a
-routine reads before writing (the FIT walk at the generic PAL_A) shows as unwritten locals (`in_r*`), not as a
-frame.
+last saw in r8. No convention for it is modelled. A routine entered by a branch rather than `br.call` has no
+caller's frame, so which of r32..r127 it reads before writing (the FIT walk at the generic PAL_A) shows as
+unwritten locals (`in_r*`).
 
 r8 is also listed as a ninth input register. The decompiler decides what a function returns
 before it can prove that two predicated writes (`(p6) mov r8=0` / `(p7) mov r8=-33`) are
