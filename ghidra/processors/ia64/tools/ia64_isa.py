@@ -503,7 +503,7 @@ def build_m():
     mx(0x2c, 'mov', ['cr3', 'r2'], 1, '@cr3 = $r2;')
     mx(0x24, 'mov', ['r1', 'cr3'], 1, '@r1 = $cr3;')
     E('M', 'alloc', {**C(op=1), **C(x3=6)}, ['r1', 'ar.pfs', 'sof', 'sol', 'sor'], 1,
-      '@r1 = ar.pfs; alloc_frame($sof, $sol, $sor);', flags=('nopred', 'alloc'))
+      '@r1 = ar.pfs;', flags=('nopred', 'alloc'))
     mx(0x2d, 'mov', ['psr.l', 'r2'], 1, 'psr = (psr & 0xffffffff00000000) | zext($r2:4);')
     mx(0x29, 'mov', ['psr.um', 'r2'], 1, 'psr = (psr & ~0x3f) | ($r2 & 0x3f);')
     mx(0x25, 'mov', ['r1', 'psr'], 1, '@r1 = psr;')
@@ -699,11 +699,11 @@ def build_b():
     bh('B', 'br.ia', {**b0, **C(x6=0x20, btype=1)}, ['b2'], 'br_ia($b2); goto [$b2];')
     bh('B', 'br.ret', {**b0, **C(x6=0x21, btype=4)}, ['b2'], 'return [$b2];')
     for x6, nm, sem in ((0x02, 'cover', 'cover();'), (0x04, 'clrrrb', 'clrrrb();'),
-                        (0x05, 'clrrrb.pr', 'clrrrb_pr();'), (0x08, 'rfi', 'rfi();'),
+                        (0x05, 'clrrrb.pr', 'clrrrb_pr();'), (0x08, 'rfi', 'psr = cr.ipsr; return [cr.iip];'),
                         (0x0c, 'bsw.0', 'bsw_0();'), (0x0d, 'bsw.1', 'bsw_1();'),
                         (0x10, 'epc', 'epc();'), (0x18, 'vmsw.0', 'vmsw_0();'),
                         (0x19, 'vmsw.1', 'vmsw_1();')):
-        E('B', nm, {**b0, **C(x6=x6)}, [], 0, sem, flags=('nopred',) + (('rfi',) if nm == 'rfi' else ()))
+        E('B', nm, {**b0, **C(x6=x6)}, [], 0, sem, flags=('nopred',))
     E('B', 'break.b', {**b0, **C(x6=0)}, ['immu21'], 0, 'break_insn($immu21);')
     bh('B', 'br.call', {**C(op=1)}, ['b1', 'b2'], 'CALLIND', whf='whc', whmap=PHC)
     for x6, nm in ((0x10, 'brp'), (0x11, 'brp.ret')):

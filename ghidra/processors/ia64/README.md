@@ -85,3 +85,48 @@ real code and are left that way on purpose, because no public document assigns t
 M-unit opcode 0 with x3 0, x4 1, x2 2 (slot bits 32:27 = 33), right after `srlz` at
 `0xFFFF82F6`; and B-unit opcode 0 with x6 9 at `0xffe0905c`, `0xffe0912c`, `0xffe0917c`
 and `0xffe091bc`.
+
+## P-code
+
+Enough to read SAL and PAL as C. What is modelled and what is approximated:
+
+- Registers. r0 reads as 0, p0 as 1, f0 and f1 as 0.0 and 1.0; writes to them go nowhere.
+  A qualifying predicate makes the instruction a no-op when false.
+- Compares and tests write their predicate pair by compare type: normal, `unc` (both
+  cleared when the qualifying predicate is false), `and`, `or` and `or.andcm`.
+  `mov pr=r,mask`, `mov r=pr` and `mov pr.rot` act on the 63 single predicates.
+- Loads and stores, with post-increment by register or immediate. Acquire and release
+  forms are plain accesses; the module keeps their order only for uncached addresses
+  (bit 63 set, declared volatile in the pspec), which is where SAL's device registers are.
+  Speculative, advanced and check loads load; `chk.a` asks a `chk_a` op whether to branch.
+- Branches: conditional, indirect, `br.call` (return address in b1 is the next bundle),
+  `br.ret`, `br.cloop` on ar.lc, and the modulo-scheduled `br.ctop`, `br.cexit`,
+  `br.wtop`, `br.wexit` on ar.lc, ar.ec and p63.
+- Application, control and branch registers are named registers (`ar.lc`, `cr.lid`,
+  `b0`). `msr`, `cpuid`, `pmc`, `pmd`, `rr`, `dbr`, `ibr`, `pkr` and `dahr` are address
+  spaces indexed by the general register, so `mov r9=msr[r10]` with r10 known shows as
+  `msr:0xd4`.
+- Floating-point registers hold 64 bits: the significand for the integer forms
+  (`setf.sig`, `getf.sig`, `xma`, which compilers use for multiplication, so it decompiles
+  as `*`), a double for arithmetic. The 82-bit register format is not modelled;
+  `ldf.fill` and `stf.spill` move 8 of their 16 bytes.
+- `rfi` restores psr from cr.ipsr and returns to cr.iip.
+- What the architecture leaves to the implementation, or depends on state the module
+  does not keep, is a named p-code op and never a guess: `frcpa`, `frsqrta` and their
+  parallel forms, `nat` (NaT bits are not tracked, so `tnat` and `chk.s` ask it), `tf_bit`,
+  `fclass`, `probe_*`, `thash`, `ttag`, `tpa`, `tak`, TLB and cache maintenance,
+  `rotate_regs`, the multimedia instructions, and `unknown_insn` for an unassigned
+  encoding.
+
+The register stack is approximated. r32..r127 are fixed registers: `alloc` renames
+nothing, `br.call` does not save the frame and `br.ret` does not restore it, rotation is
+the `rotate_regs` op without effect, and `flushrs`, `loadrs` and `cover` are ops. To keep
+call arguments right, `alloc` records the frame's locals (sol) and outputs (sof - sol) in
+flowing context, and each call copies up to eight output registers r(32+sol).. into
+r32.. before it and puts the caller's r32.. back after it. The callee therefore sees its
+arguments where its own code reads them, r32..r39, and the cspec passes arguments there
+and returns them in r8. A call reached before any `alloc` in its function copies nothing.
+
+The decompiler sometimes misses a return value that reaches `br.ret` only through a pair
+of complementary predicated moves (`(p6) mov r8=0` / `(p7) mov r8=-33`); the function
+then shows as `void`. Give it a return type and the paths come back.

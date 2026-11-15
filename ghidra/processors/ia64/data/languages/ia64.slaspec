@@ -331,7 +331,6 @@ attach variables [ s0fr_11_7 s0fr_18_7 s1fr_11_7 s1fr_18_7 s1fr_25_7 s1fr_4_7 s2
 attach variables [ s0gr_25_2 s1gr_18_2 s2gr_11_2 ] [ r0 r1 r2 r3 ];
 attach variables [ lxgr_45_7 s0gr_11_7 s0gr_18_7 s0gr_25_7 s1gr_11_7 s1gr_18_7 s1gr_4_7 s2gr_11_7 s2gr_4_7 ] [ r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 r13 r14 r15 r16 r17 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31 r32 r33 r34 r35 r36 r37 r38 r39 r40 r41 r42 r43 r44 r45 r46 r47 r48 r49 r50 r51 r52 r53 r54 r55 r56 r57 r58 r59 r60 r61 r62 r63 r64 r65 r66 r67 r68 r69 r70 r71 r72 r73 r74 r75 r76 r77 r78 r79 r80 r81 r82 r83 r84 r85 r86 r87 r88 r89 r90 r91 r92 r93 r94 r95 r96 r97 r98 r99 r100 r101 r102 r103 r104 r105 r106 r107 r108 r109 r110 r111 r112 r113 r114 r115 r116 r117 r118 r119 r120 r121 r122 r123 r124 r125 r126 r127 ];
 attach variables [ s0pr_11_6 s0pr_32_6 s1pr_25_6 s1pr_4_6 s2pr_18_6 ] [ p0 p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 p13 p14 p15 p16 p17 p18 p19 p20 p21 p22 p23 p24 p25 p26 p27 p28 p29 p30 p31 p32 p33 p34 p35 p36 p37 p38 p39 p40 p41 p42 p43 p44 p45 p46 p47 p48 p49 p50 p51 p52 p53 p54 p55 p56 p57 p58 p59 p60 p61 p62 p63 ];
-define pcodeop alloc_frame;
 define pcodeop br_ia;
 define pcodeop break_insn;
 define pcodeop bsw_0;
@@ -482,7 +481,6 @@ define pcodeop ptc_ga;
 define pcodeop ptc_l;
 define pcodeop ptr_d;
 define pcodeop ptr_i;
-define pcodeop rfi;
 define pcodeop rotate_regs;
 define pcodeop setf_exp;
 define pcodeop srlz_d;
@@ -3272,7 +3270,7 @@ M_s0: "mov.m" QP_s0^ARs_s0_20_7"="GRs_s0_13_7^G_M_s0 is G_M_s0 & s0_32_6=42 & s0
 M_s0: "mov.m" QP_s0^GRs_s0_6_7"="ARs_s0_20_7^G_M_s0 is G_M_s0 & s0_32_6=34 & s0_38_3=0 & s0_42_4=1 & GRs_s0_6_7 & ARs_s0_20_7 & GRd_s0_6_7 & QP_s0 { build QP_s0; GRd_s0_6_7 = ARs_s0_20_7; }
 M_s0: "mov" QP_s0^CRs_s0_20_7"="GRs_s0_13_7^G_M_s0 is G_M_s0 & s0_32_6=44 & s0_38_3=0 & s0_42_4=1 & CRs_s0_20_7 & GRs_s0_13_7 & QP_s0 { build QP_s0; CRs_s0_20_7 = GRs_s0_13_7; }
 M_s0: "mov" QP_s0^GRs_s0_6_7"="CRs_s0_20_7^G_M_s0 is G_M_s0 & s0_32_6=36 & s0_38_3=0 & s0_42_4=1 & GRs_s0_6_7 & CRs_s0_20_7 & GRd_s0_6_7 & QP_s0 { build QP_s0; GRd_s0_6_7 = CRs_s0_20_7; }
-M_s0: "alloc" GRs_s0_6_7"=""ar.pfs"","IMM_sof_s0","IMM_sol_s0","IMM_sor_s0^G_M_s0 is G_M_s0 & s0_38_3=6 & s0_42_4=1 & s0_18_7 & s0_25_7 & GRs_s0_6_7 & IMM_sof_s0 & IMM_sol_s0 & IMM_sor_s0 & GRd_s0_6_7 [ sol = s0_25_7; globalset(inst_next, sol); soo = s0_18_7 - s0_25_7; globalset(inst_next, soo); ] { GRd_s0_6_7 = ar.pfs; alloc_frame(IMM_sof_s0, IMM_sol_s0, IMM_sor_s0); }
+M_s0: "alloc" GRs_s0_6_7"=""ar.pfs"","IMM_sof_s0","IMM_sol_s0","IMM_sor_s0^G_M_s0 is G_M_s0 & s0_38_3=6 & s0_42_4=1 & s0_18_7 & s0_25_7 & GRs_s0_6_7 & IMM_sof_s0 & IMM_sol_s0 & IMM_sor_s0 & GRd_s0_6_7 [ sol = s0_25_7; globalset(inst_next, sol); soo = s0_18_7 - s0_25_7; globalset(inst_next, soo); ] { GRd_s0_6_7 = ar.pfs; }
 M_s0: "mov" QP_s0^"psr.l""="GRs_s0_13_7^G_M_s0 is G_M_s0 & s0_32_6=45 & s0_38_3=0 & s0_42_4=1 & GRs_s0_13_7 & QP_s0 { build QP_s0; psr = (psr & 0xffffffff00000000) | zext(GRs_s0_13_7:4); }
 M_s0: "mov" QP_s0^"psr.um""="GRs_s0_13_7^G_M_s0 is G_M_s0 & s0_32_6=41 & s0_38_3=0 & s0_42_4=1 & GRs_s0_13_7 & QP_s0 { build QP_s0; psr = (psr & ~0x3f) | (GRs_s0_13_7 & 0x3f); }
 M_s0: "mov" QP_s0^GRs_s0_6_7"=""psr"^G_M_s0 is G_M_s0 & s0_32_6=37 & s0_38_3=0 & s0_42_4=1 & GRs_s0_6_7 & GRd_s0_6_7 & QP_s0 { build QP_s0; GRd_s0_6_7 = psr; }
@@ -4134,7 +4132,7 @@ M_s1: "mov.m" QP_s1^ARs_s1_20_7"="GRs_s1_13_7^G_M_s1 is G_M_s1 & s1_25_6=42 & s1
 M_s1: "mov.m" QP_s1^GRs_s1_6_7"="ARs_s1_20_7^G_M_s1 is G_M_s1 & s1_25_6=34 & s1_31_3=0 & s1_35_4=1 & GRs_s1_6_7 & ARs_s1_20_7 & GRd_s1_6_7 & QP_s1 { build QP_s1; GRd_s1_6_7 = ARs_s1_20_7; }
 M_s1: "mov" QP_s1^CRs_s1_20_7"="GRs_s1_13_7^G_M_s1 is G_M_s1 & s1_25_6=44 & s1_31_3=0 & s1_35_4=1 & CRs_s1_20_7 & GRs_s1_13_7 & QP_s1 { build QP_s1; CRs_s1_20_7 = GRs_s1_13_7; }
 M_s1: "mov" QP_s1^GRs_s1_6_7"="CRs_s1_20_7^G_M_s1 is G_M_s1 & s1_25_6=36 & s1_31_3=0 & s1_35_4=1 & GRs_s1_6_7 & CRs_s1_20_7 & GRd_s1_6_7 & QP_s1 { build QP_s1; GRd_s1_6_7 = CRs_s1_20_7; }
-M_s1: "alloc" GRs_s1_6_7"=""ar.pfs"","IMM_sof_s1","IMM_sol_s1","IMM_sor_s1^G_M_s1 is G_M_s1 & s1_31_3=6 & s1_35_4=1 & s1_11_7 & s1_18_7 & GRs_s1_6_7 & IMM_sof_s1 & IMM_sol_s1 & IMM_sor_s1 & GRd_s1_6_7 [ sol = s1_18_7; globalset(inst_next, sol); soo = s1_11_7 - s1_18_7; globalset(inst_next, soo); ] { GRd_s1_6_7 = ar.pfs; alloc_frame(IMM_sof_s1, IMM_sol_s1, IMM_sor_s1); }
+M_s1: "alloc" GRs_s1_6_7"=""ar.pfs"","IMM_sof_s1","IMM_sol_s1","IMM_sor_s1^G_M_s1 is G_M_s1 & s1_31_3=6 & s1_35_4=1 & s1_11_7 & s1_18_7 & GRs_s1_6_7 & IMM_sof_s1 & IMM_sol_s1 & IMM_sor_s1 & GRd_s1_6_7 [ sol = s1_18_7; globalset(inst_next, sol); soo = s1_11_7 - s1_18_7; globalset(inst_next, soo); ] { GRd_s1_6_7 = ar.pfs; }
 M_s1: "mov" QP_s1^"psr.l""="GRs_s1_13_7^G_M_s1 is G_M_s1 & s1_25_6=45 & s1_31_3=0 & s1_35_4=1 & GRs_s1_13_7 & QP_s1 { build QP_s1; psr = (psr & 0xffffffff00000000) | zext(GRs_s1_13_7:4); }
 M_s1: "mov" QP_s1^"psr.um""="GRs_s1_13_7^G_M_s1 is G_M_s1 & s1_25_6=41 & s1_31_3=0 & s1_35_4=1 & GRs_s1_13_7 & QP_s1 { build QP_s1; psr = (psr & ~0x3f) | (GRs_s1_13_7 & 0x3f); }
 M_s1: "mov" QP_s1^GRs_s1_6_7"=""psr"^G_M_s1 is G_M_s1 & s1_25_6=37 & s1_31_3=0 & s1_35_4=1 & GRs_s1_6_7 & GRd_s1_6_7 & QP_s1 { build QP_s1; GRd_s1_6_7 = psr; }
@@ -6728,7 +6726,7 @@ B_s0: "br.ret.dpnt.many.clr" QP_s0^BRs_s0_13_3^G_B_s0 is G_B_s0 & s0_11_3=4 & s0
 B_s0: "cover" G_B_s0 is G_B_s0 & s0_32_6=2 & s0_42_4=0 { cover(); }
 B_s0: "clrrrb" G_B_s0 is G_B_s0 & s0_32_6=4 & s0_42_4=0 { clrrrb(); }
 B_s0: "clrrrb.pr" G_B_s0 is G_B_s0 & s0_32_6=5 & s0_42_4=0 { clrrrb_pr(); }
-B_s0: "rfi" G_B_s0 is G_B_s0 & s0_32_6=8 & s0_42_4=0 { rfi(); }
+B_s0: "rfi" G_B_s0 is G_B_s0 & s0_32_6=8 & s0_42_4=0 { psr = cr.ipsr; return [cr.iip]; }
 B_s0: "bsw.0" G_B_s0 is G_B_s0 & s0_32_6=12 & s0_42_4=0 { bsw_0(); }
 B_s0: "bsw.1" G_B_s0 is G_B_s0 & s0_32_6=13 & s0_42_4=0 { bsw_1(); }
 B_s0: "epc" G_B_s0 is G_B_s0 & s0_32_6=16 & s0_42_4=0 { epc(); }
@@ -6940,7 +6938,7 @@ B_s1: "br.ret.dpnt.many.clr" QP_s1^BRs_s1_13_3^G_B_s1 is G_B_s1 & s1_4_3=4 & s1_
 B_s1: "cover" G_B_s1 is G_B_s1 & s1_25_6=2 & s1_35_4=0 { cover(); }
 B_s1: "clrrrb" G_B_s1 is G_B_s1 & s1_25_6=4 & s1_35_4=0 { clrrrb(); }
 B_s1: "clrrrb.pr" G_B_s1 is G_B_s1 & s1_25_6=5 & s1_35_4=0 { clrrrb_pr(); }
-B_s1: "rfi" G_B_s1 is G_B_s1 & s1_25_6=8 & s1_35_4=0 { rfi(); }
+B_s1: "rfi" G_B_s1 is G_B_s1 & s1_25_6=8 & s1_35_4=0 { psr = cr.ipsr; return [cr.iip]; }
 B_s1: "bsw.0" G_B_s1 is G_B_s1 & s1_25_6=12 & s1_35_4=0 { bsw_0(); }
 B_s1: "bsw.1" G_B_s1 is G_B_s1 & s1_25_6=13 & s1_35_4=0 { bsw_1(); }
 B_s1: "epc" G_B_s1 is G_B_s1 & s1_25_6=16 & s1_35_4=0 { epc(); }
@@ -7152,7 +7150,7 @@ B_s2: "br.ret.dpnt.many.clr" QP_s2^BRs_s2_13_3^G_B_s2 is G_B_s2 & cb_6_3=4 & s2_
 B_s2: "cover" G_B_s2 is G_B_s2 & s2_18_6=2 & s2_28_4=0 { cover(); }
 B_s2: "clrrrb" G_B_s2 is G_B_s2 & s2_18_6=4 & s2_28_4=0 { clrrrb(); }
 B_s2: "clrrrb.pr" G_B_s2 is G_B_s2 & s2_18_6=5 & s2_28_4=0 { clrrrb_pr(); }
-B_s2: "rfi" G_B_s2 is G_B_s2 & s2_18_6=8 & s2_28_4=0 { rfi(); }
+B_s2: "rfi" G_B_s2 is G_B_s2 & s2_18_6=8 & s2_28_4=0 { psr = cr.ipsr; return [cr.iip]; }
 B_s2: "bsw.0" G_B_s2 is G_B_s2 & s2_18_6=12 & s2_28_4=0 { bsw_0(); }
 B_s2: "bsw.1" G_B_s2 is G_B_s2 & s2_18_6=13 & s2_28_4=0 { bsw_1(); }
 B_s2: "epc" G_B_s2 is G_B_s2 & s2_18_6=16 & s2_28_4=0 { epc(); }

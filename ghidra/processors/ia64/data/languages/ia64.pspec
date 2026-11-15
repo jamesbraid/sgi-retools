@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <processor_spec>
   <programcounter register="ip"/>
+  <!-- Physical addresses with bit 63 set are uncached (SDM vol 2 4.4.6): device
+       registers, so the decompiler keeps every access in order. -->
+  <volatile outputop="write_volatile" inputop="read_volatile">
+    <range space="ram" first="0x8000000000000000" last="0xffffffffffffffff"/>
+  </volatile>
 </processor_spec>
