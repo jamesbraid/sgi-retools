@@ -79,6 +79,9 @@ the table holds no type records for it. `tools/mdebug.py` decodes the same table
 Limits: no parameter types for a pointer to function, `long` is 4 bytes, bit fields that straddle their
 storage unit are dropped, and aggregates with the same tag are merged (the first definition with members wins).
 
+`--ghidra-export` reads ELF objects for big-endian MIPS and little-endian ARM (language `ARM:LE:32:v4`, for
+example the SN2 L1 controller firmware); an IA-64 SN2 PROM goes in with `--sn2-prom` below.
+
 ## SN2 PROM (IA-64) in Ghidra
 
 The SGI Altix and Prism system firmware is an IA-64 flash image. The Ghidra image carries the IA-64
