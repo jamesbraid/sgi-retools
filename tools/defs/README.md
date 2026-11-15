@@ -329,7 +329,7 @@ A unit gets `c-clean` only when its entry says `profiles = ["c-clean"]` (or list
 unit without `profiles` gets the other enabled profiles. The `c-clean` header is for copying into another public project. It keeps every offset, shift, mask,
 `_COUNT`, `_STRIDE`, enum value, constant and reset-value macro of the standard C header and omits all
 prose: block and register documentation, grades, access and reset comments, source references, and the
-unit's hand-written `helpers.h`. Each register or word gets a one-name comment. The banner names the
+unit's hand-written `helpers.h`. Each register or word gets a one-name comment. The one-line banner names the
 repository and commit, and no line is longer than 90 columns (a longer `#define` wraps with a backslash).
 `defs-check --build` compiles it standalone.
 
