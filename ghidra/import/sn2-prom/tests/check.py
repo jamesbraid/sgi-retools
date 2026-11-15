@@ -27,7 +27,7 @@ def main():
 
     def q(a):
         return struct.unpack('<Q', data[a - base:a - base + 8])[0]
-    labels, funcs, r1, blocks, noexec = {}, set(), [], {}, set()
+    labels, funcs, r1, blocks, noexec, pal = {}, set(), [], {}, set(), set()
     for line in open(syms):
         f = line.rstrip('\n').split('\t')
         if f[0] == 'label':
@@ -36,11 +36,50 @@ def main():
             funcs.add(int(f[1].split(':')[-1], 16))
         elif f[0] == 'r1':
             r1.append((int(f[1].split(':')[-1], 16), int(f[2].split(':')[-1], 16), f[3]))
+        elif f[0] == 'pal':
+            pal.add(int(f[1].split(':')[-1], 16))
         elif f[0] == 'block':
             blocks[f[3]] = int(f[1].split(':')[-1], 16)
             if f[4] == '-':
                 noexec.add(f[3])
     bad = []
+
+    def br_ia_sites(lo, hi):
+        # A br.ia is B-unit opcode 0, x6 0x20, btype 1; the B slots follow from the template.
+        units = {0x10: 'MIB', 0x11: 'MIB', 0x12: 'MBB', 0x13: 'MBB', 0x16: 'BBB', 0x17: 'BBB',
+                 0x18: 'MMB', 0x19: 'MMB', 0x1c: 'MFB', 0x1d: 'MFB'}
+        for a in range(lo, hi - 15, 16):
+            v = q(a) | q(a + 8) << 64
+            for i, u in enumerate(units.get(v & 31, '')):
+                x = v >> (5 + 41 * i) & (1 << 41) - 1
+                if u == 'B' and x >> 37 & 15 == 0 and x >> 27 & 63 == 0x20 and x >> 6 & 7 == 1:
+                    site = a + (0, 6, 12)[i]
+                    if site not in pal:
+                        bad.append('br.ia at %#x is not flagged as a PAL service call' % site)
+
+    def pal_procs(lo, hi):
+        # (index, mask, 0) triples ended by -1, then a link address per entry; PAL_B links at 0xfff00000.
+        best = (0, 0)
+        for a in range(lo, hi - 24, 8):
+            n = 0
+            while a + 24 * n + 24 <= hi and q(a + 24 * n) < 0x1000 and q(a + 24 * n + 8) \
+                    and q(a + 24 * n + 8) >> 40 <= 1 and q(a + 24 * n + 16) == 0:
+                n += 1
+            if n >= 8 and q(a + 24 * n) == (1 << 64) - 1 and n > best[0]:
+                best = (n, a)
+        if not best[0]:
+            # Newer PAL_B (SHub 2) has no such table; the import script reports the same.
+            print('no PAL procedure table in %#x' % lo)
+            return
+        n, a = best
+        h = a + 24 * (n + 1)
+        while q(h) == 0:
+            h += 8
+        for i in range(n):
+            link = q(h + 8 * i)
+            handler = (link & 0xffffffff) + lo - 0xfff00000
+            if link >> 32 == 0x80000000 and lo <= handler < hi:
+                want(handler, 'pal_proc_%d' % q(a + 24 * i), True)
 
     def want(addr, name, func=False):
         if name not in labels.get(addr, ()):
@@ -68,12 +107,22 @@ def main():
             bad.append('%s is not a non-executable block at %#x' % (name, start))
         if kind == 0x0e:
             want(start + 0x300, name + '_entry', True)
+        if kind in (0x0e, 0x0f):
+            br_ia_sites(start, start + size)
+        if kind == 0x01:
+            want(start + 0x10080, name + '_check_entry', True)
+            want(start + 0x10070, name + '_init_entry', True)
+            pal_procs(start, start + size)
         if kind == 0x11:
             salb = (start, start + size)
             for off, n in ((0, 'sal_b_reset_entry'), (0x10, 'sal_b_entry_reason2'), (0x20, 'sal_b_entry_reason1')):
                 want(start + off, n, True)
     want(q(TOP - 0x18) & ~UNC, 'SALE_ENTRY', True)
-    want(TOP - 0x50, 'PALE_RESET')
+    want(TOP - 0x50, 'PALE_RESET', True)
+    want(TOP - 0x60, 'PALE_INIT', True)
+    want(TOP - 0x70, 'PALE_CHECK', True)
+    br_ia_sites(q(TOP - 0x30) & ~UNC, TOP - 0x40)
+    print('%d br.ia sites in PAL_A flagged as PAL service calls' % len(pal))
     # The dispatch table: the longest run of (id, descriptor) pairs in SAL_B.
     lo, hi = salb
     best, blen = None, 0

@@ -1,7 +1,9 @@
 // Lay out an SGI SN2 (Altix, Prism) flash PROM imported as a flat IA-64 image:
 // the FIT and its components, the generic PAL_A and its vectors, the
-// first-stage SAL entry, the SAL_B entries, the physical-mode SAL dispatch
-// table and SAL_B's global pointer. Run as a pre-script on a BinaryLoader
+// first-stage SAL entry, the PALE_CHECK and PALE_INIT hand-offs and PAL_B's
+// entry vectors, the SAL_B entries, the physical-mode SAL dispatch table and
+// SAL_B's global pointer. The br.ia sites in PAL_A are marked as PAL service
+// calls (the module README gives the evidence grade). Run as a pre-script on a BinaryLoader
 // import with language IA64:LE:64:default; an image loaded at the wrong base
 // is moved so it ends at 4 GiB, where the processor finds it.
 // Args: none
@@ -16,6 +18,7 @@ import ghidra.program.disassemble.Disassembler;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.*;
 import ghidra.program.model.listing.*;
+import ghidra.program.model.lang.Register;
 import ghidra.program.model.mem.*;
 import ghidra.program.model.symbol.SourceType;
 
@@ -30,6 +33,7 @@ public class SN2PromImport extends GhidraScript {
 	static final Set<Integer> CODE = Set.of(0x01, 0x0e, 0x0f, 0x10, 0x11);
 
 	Memory mem;
+	boolean vectors;
 
 	@Override
 	protected void run() throws Exception {
@@ -86,17 +90,27 @@ public class SN2PromImport extends GhidraScript {
 			long start = q(palA) & ~UNCACHED;
 			comps.add(new long[] { start, TOP - 0x40 - start, 0x0f, (q(palA + 8) >> 32) & 0xffff });
 			label(start, "PAL_A_generic", null);
-			// The vector bundles (read from the image, chips snprom pal-msrs.md);
-			// 0xffffffb0 is the reset entry (inferred there from Intel's layout).
-			for (long v = TOP - 0xb0; v <= TOP - 0x50; v += 16) {
-				String n = v == TOP - 0x50 ? "PALE_RESET" : String.format("pal_a_vector_%x", v);
-				code(v, n, false);
-			}
+			vectors = true;
 		}
 
 		for (long[] c : comps) {
 			if (!CODE.contains((int) c[2])) {
 				markNotCode(c[0], c[0] + c[1], name((int) c[2], (int) c[3]));
+			}
+		}
+		for (long[] c : comps) {
+			if (c[2] == 0x0e || c[2] == 0x0f) {
+				markPalServiceCalls(c[0], c[0] + c[1]);
+			}
+		}
+		if (vectors) {
+			// The vector bundles (read from the image, chips snprom pal-msrs.md); 0xffffffb0 is
+			// the reset entry. PALE_CHECK and PALE_INIT are inferred from the PAL_B hand-offs.
+			// After the br.ia marking, so flow does not follow the IA-32 branch there.
+			for (long v = TOP - 0xb0; v <= TOP - 0x50; v += 16) {
+				String n = v == TOP - 0x50 ? "PALE_RESET" : v == TOP - 0x60 ? "PALE_INIT"
+						: v == TOP - 0x70 ? "PALE_CHECK" : String.format("pal_a_vector_%x", v);
+				code(v, n, v >= TOP - 0x70);
 			}
 		}
 		currentProgram.getOptions(Program.DISASSEMBLER_PROPERTIES)
@@ -109,6 +123,10 @@ public class SN2PromImport extends GhidraScript {
 				// Processor-specific PAL_A is entered at image + 0x300.
 				code(start + 0x300, n + "_entry", true);
 			}
+			else if (type == 0x01) {
+				palBEntries(start, n);
+				palProcTable(start, start + c[1]);
+			}
 			else if (type == 0x11) {
 				// SAL_B starts with three branch bundles: the reset entry, then
 				// the entries SAL_A takes for reasons 2 and 1.
@@ -118,8 +136,158 @@ public class SN2PromImport extends GhidraScript {
 				salDispatch(start, start + c[1]);
 			}
 		}
+		for (long v = TOP - 0x70; v <= TOP - 0x50; v += 16) {
+			handler(v);
+		}
+		if (vectors) {
+			// PALE_RESET leaves through an rfi to cr.iip = 0xffff8470 (chips snprom boot-sequence.md),
+			// so flow never reaches the FIT walk behind it. Seed it where that image has code.
+			long walk = TOP - 0x7b90;
+			long t = q(walk) & 31;
+			if (t < 0x1e && t != 6 && t != 7 && t != 0xe && t != 0xf && t != 0x14 && t != 0x15 && t != 0x1a
+				&& t != 0x1b) {
+				code(walk, "pale_reset_fit_walk", true);
+			}
+		}
 		code(sale, "SALE_ENTRY", true);
 		currentProgram.getSymbolTable().addExternalEntryPoint(addr(sale));
+	}
+
+	// PALE_RESET, PALE_CHECK and PALE_INIT each hold a branch to the code that does the work;
+	// make that code a function too.
+	void handler(long v) throws Exception {
+		Address t = jumpTarget(v);
+		if (t != null) {
+			String n = v == TOP - 0x50 ? "pale_reset_handler" : v == TOP - 0x60 ? "pale_init_handler"
+					: "pale_check_handler";
+			code(t.getOffset(), n, true);
+		}
+	}
+
+	// The target of the unconditional jump in a bundle's slots, or null.
+	Address jumpTarget(long bundle) {
+		for (int off = 0; off <= 12; off += 6) {
+			Instruction in = getInstructionAt(addr(bundle + off));
+			if (in != null && in.getFlowType().isUnConditional() && in.getFlowType().isJump()) {
+				Address[] f = in.getFlows();
+				return f.length == 1 ? f[0] : null;
+			}
+		}
+		return null;
+	}
+
+	// PAL_B opens, 0x10000 into the component, with a run of bundles that each branch to
+	// a routine. The PALE_CHECK and PALE_INIT hand-offs enter at +0x10080 and +0x10070 (inferred).
+	void palBEntries(long start, String name) throws Exception {
+		for (long a = start + 0x10000; a <= start + 0x100a0; a += 16) {
+			long off = a - start;
+			String n = off == 0x10080 ? name + "_check_entry" : off == 0x10070 ? name + "_init_entry"
+					: String.format("%s_entry_%x", name, off);
+			code(a, n, true);
+			Address t = jumpTarget(a);
+			if (t != null) {
+				code(t.getOffset(), n + "_body", true);
+			}
+		}
+	}
+
+	// PAL_B links at 0xfff00000 whatever its address in flash; its code holds link addresses.
+	static final long PAL_B_LINK = 0xfff00000L;
+
+	// The PAL procedure table, found by shape: 24-byte entries (index, PSR mask, 0) ended by -1,
+	// then one 8-byte link address of a handler per entry. The shape is checked against the
+	// link address the dispatch code loads for the table, so a mislinked image is skipped.
+	void palProcTable(long start, long end) throws Exception {
+		long delta = start - PAL_B_LINK;
+		long best = -1, bestLen = 0;
+		for (long a = start; a + 24 <= end; a += 8) {
+			long n = 0;
+			while (a + 24 * n + 24 <= end && q(a + 24 * n) >= 0 && q(a + 24 * n) < 0x1000
+				&& q(a + 24 * n + 8) != 0 && (q(a + 24 * n + 8) >>> 40) <= 1 && q(a + 24 * n + 16) == 0) {
+				n++;
+			}
+			if (n >= 8 && q(a + 24 * n) == -1L && n > bestLen) {
+				best = a;
+				bestLen = n;
+			}
+			a += 24 * Math.max(0, n - 1);
+		}
+		if (bestLen == 0 || !loadsLinkAddress(start, end, best - delta)) {
+			printerr("SN2PromImport: no PAL procedure table in " + Long.toHexString(start));
+			return;
+		}
+		long h = best + 24 * (bestLen + 1);
+		while (q(h) == 0) {
+			h += 8;
+		}
+		label(best, "pal_proc_table", bestLen + " (PAL procedure index, PSR mask, 0) entries");
+		label(h, "pal_proc_handlers", "link address of the handler for each index");
+		for (long i = 0; i < bestLen; i++) {
+			long idx = q(best + 24 * i), link = q(h + 8 * i);
+			if ((link >>> 32) != 0x80000000L) {
+				continue;
+			}
+			long handler = (link & 0xffffffffL) + delta;
+			if (handler < start || handler >= end) {
+				continue;
+			}
+			createData(addr(best + 24 * i), QWordDataType.dataType);
+			createData(addr(h + 8 * i), PointerDataType.dataType);
+			code(handler, "pal_proc_" + idx, true);
+		}
+		println(String.format("SN2PromImport: %d PAL procedures from the table at %#x", bestLen, best));
+	}
+
+	// True if some movl in [start, end) loads 0x80000000_<link>: the physical alias of a link address.
+	boolean loadsLinkAddress(long start, long end, long link) throws Exception {
+		long mask = (1L << 41) - 1;
+		for (long a = start; a + 16 <= end; a += 16) {
+			long lo = q(a), hi = q(a + 8);
+			long tmpl = lo & 31;
+			if (tmpl != 4 && tmpl != 5) {
+				continue;
+			}
+			long l = ((lo >>> 46) | (hi << 18)) & mask, x = (hi >>> 23) & mask;
+			long imm = (l << 22) | (((x >>> 36) & 1) << 63) | (((x >>> 21) & 1) << 21)
+				| (((x >>> 22) & 0x1f) << 16) | (((x >>> 27) & 0x1ff) << 7) | ((x >>> 13) & 0x7f);
+			if (imm == (0x80000000_00000000L | link)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// A PAL_A br.ia is a call into the processor's resident service, not a switch to IA-32
+	// (inferred, see the IA-64 module README): flag each so the module models it as one.
+	void markPalServiceCalls(long start, long end) throws Exception {
+		// Units by template: B in slot 1 and 2 of MBB, slot 2 of MIB, MMB and MFB, all of BBB.
+		String[] units = new String[32];
+		units[0x10] = units[0x11] = "MIB";
+		units[0x12] = units[0x13] = "MBB";
+		units[0x16] = units[0x17] = "BBB";
+		units[0x18] = units[0x19] = "MMB";
+		units[0x1c] = units[0x1d] = "MFB";
+		long mask = (1L << 41) - 1;
+		Register pal = currentProgram.getRegister("pal");
+		int found = 0;
+		for (long a = start; a + 16 <= end; a += 16) {
+			long lo = q(a), hi = q(a + 8);
+			String u = units[(int) (lo & 31)];
+			if (u == null) {
+				continue;
+			}
+			long[] slot = { (lo >>> 5) & mask, ((lo >>> 46) | (hi << 18)) & mask, (hi >>> 23) & mask };
+			for (int i = 0; i < 3; i++) {
+				long x = slot[i];
+				if (u.charAt(i) == 'B' && ((x >>> 37) & 0xf) == 0 && ((x >>> 27) & 0x3f) == 0x20
+					&& ((x >>> 6) & 7) == 1) {
+					Address at = addr(a + (i == 0 ? 0 : i == 1 ? 6 : 12));
+					currentProgram.getProgramContext().setValue(pal, at, at, BigInteger.ONE);
+					found++;
+				}
+			}
+		}
+		println(String.format("SN2PromImport: %d br.ia PAL service call(s) in %#x..%#x", found, start, end));
 	}
 
 	// Give a data component its own non-executable block and keep disassembly out of such
