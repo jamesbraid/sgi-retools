@@ -1,6 +1,7 @@
 // Make a function at each address (disassembling from it) and decompile it
 // into OUTDIR/<address>.c, with the listing beside it as <address>.s.
-// Args: OUTDIR [r1=GP] ADDRESS...
+// Args: OUTDIR [r1=GP] [pal=ADDRESS]... ADDRESS...
+// pal=ADDRESS marks the bundle at ADDRESS as a PAL service call site (context bit `pal`).
 // @category IA64
 import java.io.*;
 import java.math.BigInteger;
@@ -24,6 +25,12 @@ public class DecompileAt extends GhidraScript {
 			currentProgram.getProgramContext().setValue(currentProgram.getRegister("r1"),
 				all.getMinAddress(), all.getMaxAddress(), new BigInteger(a[1].substring(5), 16));
 			first = 2;
+		}
+		while (first < a.length && a[first].startsWith("pal=")) {
+			Address at = toAddr(a[first].substring(4));
+			currentProgram.getProgramContext().setValue(currentProgram.getRegister("pal"), at.add(12),
+				at.add(12), BigInteger.ONE);
+			first++;
 		}
 		for (int i = first; i < a.length; i++) {
 			Address ad = toAddr(a[i]);

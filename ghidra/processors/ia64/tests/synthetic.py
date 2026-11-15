@@ -9,6 +9,9 @@
   synthetic.py check-dec C   check DecompileAt.java's C for it
   synthetic.py caller        the address of the calling function (run DecompileAt with r1=1000)
   synthetic.py check-call C  check DecompileAt.java's C for it
+  synthetic.py pal           the address of the br.ia function (run DecompileAt with pal=ADDR)
+  synthetic.py check-pal C   check DecompileAt.java's C for it, and check-plain C for the same
+                             code decompiled without the pal flag
 
 The encodings are built here from the instruction formats of the Intel
 Itanium Architecture SDM rev 2.3 vol 3 (323207) chapter 4; the expected text
@@ -192,9 +195,23 @@ def caller_function():
             bundle(0x17, ret, NOP_B, NOP_B)]
 
 
+def pal_addr():
+    return caller_addr() + 16 * len(caller_function())
+
+
+def pal_function():
+    """r5 = 1; br.ia; return r1 in r8. Flagged as a PAL service site it must decompile
+    to a call that returns r1 and carries on; unflagged it stays an IA-32 branch."""
+    mov5 = slot(op(8), (34, 2, 2), (6, 7, 5), (20, 7, 0), (13, 7, 1))
+    br_ia = slot(op(0), (27, 6, 0x20), (6, 3, 1), (13, 3, 0))
+    mov8 = slot(op(8), (34, 2, 2), (6, 7, 8), (20, 7, 1), (13, 7, 0))
+    ret = slot(op(0), (27, 6, 0x21), (6, 3, 4), (12, 1, 1))
+    return [bundle(0x11, NOP_M, mov5, br_ia), bundle(0x10, NOP_M, mov8, ret)]
+
+
 def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
-            + b''.join(status_function()) + b''.join(caller_function()))
+            + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function()))
 
 
 def expected():
@@ -235,6 +252,22 @@ def check_call(path):
     m = re.search(r'\b\w+_(?:0x)?00080000\(([^;]*)\);', text)
     ok = m is not None and m.group(1).count(',') == 0 and m.group(1).strip() != ''
     print('%s: %s' % ('call passes one argument' if ok else 'FAIL call arguments (%s)' % (m and m.group(1)), path))
+    return 0 if ok else 1
+
+
+def check_pal(path):
+    """A flagged br.ia is a service call whose result is r1, and the code after it is reached."""
+    text = open(path).read()
+    ok = 'pal_special_service(' in text and 'br_ia' not in text and re.search(r'\breturn [^;]+;', text)
+    print('%s: %s' % ('flagged br.ia is a service call' if ok else 'FAIL flagged br.ia', path))
+    return 0 if ok else 1
+
+
+def check_plain(path):
+    """Unflagged, br.ia keeps its IA-32 branch semantics."""
+    text = open(path).read()
+    ok = 'br_ia(' in text and 'pal_special_service' not in text
+    print('%s: %s' % ('plain br.ia stays a branch' if ok else 'FAIL plain br.ia', path))
     return 0 if ok else 1
 
 
@@ -298,6 +331,13 @@ def main():
     if sys.argv[1] == 'caller':
         print('%#x' % caller_addr())
         return 0
+    if sys.argv[1] == 'pal':
+        print('%#x' % pal_addr())
+        return 0
+    if sys.argv[1] == 'check-pal':
+        return check_pal(sys.argv[2])
+    if sys.argv[1] == 'check-plain':
+        return check_plain(sys.argv[2])
     if sys.argv[1] == 'check-call':
         return check_call(sys.argv[2])
     if sys.argv[1] == 'check-dec':

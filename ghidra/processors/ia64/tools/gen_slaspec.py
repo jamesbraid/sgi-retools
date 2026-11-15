@@ -415,6 +415,7 @@ def constructor(e, layout, unit):
         syms.append(q)
         qp = q
     cons = [constraint(layout, f, v) for f, v in sorted(e.cons.items())]
+    cons += ['pal=1'] if 'pal' in e.flags else ['pal=0'] if 'nopal' in e.flags else []
     action = ''
     if 'alloc' in e.flags:
         sof = fparts(layout, 13, 7)[0][0]
@@ -555,6 +556,7 @@ def write(cons):
         out.append('  %s=(%d,%d) noflow' % (name, a, b))
     out.append('  sol=(32,38)')
     out.append('  soo=(39,45)')
+    out.append('  pal=(46,46) noflow')
     out.append(';')
     for tok, fields in sorted(token_fields.items()):
         n = {'s0tok': 48, 's1tok': 48, 's2tok': 32, 'lxtok': 80}[tok]

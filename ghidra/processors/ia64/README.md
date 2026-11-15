@@ -52,6 +52,8 @@ Numbers print in Ghidra's hexadecimal.
   It also lays out two functions for `DecompileAt.java`: a status function that must not
   decompile as `void` (`check-dec`) and a call that must pass one argument, not the gp beside it
   (`check-call`).
+  A `br.ia` function checks the flagged form (`pal=ADDRESS` argument to `DecompileAt.java`; `check-pal`) and
+  the plain one (`check-plain`).
 - `tests/test_generated.py`: the generator runs and writes a file with the expected landmarks.
 
 ## Running
@@ -125,6 +127,11 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
   as `*`), a double for arithmetic. The 82-bit register format is not modelled;
   `ldf.fill` and `stf.spill` move 8 of their 16 bytes.
 - `rfi` restores psr from cr.ipsr and returns to cr.iip.
+- `br.ia` is a plain jump to an IA-32 entry (an opaque `br_ia` op, then a branch to b2), except where the
+  `pal` context bit is set: there it is `r1 = pal_special_service(r5, r2, r3)` and execution continues at the
+  next bundle. `SN2PromImport.java` sets the bit at every `br.ia` in the PAL_A components, where the PAL
+  code sets msr[1225], passes an image and its size in r2 and r3, and reads r1 afterwards. Inferred, not shown:
+  no document names the service, and the PAL_A sites' b0 is the next bundle (the reset site's b0 is data).
 - What the architecture leaves to the implementation, or depends on state the module
   does not keep, is a named p-code op and never a guess: `frcpa`, `frsqrta` and their
   parallel forms, `nat` (NaT bits are not tracked, so `tnat` and `chk.s` ask it), `tf_bit`,
@@ -145,6 +152,22 @@ before any `alloc` in its function passes r32.. as they are.
 
 Limit: a callee's argument count is not known, so every output register the frame declares
 counts, and one set on only some paths (or in a loop) shows up as an argument (`in_r40`).
+
+Banked registers: r16..r31 are one set here, so code that runs between `bsw.0` and `bsw.1` (PAL, interruption
+handlers) reads the other bank's values as `in_r*` or `extraout_r*`. `psr.bn` is not tracked in context.
+
+Known failure: the decompiler reports "Unable to find unique hash for varnode" for any function whose body
+holds the flagged `br.ia` at the generic PAL_A's FIT walk (0xffff872c in SAL 5.04, with the loop back to
+0xffff8600), so `pale_reset_fit_walk` lists but does not decompile; the routines before and after the site
+(`pale_reset_handler`, the code from 0xffff8730, 0xffff8930, 0xffff8a10) do. The failure stays with any
+`pal` semantics tried (no result, no inputs), so the flow through the site is the trigger; not understood.
+
+Limits that matter when reading PAL and SAL. A PAL procedure called with the static register convention
+(index in r28, arguments r29 to r31, status in r8 to r11) is an indirect call with no arguments: the
+index is visible only in the r28 write before it, and the status branches after it test whatever the decompiler
+last saw in r8. No convention for it is modelled. Registers are not renamed by `alloc`, so which of r32..r127 a
+routine reads before writing (the FIT walk at the generic PAL_A) shows as unwritten locals (`in_r*`), not as a
+frame.
 
 r8 is also listed as a ninth input register. The decompiler decides what a function returns
 before it can prove that two predicated writes (`(p6) mov r8=0` / `(p7) mov r8=-33`) are

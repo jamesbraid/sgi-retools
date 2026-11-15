@@ -698,7 +698,11 @@ def build_b():
     E('B', 'br.many', {**b0, **C(x6=0x20, btype=0, pa=1, wha=0, d=0, qp=0)}, ['b2'], 0, 'goto [$b2];')
     E('B', 'br.many.clr', {**b0, **C(x6=0x20, btype=0, pa=1, wha=0, d=1, qp=0)}, ['b2'], 0,
       'goto [$b2];')
-    bh('B', 'br.ia', {**b0, **C(x6=0x20, btype=1)}, ['b2'], 'br_ia($b2); goto [$b2];')
+    bh('B', 'br.ia', {**b0, **C(x6=0x20, btype=1)}, ['b2'], 'br_ia($b2); goto [$b2];', flags=('nopal',))
+    # Where the import script sets `pal`: the PAL's special br.ia is a service call that
+    # returns r1 and continues at the next bundle (inferred, see README).
+    bh('B', 'br.ia', {**b0, **C(x6=0x20, btype=1)}, ['b2'], 'r1 = pal_special_service(r5, r2, r3);',
+       flags=('pal',))
     bh('B', 'br.ret', {**b0, **C(x6=0x21, btype=4)}, ['b2'], 'return [$b2];')
     for x6, nm, sem in ((0x02, 'cover', 'cover();'), (0x04, 'clrrrb', 'clrrrb();'),
                         (0x05, 'clrrrb.pr', 'clrrrb_pr();'), (0x08, 'rfi', 'psr = cr.ipsr; return [cr.iip];'),
@@ -936,6 +940,8 @@ def unit_table(unit):
         tab = entries(unit)
         idx = {}
         for e in tab:
+            if 'pal' in e.flags:     # the context-selected form; the plain one decodes the bytes
+                continue
             idx.setdefault(e.cons.get(OP), []).append(e)
         _CACHE[unit] = idx
     return _CACHE[unit]
