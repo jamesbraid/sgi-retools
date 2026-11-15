@@ -18,8 +18,9 @@ props=$GHIDRA/Ghidra/application.properties
 ver=$(sed -n 's/^application.version=//p' "$props")
 rel=$(sed -n 's/^application.release.name=//p' "$props")
 
-# The module tree may be read-only (retools mounted at /opt/retools), so build
-# the .sla in a copy and install that copy as an extension.
+# The module tree may be read-only (retools mounted at /opt/retools), so install
+# a copy as an extension. The slaspec is generated, not committed: take the one
+# the image built (its tag covers the generator), or IA64_SLASPEC=FILE.
 cfg=$(mktemp -d "${TMPDIR:-/tmp}/ia64-cfg.XXXXXX")
 proj=$(mktemp -d "${TMPDIR:-/tmp}/ia64-proj.XXXXXX")
 trap 'rm -rf "$cfg" "$proj"' EXIT
@@ -28,6 +29,7 @@ export JAVA_TOOL_OPTIONS="-Duser.home=$cfg"
 ext="$cfg/.config/ghidra/ghidra_${ver}_$rel/Extensions"
 mkdir -p "$ext/ia64"
 cp -r "$MOD/Module.manifest" "$MOD/extension.properties" "$MOD/data" "$ext/ia64/"
+cp "${IA64_SLASPEC:-$GHIDRA/Ghidra/Processors/IA64/data/languages/ia64.slaspec}" "$ext/ia64/data/languages/ia64.slaspec"
 sleigh "$ext/ia64/data/languages/ia64.slaspec" >/dev/null
 
 if [ $# -gt 0 ]; then

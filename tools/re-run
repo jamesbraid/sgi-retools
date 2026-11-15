@@ -115,10 +115,10 @@ if [ -n "$ghidra" ]; then
 else
     file=$shared/tools/Containerfile; name=re-toolchain
 fi
-# The Ghidra image also holds ghidra/scripts, the IA-64 processor and the SN2 PROM
-# script, so they are part of its tag.
+# The Ghidra image also holds ghidra/scripts, the IA-64 processor (its generator and
+# tables, which build the SLEIGH source) and the SN2 PROM script, so they are part of its tag.
 if [ -n "$ghidra" ]; then
-    tag=$name:$(cat "$file" "$shared"/ghidra/scripts/* "$shared"/ghidra/processors/ia64/data/languages/* \
+    tag=$name:$(cat "$file" "$shared"/ghidra/scripts/* "$shared"/ghidra/processors/ia64/data/languages/* "$shared"/ghidra/processors/ia64/tools/*.py \
         "$shared"/ghidra/import/sn2-prom/ghidra_scripts/* 2>/dev/null | sha256sum | cut -c1-12)
 else
     tag=$name:$(sha256sum "$file" | cut -c1-12)

@@ -37,16 +37,17 @@ Numbers print in Ghidra's hexadecimal.
 - `tools/ia64_isa.py`: the instruction table (encodings from the Intel Itanium Architecture
   Software Developer's Manual rev 2.3, vol 3, 323207, chapter 4; GNU assembler syntax), with
   a reference decoder.
-- `tools/gen_slaspec.py`: writes `data/languages/ia64.slaspec` from the table. Edit the
-  table or the generator and regenerate; do not edit the `.slaspec`.
-- `tests/run-ghidra.sh`: builds the module in the Ghidra image and disassembles a flat
+- `tools/gen_slaspec.py`: writes `ia64.slaspec` from the table. The `.slaspec` is not committed:
+  the Ghidra image builds it (a throwaway stage runs the generator), and `tools/re-run` tags the
+  image with a hash of the generator and tables. To try it by hand: `python3 tools/gen_slaspec.py OUT`.
+- `tests/run-ghidra.sh`: installs the module and the image's generated slaspec (or `IA64_SLASPEC=FILE`) and disassembles a flat
   image, every bundle (`DumpSlots.java`, which also decodes slots after a branch that is
   always taken).
 - `tests/check.py`: compares that listing with `ia64-linux-gnu-objdump` over the code
   regions an SN2 PROM's FIT names.
 - `tests/synthetic.py`: hand-encoded bundles with their expected text, for the reference
   decoder (no arguments) or for Ghidra (`write`, then `check`).
-- `tests/test_generated.py`: the committed `.slaspec` matches the generator.
+- `tests/test_generated.py`: the generator runs and writes a file with the expected landmarks.
 
 ## Running
 

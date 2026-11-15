@@ -22,6 +22,15 @@ RUN curl -fsSL -o /tmp/ghidra.zip \
  && mv "/opt/ghidra_${GHIDRA_VERSION}_PUBLIC" /opt/ghidra \
  && rm /tmp/ghidra.zip
 
+# The IA-64 SLEIGH source is generated, not committed. This image has no Python,
+# so a throwaway stage runs the generator.
+FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d AS ia64-slaspec
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 \
+ && rm -rf /var/lib/apt/lists/*
+COPY ghidra/processors/ia64/tools /gen
+RUN python3 /gen/gen_slaspec.py /ia64.slaspec
+
 # A JDK, not a JRE: headless compiles a GhidraScript written in Java on the
 # first run, which needs javac. Ghidra 12 wants Java 21.
 FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d
@@ -42,6 +51,7 @@ COPY ghidra/scripts /opt/re-scripts
 # here can use IA64:LE:64:default, and the SN2 PROM layout script beside the others.
 COPY ghidra/processors/ia64/Module.manifest ghidra/processors/ia64/extension.properties /opt/ghidra/Ghidra/Processors/IA64/
 COPY ghidra/processors/ia64/data /opt/ghidra/Ghidra/Processors/IA64/data
+COPY --from=ia64-slaspec /ia64.slaspec /opt/ghidra/Ghidra/Processors/IA64/data/languages/ia64.slaspec
 COPY ghidra/import/sn2-prom/ghidra_scripts/SN2PromImport.java /opt/re-scripts/
 RUN /opt/ghidra/support/sleigh /opt/ghidra/Ghidra/Processors/IA64/data/languages/ia64.slaspec \
  && chmod -R a+rX /opt/ghidra/Ghidra/Processors/IA64 /opt/re-scripts
