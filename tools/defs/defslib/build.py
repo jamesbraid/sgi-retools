@@ -57,7 +57,7 @@ RUST_SHIM = "#![allow(unused_macros)]\nmacro_rules! regs { ($($t:tt)*) => {}; }\
 def verify_export(repo, models, td, cc, rustc, notes):
     fails = []
     cfg = repo.settings.get("gen", {}).get("export", {})
-    profiles, units = cfg.get("profiles", []), cfg.get("units", {})
+    units = cfg.get("units", {})
     root, gen_root = repo.root, repo.layout.gen_root()
     shim = os.path.join(td, "export_shim.h")
     with open(shim, "w", encoding="utf-8") as f:
@@ -68,6 +68,7 @@ def verify_export(repo, models, td, cc, rustc, notes):
         if m is None:
             continue
         base = units[name].get("base", 0)
+        profiles = gen_export.unit_profiles(cfg, name)
         fname = gen_export.rust_file(units, name)
         if gen_export.RUST_DIR in profiles and rustc and fname not in rust_done:
             rust_done.add(fname)
@@ -92,7 +93,15 @@ def verify_export(repo, models, td, cc, rustc, notes):
             r = _run([cc, "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-std=gnu11", "-I", td, "-x", "c", src])
             if r.returncode:
                 fails.append("%s: C compile failed: %s" % (rel, " | ".join(_tail(r))))
-    if units and gen_export.RUST_DIR in profiles and not rustc:
+        if gen_export.CLEAN_DIR in profiles and cc:
+            rel = "%s/%s/%s.h" % (gen_root, gen_export.CLEAN_DIR, name)
+            src = os.path.join(td, "clean_%s.c" % name)
+            with open(src, "w", encoding="utf-8") as f:
+                f.write('#include "%s"\n' % os.path.join(root, rel))
+            r = _run([cc, "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-std=gnu11", "-x", "c", src])
+            if r.returncode:
+                fails.append("%s: C compile failed: %s" % (rel, " | ".join(_tail(r))))
+    if any(gen_export.RUST_DIR in gen_export.unit_profiles(cfg, n) for n in units) and not rustc:
         notes.append("no rustc: skipped the Rust export build (run it in the rust container)")
     return fails
 

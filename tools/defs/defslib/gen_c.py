@@ -17,9 +17,21 @@ import os
 from .genutil import GenError, banner, cblock, field_macro, lit, one_line
 from .model import block_of, eff_from, mask
 
+CLEAN_WIDTH = 90
 
-def gen_c(u, src, helpers_include=None):
-    """Return (text, names) where names maps every object-like macro to its value."""
+
+def define(name, val, comment="", clean=False):
+    """One #define line. The clean form has no comment and wraps a line over CLEAN_WIDTH."""
+    line = "#define %-44s %s" % (name, val)
+    if not clean:
+        return line + comment
+    return line if len(line) <= CLEAN_WIDTH else "#define %s \\\n    %s" % (name, val)
+
+
+def gen_c(u, src, helpers_include=None, clean=None):
+    """Return (text, names) where names maps every object-like macro to its value.
+    `clean` is the banner line of the c-clean export: the same macros with no prose, grades or
+    helpers."""
     P = u["prefix"]
     CP = u["c"].get("const_prefix", P)
     names, out = {}, []
@@ -29,11 +41,15 @@ def gen_c(u, src, helpers_include=None):
             raise GenError("%s: C macro %s is defined twice%s" % (u["unit"], name, extra))
         names[name] = intval
         c = " /* %s%s */" % (grade, extra) if grade else (" /* %s */" % extra if extra else "")
-        out.append("#define %-44s %s%s" % (name, val, c))
+        out.append(define(name, val, c, bool(clean)))
 
-    out.append(banner(src))
-    out.append("/* %s */" % one_line(u.get("title") or u["unit"]))
-    out.append("#ifndef %s_GEN_H\n#define %s_GEN_H\n" % (P, P))
+    if clean:
+        out.append(clean)
+    else:
+        out.append(banner(src))
+        out.append("/* %s */" % one_line(u.get("title") or u["unit"]))
+    guard = "%s_%s_H" % (P, "CLEAN" if clean else "GEN")
+    out.append("#ifndef %s\n#define %s\n" % (guard, guard))
     out.append("#include <stdint.h>\n")
 
     def emit_fields(kind, owner, node, wide):
@@ -49,18 +65,22 @@ def gen_c(u, src, helpers_include=None):
 
     for en, e in u["enums"].items():
         out.append("")
-        out.append("/* enum %s%s */" % (en, ": " + one_line(e["doc"]) if e.get("doc") else ""))
+        if not clean:
+            out.append("/* enum %s%s */" % (en, ": " + one_line(e["doc"]) if e.get("doc") else ""))
         for lab, ev in e["values"].items():
             d("%s_%s_%s" % (P, en.upper(), lab.upper()), str(ev["value"]), ev["value"], ev["grade"])
     for n, r in u["registers"].items():
         out.append("")
-        if r.get("doc"):
-            out.append(cblock(r["doc"]).rstrip())
-        c = eff_from(u, r)
-        sp = ", space %s" % r["space"] if r["space"] else ""
-        out.append("/* %s: %s%d%s, reset %s%s */" % (n, r["access"], r["width"], sp,
-                                                     "unknown" if r["reset"] == "unknown" else hex(r["reset"]),
-                                                     "; " + one_line(c) if c else ""))
+        if clean:
+            out.append("/* %s */" % n)
+        else:
+            if r.get("doc"):
+                out.append(cblock(r["doc"]).rstrip())
+            c = eff_from(u, r)
+            sp = ", space %s" % r["space"] if r["space"] else ""
+            out.append("/* %s: %s%d%s, reset %s%s */" % (n, r["access"], r["width"], sp,
+                                                         "unknown" if r["reset"] == "unknown" else hex(r["reset"]),
+                                                         "; " + one_line(c) if c else ""))
         base = "%s_%s" % (block_of(u), n.upper())
         bare = u["c"]["offset_macro"] == "bare"
         d(base if bare else base + "_OFFSET", "0x%06x" % r["offset"] if bare else lit(r["offset"]), r["offset"], r["grade"])
@@ -70,10 +90,13 @@ def gen_c(u, src, helpers_include=None):
         emit_fields("register", n, r, r["width"] == 64)
     for n, w in u["words"].items():
         out.append("")
-        if w.get("doc"):
-            out.append(cblock(w["doc"]).rstrip())
-        c = eff_from(u, w)
-        out.append("/* word %s: %d bits%s */" % (n, w["width"], "; " + one_line(c) if c else ""))
+        if clean:
+            out.append("/* %s */" % n)
+        else:
+            if w.get("doc"):
+                out.append(cblock(w["doc"]).rstrip())
+            c = eff_from(u, w)
+            out.append("/* word %s: %d bits%s */" % (n, w["width"], "; " + one_line(c) if c else ""))
         d("%s_%s_WIDTH" % (P, n), str(w["width"]), w["width"], w["grade"])
         emit_fields("word", n, w, w["width"] == 64)
     if u["constants"]:
@@ -84,15 +107,15 @@ def gen_c(u, src, helpers_include=None):
             name = "%s(i)" % macro
             if name in names:
                 raise GenError("%s: C macro %s is defined twice" % (u["unit"], name))
-            out.append("#define %-44s (%s + (i) * %d) /* %s */" % (name, lit(k["value"]), k.get("stride", 1), k["grade"]))
+            out.append(define(name, "(%s + (i) * %d)" % (lit(k["value"]), k.get("stride", 1)), " /* %s */" % k["grade"], bool(clean)))
             names[name] = None
             d("%s_COUNT" % macro, str(k["count"]), k["count"])
         else:
             d(macro, lit(k["value"]), k["value"], k["grade"])
-    if helpers_include:
+    if helpers_include and not clean:
         out.append("\n/* hand-written helper macros */")
         out.append('#include "%s"' % helpers_include)
-    out.append("\n#endif /* %s_GEN_H */\n" % P)
+    out.append("\n#endif /* %s */\n" % guard)
     return "\n".join(out), {k: v for k, v in names.items() if v is not None}
 
 

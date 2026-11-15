@@ -357,7 +357,8 @@ def run_checks(repo, verbose=False, fresh=True, only=None, siblings=True, siblin
         chosen.update(("%s/src/%s.rs" % (lay.gen_dir("rust"), n), lay.doc_file(u)))
         eu = repo.settings.get("gen", {}).get("export", {}).get("units", {})
         chosen.update("%s/%s/%s.%s" % (lay.gen_root(), d, f, ext) for d, f, ext in (
-            (gen_export.RUST_DIR, gen_export.rust_file(eu, n) if n in eu else n, "rs"), (gen_export.C_DIR, n, "h")))
+            (gen_export.RUST_DIR, gen_export.rust_file(eu, n) if n in eu else n, "rs"), (gen_export.C_DIR, n, "h"),
+            (gen_export.CLEAN_DIR, n, "h")))
     selected = {rel: text for rel, text in pub.items() if not only or rel in chosen}
     check_leaks(ctx, selected, repo.project, lay.gen_dir("rust"), "%s/%s" % (lay.gen_root(), gen_export.RUST_DIR),
                 repo.settings.get("gen", {}).get("export", {}).get("source"))

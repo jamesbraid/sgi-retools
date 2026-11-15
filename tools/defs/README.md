@@ -21,7 +21,7 @@ generating. Building the outputs needs a C compiler; the Rust crate builds with
 
 ```sh
 retools/tools/defs/defs-check [--root DIR] [--unit U ...] [--no-fresh] [--build] [--sibling NAME=PATH ...] [--skip-siblings] [--verbose]
-retools/tools/defs/defs-gen   [--root DIR] [--check] [--profile rust-regs|c-regfields]
+retools/tools/defs/defs-gen   [--root DIR] [--check] [--profile rust-regs|c-regfields|c-clean]
 ```
 
 Exit status: 0 clean, 1 a check failed (each offending item printed), 2 a setup
@@ -302,7 +302,7 @@ vocabulary is QEMU's: `registerfields.h` (`A_` offsets, field `SHIFT`, `LENGTH`,
 
 ```toml
 [gen.export]
-profiles = ["rust-regs", "c-regfields"]     # either or both
+profiles = ["rust-regs", "c-regfields", "c-clean"]     # any of them
 source = "example.org/some/repo"            # what the rust-regs banner names; default: the project name
 
 [gen.export.units.some_unit]
@@ -323,6 +323,14 @@ block, named like the unit without the file name as a prefix. The C header stays
 |---|---|---|
 | `rust-regs` | `generated/rust-regs/<unit>.rs` | One `regs! { ... }` invocation, described below. |
 | `c-regfields` | `generated/c-regfields/<unit>.h` | `<BLOCK>_BASE`, then `REG8`/`REG16`/`REG32`/`REG64 (NAME, offset)` and `FIELD (NAME, FIELD, shift, length)` per register, in the style of the registerfields.h macros. The header defines neither macro: the includer supplies them. Arrays add `<NAME>_COUNT` and `<NAME>_STRIDE`. |
+| `c-clean` | `generated/c-clean/<unit>.h` | The same macros as `generated/c/<unit>.h`, with the same names and values. |
+
+The `c-clean` header is for copying into another public project. It keeps every offset, shift, mask,
+`_COUNT`, `_STRIDE`, enum value, constant and reset-value macro of the standard C header and omits all
+prose: block and register documentation, grades, access and reset comments, source references, and the
+unit's hand-written `helpers.h`. Each register or word gets a one-name comment. The banner names the
+repository and commit, and no line is longer than 90 columns (a longer `#define` wraps with a backslash).
+`defs-check --build` compiles it standalone.
 
 The `rust-regs` file is a banner line and one declarative-macro invocation, and nothing else. The consumer
 holds the macro; this tool never writes one. Names are upper case.
