@@ -4,6 +4,7 @@
   synthetic.py               check the reference decoder (tools/ia64_isa.py)
   synthetic.py write DIR     write DIR/synthetic.bin for run-ghidra.sh
   synthetic.py check SLOTS   check run-ghidra.sh's slots.tsv for that image
+  synthetic.py check-emu OUT check EmuSynthetic.java's output (DIR/emu.tsv is its spec)
 
 The encodings are built here from the instruction formats of the Intel
 Itanium Architecture SDM rev 2.3 vol 3 (323207) chapter 4; the expected text
@@ -127,8 +128,35 @@ def cases():
     return out
 
 
+def emu_cases():
+    """[(bundle bytes, text expectations, name, steps, regs, memory, expected)]
+    laid out after cases(): each is run in Ghidra's emulator and its result
+    compared with the SDM's semantics."""
+    out = []
+
+    def add(t, s0, s1, s2, expect, name, steps, regs, mem, want):
+        out.append((bundle(t, s0, s1, s2), expect, name, steps, regs, mem, want))
+
+    def extr(pos, length, r1=9, r3=10):
+        return slot(op(5), (34, 2, 1), (33, 1, 0), (13, 1, 1), (6, 7, r1), (20, 7, r3), (14, 6, pos),
+                    (27, 6, length - 1))
+    ones = 'f0f0f0f0f0f0f0f0'
+    for name, pos, length, r10, want, text in [
+            ('extr in range', 8, 8, ones, 'fffffffffffffff0', 'extr r9=r10,8,8'),
+            # pos + len > 64: len is cut to 64 - pos (SDM vol 3, extr).
+            ('extr clamps len', 60, 8, ones, 'ffffffffffffffff', 'extr r9=r10,60,8'),
+            ('extr len 64', 32, 64, '8000000012345678', 'ffffffff80000000', 'extr r9=r10,32,64')]:
+        add(0x00, NOP_M, extr(pos, length), NOP_I, [(6, text)], name, 2, {'r10': r10}, {}, {'r9': want})
+    # ld8 r9=[r10],r9: the increment is r9 before the load overwrites it.
+    ld = slot(op(4), (36, 1, 1), (30, 6, 0x03), (6, 7, 9), (13, 7, 9), (20, 7, 10))
+    add(0x08, ld, NOP_M, NOP_I, [(0, 'ld8 r9=[r10],r9')], 'ld post-increment by its own target', 1,
+        {'r9': '8', 'r10': '100000'}, {'100000': '1122334455667788'},
+        {'r9': '1122334455667788', 'r10': '100008'})
+    return out
+
+
 def image():
-    return b''.join(b for b, _ in cases())
+    return b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
 
 
 def expected():
@@ -136,7 +164,35 @@ def expected():
     for i, (_, exp) in enumerate(cases()):
         for off, text in exp:
             res[BASE + 16 * i + off] = text
+    n = len(cases())
+    for i, c in enumerate(emu_cases()):
+        for off, text in c[1]:
+            res[BASE + 16 * (n + i) + off] = text
     return res
+
+
+def emu_spec():
+    """Lines for EmuSynthetic.java."""
+    n = len(cases())
+    lines = []
+    for i, (_, _, name, steps, regs, mem, want) in enumerate(emu_cases()):
+        lines.append('\t'.join([
+            name.replace(' ', '_'), '%x' % (BASE + 16 * (n + i)), str(steps),
+            ','.join('%s=%s' % kv for kv in regs.items()), ','.join('%s=%s' % kv for kv in mem.items()),
+            ','.join('%s=%s' % kv for kv in want.items())]))
+    return '\n'.join(lines) + '\n'
+
+
+def check_emu(path):
+    bad = 0
+    got = dict(line.rstrip('\n').split(' ', 1) for line in open(path))
+    for _, _, name, *_ in emu_cases():
+        res = got.get(name.replace(' ', '_'), 'missing')
+        if res != 'PASS':
+            print('FAIL %s: %s' % (name, res))
+            bad += 1
+    print('%d of %d emulated cases as expected' % (len(emu_cases()) - bad, len(emu_cases())))
+    return 1 if bad else 0
 
 
 def compare(got):
@@ -172,6 +228,8 @@ def main():
         os.makedirs(sys.argv[2], exist_ok=True)
         with open(os.path.join(sys.argv[2], 'synthetic.bin'), 'wb') as f:
             f.write(image())
+        with open(os.path.join(sys.argv[2], 'emu.tsv'), 'w') as f:
+            f.write(emu_spec())
         return 0
     if sys.argv[1] == 'check':
         got = {}
@@ -179,6 +237,8 @@ def main():
             addr, text = line.rstrip('\n').split('\t', 1)
             got[int(addr.split(':')[-1], 16)] = text
         return compare(got)
+    if sys.argv[1] == 'check-emu':
+        return check_emu(sys.argv[2])
     sys.exit(__doc__)
 
 

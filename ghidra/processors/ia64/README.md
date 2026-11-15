@@ -46,7 +46,9 @@ Numbers print in Ghidra's hexadecimal.
 - `tests/check.py`: compares that listing with `ia64-linux-gnu-objdump` over the code
   regions an SN2 PROM's FIT names.
 - `tests/synthetic.py`: hand-encoded bundles with their expected text, for the reference
-  decoder (no arguments) or for Ghidra (`write`, then `check`).
+  decoder (no arguments) or for Ghidra (`write`, then `check`). `write` also writes `emu.tsv`:
+  short sequences that `EmuSynthetic.java` runs in Ghidra's emulator and `check-emu` compares
+  with the SDM (signed `extr` with pos+len over 64, `ld` post-incrementing by its own target).
 - `tests/test_generated.py`: the generator runs and writes a file with the expected landmarks.
 
 ## Running
@@ -69,6 +71,10 @@ python3 retools/ghidra/processors/ia64/tests/synthetic.py write .cache/ia64-syn
 retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
     .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check .cache/ia64-syn/slots.tsv
+retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
+    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 EmuSynthetic.java \
+    .cache/ia64-syn/emu.tsv .cache/ia64-syn/emu.out
+python3 retools/ghidra/processors/ia64/tests/synthetic.py check-emu .cache/ia64-syn/emu.out
 ```
 
 ## Agreement with objdump

@@ -377,7 +377,9 @@ def build_i():
     E('I', 'extr.u', {**i5, **C(x2=1, i_x=0, ya=0)}, ['r1', 'r3', 'pos6', 'len6'], 1,
       '@r1 = ($r3 >> $pos6) & ((1 << $len6) - 1);', flags=('shr_u',))
     E('I', 'extr', {**i5, **C(x2=1, i_x=0, ya=1)}, ['r1', 'r3', 'pos6', 'len6'], 1,
-      '@r1 = ($r3 << (64 - $pos6 - $len6)) s>> (64 - $len6);', flags=('shr',))
+      'local ov:8 = zext(($pos6 + $len6) s> 64); '
+      '@r1 = ($r3 << ((64 - $pos6 - $len6) * (1 - ov))) s>> (64 - $len6 + ov * ($pos6 + $len6 - 64));',
+      flags=('shr',))
     E('I', 'dep.z', {**i5, **C(x2=1, i_x=1, yb=0)}, ['r1', 'r2', 'cpos6a', 'len6'], 1,
       '@r1 = ($r2 & ((1 << $len6) - 1)) << $cpos6a;', flags=('shl',))
     E('I', 'dep.z', {**i5, **C(x2=1, i_x=1, yb=1)}, ['r1', 'imm8', 'cpos6a', 'len6'], 1,
@@ -547,13 +549,13 @@ def build_m():
             E('M', nm, C(op=4, m=0, mx=0, x6a=x6), ['r1', 'mr3'], 1, load, comp='ldh')
             for h, hs in LD_HINT_UPD.items():
                 E('M', nm + hs, C(op=4, m=1, mx=0, x6a=x6, hint=h), ['r1', 'mr3', 'r2'], 1,
-                  load + ' @r3 = $r3 + $r2;')
+                  'local inc:8 = $r2; ' + load + ' @r3 = $r3 + inc;')
                 E('M', nm + hs, C(op=5, x6a=x6, hint=h), ['r1', 'mr3', 'imm9b'], 1,
                   load + ' @r3 = $r3 + $imm9b;')
     E('M', 'ld8.fill', C(op=4, m=0, mx=0, x6a=0x1b), ['r1', 'mr3'], 1, '@r1 = *:8 $r3;', comp='ldh')
     for h, hs in LD_HINT_UPD.items():
         E('M', 'ld8.fill' + hs, C(op=4, m=1, mx=0, x6a=0x1b, hint=h), ['r1', 'mr3', 'r2'], 1,
-          '@r1 = *:8 $r3; @r3 = $r3 + $r2;')
+          'local inc:8 = $r2; @r1 = *:8 $r3; @r3 = $r3 + inc;')
         E('M', 'ld8.fill' + hs, C(op=5, x6a=0x1b, hint=h), ['r1', 'mr3', 'imm9b'], 1,
           '@r1 = *:8 $r3; @r3 = $r3 + $imm9b;')
     for x6, tn in ((0x28, ''), (0x2c, '.acq')):
