@@ -18,7 +18,7 @@ offset in the unit's own address space). The settings are in defs-check.toml:
   base = 0x780000
   constants = ["SOME_CONSTANT"]       # optional: constants of the unit to carry into rust-regs, by name
   rust_file = "some_block"            # optional: write the unit's rust-regs into <gen>/rust-regs/some_block.rs
-  profiles = ["c-clean"]              # optional: only these of the enabled profiles; default all of them
+  profiles = ["c-clean"]              # optional: only these of the enabled profiles; default all but c-clean
 
 Units that name the same `rust_file` share one `regs!` invocation, in unit-name order. On one `base` they are
 merged flat, and a register or constant name defined twice is an error that names both units. On several bases each
@@ -222,10 +222,11 @@ def render_export(repo, models, commit):
 
 
 def unit_profiles(cfg, name):
-    """The profiles a unit is written in: its own `profiles` setting, else every enabled one."""
+    """The profiles a unit is written in: its own `profiles` setting, else every enabled one but c-clean,
+    which a unit asks for by name."""
     on = cfg.get("profiles", [])
     own = cfg.get("units", {}).get(name, {}).get("profiles")
-    return [p for p in on if own is None or p in own]
+    return [p for p in on if (p != CLEAN_DIR if own is None else p in own)]
 
 
 def rust_file(units, name):

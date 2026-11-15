@@ -290,7 +290,7 @@ def defines(text):
 
 class CleanProfileTest(RepoTest):
     def render(self):
-        self.write("defs/check.toml", self.read("defs/check.toml") + SETTINGS.replace('"c-regfields"', '"c-clean"'))
+        self.write("defs/check.toml", self.read("defs/check.toml") + SETTINGS.replace('"c-regfields"', '"c-clean"') + 'profiles = ["c-clean"]\n')
         repo = loader.load_repo(self.root)
         self.assertEqual(repo.errors, [])
         files, errors = gen.render(repo)
@@ -315,6 +315,13 @@ class CleanProfileTest(RepoTest):
         for ln in clean.splitlines()[1:]:
             if "/*" in ln and not ln.startswith("#endif"):
                 self.assertRegex(ln, r"^/\* \w+ \*/$")      # one name per register, nothing else
+
+    def test_a_unit_gets_c_clean_only_by_asking(self):
+        self.write("defs/check.toml", self.read("defs/check.toml") + SETTINGS.replace('"c-regfields"', '"c-clean"'))
+        files, errors = gen.render(loader.load_repo(self.root))
+        self.assertEqual(errors, [])
+        self.assertFalse([f for f in files if "c-clean" in f])
+        self.assertIn("gen/rust-regs/uart.rs", files)
 
     def test_a_unit_can_take_only_some_profiles(self):
         self.write("defs/check.toml", self.read("defs/check.toml") + SETTINGS.replace('"c-regfields"', '"c-clean"') + 'profiles = ["c-clean"]\n')

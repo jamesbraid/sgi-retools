@@ -325,7 +325,8 @@ block, named like the unit without the file name as a prefix. The C header stays
 | `c-regfields` | `generated/c-regfields/<unit>.h` | `<BLOCK>_BASE`, then `REG8`/`REG16`/`REG32`/`REG64 (NAME, offset)` and `FIELD (NAME, FIELD, shift, length)` per register, in the style of the registerfields.h macros. The header defines neither macro: the includer supplies them. Arrays add `<NAME>_COUNT` and `<NAME>_STRIDE`. |
 | `c-clean` | `generated/c-clean/<unit>.h` | The same macros as `generated/c/<unit>.h`, with the same names and values. |
 
-The `c-clean` header is for copying into another public project. It keeps every offset, shift, mask,
+A unit gets `c-clean` only when its entry says `profiles = ["c-clean"]` (or lists it among others); a
+unit without `profiles` gets the other enabled profiles. The `c-clean` header is for copying into another public project. It keeps every offset, shift, mask,
 `_COUNT`, `_STRIDE`, enum value, constant and reset-value macro of the standard C header and omits all
 prose: block and register documentation, grades, access and reset comments, source references, and the
 unit's hand-written `helpers.h`. Each register or word gets a one-name comment. The banner names the
