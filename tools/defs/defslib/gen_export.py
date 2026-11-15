@@ -1,9 +1,9 @@
 """Export profiles: a second, smaller rendering of chosen units for a consumer that wants constants and
 field macros only, with no accessors, prose or test vectors.
 
-  rust-regs     <gen>/rust-regs/<unit>.rs     one `regs! { ... }` invocation: a line per register (offset, access,
-                                              width when not 64, count and stride for an array, reset when known)
-                                              with its fields as inclusive bit ranges. The consumer holds the macro.
+  rust-regs     <gen>/rust-regs/<unit>.rs     one `regs! { ... }` invocation: a line per register (offset, width
+                                              when not 64, count, stride and end for an array) with its fields as
+                                              inclusive bit ranges. The consumer holds the macro.
   c-regfields   <gen>/c-regfields/<unit>.h    REG8/16/32/64 and FIELD macros in the registerfields.h style
 
 A unit is a block: the settings give it a `base`, and every OFFSET is relative to it (BASE + OFFSET is the
@@ -78,13 +78,12 @@ def gen_rust_regs(m, base, source, commit, names=()):
     for n, c in _named_constants(m, names):
         out.append("    const %s 0x%x;" % (n.upper(), c["value"]))
     for n, r in m["registers"].items():
-        parts = ["%s 0x%04x %s" % (n.upper(), r["offset"] - base, r["access"])]
+        off = r["offset"] - base
+        parts = ["%s 0x%04x" % (n.upper(), off)]
         if r["width"] != 64:
             parts.append("width %d" % r["width"])
         if r["count"] > 1:
             parts.append("count %d stride 0x%x" % (r["count"], r["stride"]))
-        if isinstance(r["reset"], int):
-            parts.append("reset 0x%x" % r["reset"])
         if r["fields"]:
             fl = ["%s: %d..%d" % (fn.upper(), f["bits"][1], f["bits"][0]) for fn, f in r["fields"].items()]
             line = "    %s { %s }" % (" ".join(parts), ", ".join(fl))

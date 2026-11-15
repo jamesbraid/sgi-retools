@@ -44,7 +44,7 @@ class ExportTest(RepoTest):
         self.assertEqual(lines[1:3], ["regs! {", "    base 0x10;"])
         self.assertEqual(lines[-1], "}")
         ctl = [ln for ln in lines if ln.startswith("    CTL ")][0]
-        self.assertTrue(ctl.startswith("    CTL 0x0000 rw width 32 reset 0x0 { "), ctl)
+        self.assertTrue(ctl.startswith("    CTL 0x0000 width 32 { "), ctl)
         self.assertIn("DIVISOR: 16..31", ctl)           # inclusive bit range, low to high
         self.assertTrue(ctl.endswith(" };"), ctl)       # every register ends in a semicolon, fields or not
         data = [ln for ln in lines if ln.startswith("    DATA ")][0]
@@ -55,7 +55,8 @@ class ExportTest(RepoTest):
         self.enable()
         text = self.render()["gen/rust-regs/uart.rs"]
         status = [ln for ln in text.splitlines() if ln.startswith("    STATUS ")][0]
-        self.assertNotIn("reset", status)         # reset unknown: no value, not a made-up zero
+        self.assertNotIn("reset", status)
+        self.assertNotRegex(status, r"\b(r|w|rw)\b")      # access stays in the register map, not the Rust
         self.assertTrue(status.endswith(" };"), status)
         self.assertTrue(text.splitlines()[-2].endswith(";"), text)    # the last register ends in a semicolon
         for banned in ("pub ", "//!", "///", "enum Value", "FIFO_DEPTH", "#[test]", "Control register", "established", "inferred"):
@@ -66,7 +67,7 @@ class ExportTest(RepoTest):
         many = "\n".join('f%d = { bits = [%d, %d], grade = "unknown" }' % (i, i, i) for i in range(40))
         self.edit("defs/uart.toml", "[registers.data]", '[registers.wide]\noffset = 0x300\naccess = "rw"\nwidth = 64\ngrade = "unknown"\n\n[registers.wide.fields]\n%s\n\n[registers.data]' % many)
         text = self.render()["gen/rust-regs/uart.rs"]
-        self.assertIn("    WIDE 0x02f0 rw {\n        F39: 39..39,\n        F38: 38..38,\n", text)
+        self.assertIn("    WIDE 0x02f0 {\n        F39: 39..39,\n        F38: 38..38,\n", text)
         self.assertIn("\n    };\n", text)               # the wrapped register closes with a semicolon
 
     def test_named_constants_are_carried_and_unnamed_ones_are_not(self):
@@ -87,11 +88,11 @@ class ExportTest(RepoTest):
         self.assertIn("from example.org/some/repo at ", files["gen/rust-regs/uart.rs"].splitlines()[0])
         self.assertNotIn("example.org", files["gen/c-regfields/uart.h"])     # the C export is unchanged
 
-    def test_reset_grade_is_not_written(self):
+    def test_reset_is_not_written(self):
         self.enable()
         self.edit("defs/uart.toml", "reset = 0\nreset_from = \"fixture notes (reset table)\"\n", 'reset = 0x5\nreset_grade = "inferred"\n')
         text = self.render()["gen/rust-regs/uart.rs"]
-        self.assertIn("reset 0x5", text)
+        self.assertNotIn("reset", text)
         self.assertNotIn("inferred", text)
 
     def test_c_regfields_shape(self):
