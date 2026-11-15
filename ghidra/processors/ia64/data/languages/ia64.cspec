@@ -57,6 +57,7 @@
         <register name="b3"/>
         <register name="b4"/>
         <register name="b5"/>
+        <register name="noarg"/>
         <register name="ar.pfs"/>
         <register name="ar.unat"/>
         <register name="ar.lc"/>

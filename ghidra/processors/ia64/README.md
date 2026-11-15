@@ -49,8 +49,9 @@ Numbers print in Ghidra's hexadecimal.
   decoder (no arguments) or for Ghidra (`write`, then `check`). `write` also writes `emu.tsv`:
   short sequences that `EmuSynthetic.java` runs in Ghidra's emulator and `check-emu` compares
   with the SDM (signed `extr` with pos+len over 64, `ld` post-incrementing by its own target).
-  It also lays out a status function for `DecompileAt.java` that must not decompile as `void`
-  (`check-dec`).
+  It also lays out two functions for `DecompileAt.java`: a status function that must not
+  decompile as `void` (`check-dec`) and a call that must pass one argument, not the gp beside it
+  (`check-call`).
 - `tests/test_generated.py`: the generator runs and writes a file with the expected landmarks.
 
 ## Running
@@ -78,8 +79,9 @@ retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghi
     .cache/ia64-syn/emu.tsv .cache/ia64-syn/emu.out
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-emu .cache/ia64-syn/emu.out
 retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
-    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn 0x80130
+    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn r1=1000 0x80130 0x80150
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-dec .cache/ia64-syn/0x80130.c
+python3 retools/ghidra/processors/ia64/tests/synthetic.py check-call .cache/ia64-syn/0x80150.c
 ```
 
 ## Agreement with objdump
@@ -134,10 +136,15 @@ The register stack is approximated. r32..r127 are fixed registers: `alloc` renam
 nothing, `br.call` does not save the frame and `br.ret` does not restore it, rotation is
 the `rotate_regs` op without effect, and `flushrs`, `loadrs` and `cover` are ops. To keep
 call arguments right, `alloc` records the frame's locals (sol) and outputs (sof - sol) in
-flowing context, and each call copies up to eight output registers r(32+sol).. into
-r32.. before it and puts the caller's r32.. back after it. The callee therefore sees its
-arguments where its own code reads them, r32..r39, and the cspec passes arguments there
-and returns them in r8. A call reached before any `alloc` in its function copies nothing.
+flowing context, and each call saves r32..r39, copies up to eight output registers
+r(32+sol).. into r32.., sets the rest of r32..r39 to `noarg` (a register nothing writes,
+unaffected in the cspec, so a saved gp or other stale local is never an argument), and puts
+r32..r39 back after the call. The callee therefore sees its arguments where its own code reads
+them, r32..r39, and the cspec passes arguments there and returns them in r8. A call reached
+before any `alloc` in its function passes r32.. as they are.
+
+Limit: a callee's argument count is not known, so every output register the frame declares
+counts, and one set on only some paths (or in a loop) shows up as an argument (`in_r40`).
 
 r8 is also listed as a ninth input register. The decompiler decides what a function returns
 before it can prove that two predicated writes (`(p6) mov r8=0` / `(p7) mov r8=-33`) are

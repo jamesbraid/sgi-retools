@@ -470,22 +470,30 @@ def unknown_constructors():
     return out
 
 
+# sol and soo before any alloc (the pspec's default; no alloc makes either 127): a call
+# there passes r32.. on as they are.
+NO_FRAME = 127
+
+
 def call_frame_subs():
     """The register stack renames the caller's outputs r(32+sol).. to the
-    callee's r32..; copy up to eight of them there for the call and put the
-    caller's r32.. back afterwards. sol and soo come from the frame's alloc."""
+    callee's r32..; copy up to eight of them there for the call, give the rest
+    of r32..r39 the never-written `noarg` so no stale caller value (a saved gp)
+    reads as an argument, and put the caller's r32..r39 back afterwards. sol and
+    soo come from the frame's alloc; before one, a call leaves r32.. alone."""
     cin, cout = [], []
     for sol in range(97):
         for soo in range(10):
             n = min(soo, 8, 96 - sol)
-            body = ['fs%d = r%d;' % (i, 32 + i) for i in range(n)]
+            body = ['fs%d = r%d;' % (i, 32 + i) for i in range(8)]
             body += ['r%d = r%d;' % (32 + i, 32 + sol + i) for i in range(n)]
+            body += ['r%d = noarg;' % (32 + i) for i in range(n, 8)]
             cond = 'sol=%d & soo=%d' % (sol, soo) if soo < 9 else 'sol=%d' % sol
             cin.append('CallIn: is %s { %s }' % (cond, ' '.join(body)))
     cin.append('CallIn: is sol { }')     # sol above 96 is no frame alloc can make
-    for soo in range(10):
-        body = ' '.join('r%d = fs%d;' % (32 + i, i) for i in range(min(soo, 8)))
-        cout.append('CallOut: is %s { %s }' % ('soo=%d' % soo if soo < 9 else 'soo', body))
+    body = ' '.join('r%d = fs%d;' % (32 + i, i) for i in range(8))
+    cout.append('CallOut: is soo { %s }' % body)
+    cout.append('CallOut: is soo=%d { }' % NO_FRAME)
     add_sub('CallIn', cin)
     add_sub('CallOut', cout)
 
@@ -518,8 +526,10 @@ def header():
     out += reg_defs(0x2100, 8, REGS['br']) + reg_defs(0x2200, 8, REGS['ar']) + reg_defs(0x2800, 8, REGS['cr'])
     out += reg_defs(0x3000, 8, REGS['dahr'])
     out.append('define register offset=0x3100 size=8 [ ip psr cfm ];')
-    out.append("# The caller's r32.. while a call lends them to the callee as arguments.")
+    out.append("# The caller's r32..r39 while a call lends them to the callee as arguments, and a")
+    out.append("# register nothing writes (the cspec lists it as unaffected, so it is never an argument).")
     out += reg_defs(0x3200, 8, ['fs%d' % i for i in range(8)])
+    out.append('define register offset=0x3300 size=8 [ noarg ];')
     out.append('define register offset=0x4000 size=8 [ contextreg ];')
     return '\n'.join(out) + '\n'
 

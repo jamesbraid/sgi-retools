@@ -6,4 +6,11 @@
   <volatile outputop="write_volatile" inputop="read_volatile">
     <range space="ram" first="0x8000000000000000" last="0xffffffffffffffff"/>
   </volatile>
+  <!-- 127 is no real frame size: before an alloc a call passes r32.. on unchanged (gen_slaspec.py NO_FRAME). -->
+  <context_data>
+    <context_set space="ram">
+      <set name="sol" val="127"/>
+      <set name="soo" val="127"/>
+    </context_set>
+  </context_data>
 </processor_spec>

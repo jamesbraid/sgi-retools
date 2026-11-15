@@ -7,6 +7,8 @@
   synthetic.py check-emu OUT check EmuSynthetic.java's output (DIR/emu.tsv is its spec)
   synthetic.py addr          the address of the status function, for DecompileAt.java
   synthetic.py check-dec C   check DecompileAt.java's C for it
+  synthetic.py caller        the address of the calling function (run DecompileAt with r1=1000)
+  synthetic.py check-call C  check DecompileAt.java's C for it
 
 The encodings are built here from the instruction formats of the Intel
 Itanium Architecture SDM rev 2.3 vol 3 (323207) chapter 4; the expected text
@@ -173,9 +175,26 @@ def function_addr():
     return BASE + 16 * (len(cases()) + len(emu_cases()))
 
 
+def caller_addr():
+    return function_addr() + 16 * len(status_function())
+
+
+def caller_function():
+    """A frame of two locals (the saved ar.pfs and a copy of gp) and one output,
+    which a call passes: the call has exactly one argument."""
+    here = caller_addr() + 16
+    alloc = slot(op(1), (33, 3, 6), (6, 7, 32), (13, 7, 3), (20, 7, 2))
+    mov_gp = slot(op(8), (34, 2, 2), (6, 7, 33), (20, 7, 1), (13, 7, 0))
+    out0 = slot(op(8), (34, 2, 2), (6, 7, 34), (20, 7, 12), (13, 7, 16))
+    call = slot(op(5), (12, 1, 1), *rel(BASE, here, (13, 20), (36, 1)))
+    ret = slot(op(0), (27, 6, 0x21), (6, 3, 4), (12, 1, 1))
+    return [bundle(0x01, alloc, mov_gp, out0), bundle(0x17, call, NOP_B, NOP_B),
+            bundle(0x17, ret, NOP_B, NOP_B)]
+
+
 def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
-            + b''.join(status_function()))
+            + b''.join(status_function()) + b''.join(caller_function()))
 
 
 def expected():
@@ -207,6 +226,15 @@ def check_dec(path):
     text = open(path).read()
     ok = not text.lstrip().startswith('void') and re.search(r'\breturn [^;]+;', text)
     print('%s: %s' % ('status function returns a value' if ok else 'FAIL status function came out void', path))
+    return 0 if ok else 1
+
+
+def check_call(path):
+    """The decompiled caller passes one argument: not the saved gp beside it."""
+    text = open(path).read()
+    m = re.search(r'\b\w+_(?:0x)?00080000\(([^;]*)\);', text)
+    ok = m is not None and m.group(1).count(',') == 0 and m.group(1).strip() != ''
+    print('%s: %s' % ('call passes one argument' if ok else 'FAIL call arguments (%s)' % (m and m.group(1)), path))
     return 0 if ok else 1
 
 
@@ -267,6 +295,11 @@ def main():
     if sys.argv[1] == 'addr':
         print('%#x' % function_addr())
         return 0
+    if sys.argv[1] == 'caller':
+        print('%#x' % caller_addr())
+        return 0
+    if sys.argv[1] == 'check-call':
+        return check_call(sys.argv[2])
     if sys.argv[1] == 'check-dec':
         return check_dec(sys.argv[2])
     if sys.argv[1] == 'check-emu':
