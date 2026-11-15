@@ -95,6 +95,11 @@ retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghi
     .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn \
     $(python3 retools/ghidra/processors/ia64/tests/synthetic.py frames)
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-frames .cache/ia64-syn
+retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
+    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn \
+    $(python3 retools/ghidra/processors/ia64/tests/synthetic.py predloop)
+python3 retools/ghidra/processors/ia64/tests/synthetic.py check-predloop \
+    .cache/ia64-syn/$(python3 retools/ghidra/processors/ia64/tests/synthetic.py predloop).c
 ```
 
 ## Agreement with objdump
@@ -217,12 +222,6 @@ frame declares counts, and one set on only some paths shows up as an argument (`
 
 Banked registers: r16..r31 are one set here, so code that runs between `bsw.0` and `bsw.1` (PAL, interruption
 handlers) reads the other bank's values as `in_r*` or `extraout_r*`. `psr.bn` is not tracked in context.
-
-Known failure: the decompiler reports "Unable to find unique hash for varnode" for any function whose body
-holds the flagged `br.ia` at the generic PAL_A's FIT walk (0xffff872c in SAL 5.04, with the loop back to
-0xffff8600), so `pale_reset_fit_walk` lists but does not decompile; the routines before and after the site
-(`pale_reset_handler`, the code from 0xffff8730, 0xffff8930, 0xffff8a10) do. The failure stays with any
-`pal` semantics tried (no result, no inputs), so the flow through the site is the trigger; not understood.
 
 Limits that matter when reading PAL and SAL. A PAL procedure called with the static register convention
 (index in r28, arguments r29 to r31, status in r8 to r11) is an indirect call with no arguments: the

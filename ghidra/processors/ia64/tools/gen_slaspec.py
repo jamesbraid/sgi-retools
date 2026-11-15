@@ -698,8 +698,10 @@ def header():
 
 
 def macros():
-    out = ['# All 64 predicates as one value; p0 reads as 1.', 'macro pr_read(res) {', '  res = 1;']
-    out += ['  res = res | (zext(p%d) << %d);' % (i, i) for i in range(1, 64)]
+    # One expression, not 63 writes to res: a loop that reads and restores the predicates
+    # (PAL's br.ia site) made the decompiler fail to hash a varnode.
+    out = ['# All 64 predicates as one value; p0 reads as 1.', 'macro pr_read(res) {']
+    out.append('  res = ' + ' | '.join(['1'] + ['(zext(p%d) << %d)' % (i, i) for i in range(1, 64)]) + ';')
     out += ['}', 'macro pr_write(val, mask) {']
     out += ['  p%d = (p%d && ((mask >> %d) & 1) == 0) || (((val >> %d) & 1) != 0 && ((mask >> %d) & 1) != 0);'
             % (i, i, i, i, i) for i in range(1, 64)]

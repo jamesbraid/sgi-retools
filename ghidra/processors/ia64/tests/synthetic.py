@@ -12,6 +12,8 @@
   synthetic.py pal           the address of the br.ia function (run DecompileAt with pal=ADDR)
   synthetic.py check-pal C   check DecompileAt.java's C for it, and check-plain C for the same
                              code decompiled without the pal flag
+  synthetic.py predloop      the address of the predicate save and restore loop
+  synthetic.py check-predloop C  check DecompileAt.java's C for it: it decompiles
   synthetic.py frames        the addresses of the register stack programs' functions
   synthetic.py check-frames DIR  check DecompileAt.java's C for them
 
@@ -361,6 +363,21 @@ def prog_addrs():
     return out
 
 
+def predloop_addr():
+    return programs_addr() + 16 * sum(PROG_SIZES.values())
+
+
+def predloop_function():
+    """A loop that saves the predicates with `mov r72=pr` and restores them with `mov pr=r72,-2`,
+    as the PAL's FIT walk does around its br.ia: it must decompile."""
+    here = predloop_addr()
+    save = slot(op(0), (27, 6, 0x33), (6, 7, 72))
+    restore = slot(op(0), (33, 3, 3), (13, 7, 72), (6, 7, 0x7f), (24, 8, 0xff), (36, 1, 1))
+    loop = slot(op(4), (6, 3, 0), (12, 1, 1), *rel(here, here + 0x20, (13, 20), (36, 1)), qp=21)
+    return [bundle(0x01, NOP_M, NOP_I, save), bundle(0x01, NOP_M, restore, NOP_I),
+            bundle(0x11, NOP_M, NOP_I, loop), bundle(0x17, BR_RET, NOP_B, NOP_B)]
+
+
 def prog_runs():
     """Emulator runs over programs(): (name, start, stop, regs, memory, expected)."""
     a = prog_addrs()
@@ -395,7 +412,7 @@ def prog_runs():
 def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
-            + b''.join(b for _, prog in programs() for b, _ in prog))
+            + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function()))
 
 
 def expected():
@@ -463,6 +480,14 @@ def check_plain(path):
     text = open(path).read()
     ok = 'br_ia(' in text and 'pal_special_service' not in text
     print('%s: %s' % ('plain br.ia stays a branch' if ok else 'FAIL plain br.ia', path))
+    return 0 if ok else 1
+
+
+def check_predloop(path):
+    """The decompiler once failed on this loop ("Unable to find unique hash for varnode")."""
+    text = open(path).read()
+    ok = not text.lstrip().startswith('// decompile failed') and 'while' in text
+    print('%s: %s' % ('predicate save and restore loop decompiles' if ok else 'FAIL predicate loop', path))
     return 0 if ok else 1
 
 
@@ -561,6 +586,11 @@ def main():
         return check_pal(sys.argv[2])
     if sys.argv[1] == 'check-plain':
         return check_plain(sys.argv[2])
+    if sys.argv[1] == 'predloop':
+        print('%#x' % predloop_addr())
+        return 0
+    if sys.argv[1] == 'check-predloop':
+        return check_predloop(sys.argv[2])
     if sys.argv[1] == 'frames':
         print(' '.join('%#x' % a for a in frame_functions()))
         return 0
