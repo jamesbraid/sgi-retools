@@ -34,6 +34,10 @@ Options (after OBJECT, a path inside the workspace):
                                           it, at most 14G (a 12 MiB SHub 2 PROM runs out at 2G).
                                           The container's memory cap is RE_GHIDRA_MEMORY (16g);
                                           raise it for a larger heap
+  --no-analysis                           skip Ghidra's automatic analysis. Only what the import
+                                          lays out (an SN2 PROM's entries, an ELF's symbols) and the
+                                          functions asked for as @0xADDR are functions; use it to
+                                          read known addresses quickly
 
 Output goes under .cache/ghidra-export/ (ignored by git): decompile.json holds one
 entry per function with the decompiler's C, warnings and signature. Decompiler
@@ -233,6 +237,7 @@ def parser():
     p.add_argument('--sal-runtime', action='store_true')
     p.add_argument('--timeout', type=int, default=3600)
     p.add_argument('--heap', metavar='SIZE')
+    p.add_argument('--no-analysis', action='store_true')
     p.add_argument('--cpus', type=int, default=2)
     return p
 
@@ -369,6 +374,8 @@ def prepare(argv):
         lines.append('[ -f %s.mv.db ] || bsim createdatabase file:%s medium_nosize --name %s || exit 1'
                      % (shlex.quote(str(db)), shlex.quote(str(db)), args.bsim_db))
     argv = ['analyzeHeadless', '"$GP"', 'firmware', '-import', str(image)]
+    if args.no_analysis:
+        argv.append('-noanalysis')
     if language:
         argv += ['-processor', language]
         if spec:

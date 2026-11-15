@@ -82,8 +82,18 @@ class PlanLanguage(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 ge.prepare(['--job', d, '--heap', 'big', '--sn2-prom', '--decompile-all', obj])
 
-    def test_elf_keeps_the_default_heap(self):
-        self.assertNotIn('MAXMEM', self.plan(elf32(ge.EM_IA_64, '<')))
+    def test_elf_keeps_the_default_heap_and_no_analysis_is_passed_on(self):
+        script = self.plan(elf32(ge.EM_IA_64, '<'))
+        self.assertNotIn('MAXMEM', script)
+        self.assertNotIn('-noanalysis', script)
+        with tempfile.TemporaryDirectory() as d:
+            obj, job = os.path.join(d, 'obj'), os.path.join(d, 'job')
+            os.mkdir(job)
+            with open(obj, 'wb') as f:
+                f.write(elf32(ge.EM_IA_64, '<'))
+            ge.prepare(['--job', job, '--decompile-all', '--no-analysis', obj])
+            with open(os.path.join(job, 'ghidra.sh')) as f:
+                self.assertIn(' -noanalysis ', f.read())
 
     def test_mips_elf_is_unchanged(self):
         script = self.plan(elf32(ge.EM_MIPS, '>'))
