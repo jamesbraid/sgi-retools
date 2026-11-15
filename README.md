@@ -14,7 +14,7 @@ Update the pin with
 
 | Path | Contents |
 |---|---|
-| `tools/` | tools every workspace runs the same way: `leakcheck.py` (internal hostnames and paths in tracked files, run by `ci-check`), `docs-index` (the generated `README.md` of each content directory, checked by `ci-check`), `re-run`, `setup-clone.sh`, `Containerfile`, `Containerfile.ghidra`, `ghidra-export.py`, `inventory.py`, `facts.py`, `hostfacts.py`, `envscan.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `mips_xlate.py`, `reading_round.py`, `render_reading.py`, `grade_readings.py`, `fact_check.py`, `rerender_mismatches.py`, `toolchain.py`, `_workspace.py` and `_layout.py` (where a workspace keeps its files), the shared `clean_asm.py`, `disasm_kernel.py`, `map_binaries.py` and `resolve_got.py`, their tests (`test_*.py`) and data files; `README-analysis.md` describes the analysis tools and sets the evidence order; `tools/templates/AGENTS-evidence.md` is the pointer block for a repo's `AGENTS.md` |
+| `tools/` | tools every workspace runs the same way: `leakcheck.py` (internal hostnames and paths in tracked files, run by `ci-check`), `docs-index` (the generated `README.md` of each content directory, checked by `ci-check`), `ingest-pr` (brings a GitHub pull request into the forge), `re-run`, `setup-clone.sh`, `Containerfile`, `Containerfile.ghidra`, `ghidra-export.py`, `inventory.py`, `facts.py`, `hostfacts.py`, `envscan.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `mips_xlate.py`, `reading_round.py`, `render_reading.py`, `grade_readings.py`, `fact_check.py`, `rerender_mismatches.py`, `toolchain.py`, `_workspace.py` and `_layout.py` (where a workspace keeps its files), the shared `clean_asm.py`, `disasm_kernel.py`, `map_binaries.py` and `resolve_got.py`, their tests (`test_*.py`) and data files; `README-analysis.md` describes the analysis tools and sets the evidence order; `tools/templates/AGENTS-evidence.md` is the pointer block for a repo's `AGENTS.md` |
 | `tools/defs/` | the hardware-definition framework: `defs-gen`, `defs-check`, `defs-import`, `defs-compare` and `ci-check` over a repo's `devices/*/registers.toml` and `formats/*/format.toml` (or the old `defs/`), and the older publish-safe decode-header tools `check-publish-safe.py` and `gen_decode_rust.py`, driven by `defs.toml`; see [tools/defs/README.md](tools/defs/README.md) |
 | `tools/<device>/` | extractors, disassemblers and analysis scripts for one device family: `kona`, `odsy`, `crime`, `chips`, `voyager`, `kudzu`, `sysco`, `gr4`, `hdsp`. A device's `clean_asm.py`, `disasm_kernel.py` and similar are deliberate forks of the shared ones, not copies to merge |
 | `ghidra/` | start at [ghidra/README.md](ghidra/README.md), the index of the shared Ghidra code and of each workspace's own conventions |
@@ -31,6 +31,32 @@ rule in `tools/re-run`). Run them from the workspace. A workspace on the old lay
 to the current layout and to the old one, so repositories move one at a time
 ([README-analysis.md](tools/README-analysis.md) lists the paths). A tool finds its own siblings and data
 from its file path, so it does not matter where retools is checked out.
+
+## Taking a GitHub pull request
+
+The forge is the source of truth for each workspace; the publication run pushes its `main` out to the GitHub
+mirror. A change made on the mirror comes in through `tools/ingest-pr`, not through GitHub's merge button. A
+direct merge once went wrong in a way nothing flagged: it happened to be a fast-forward, and only afterwards
+did anyone find it carried a stale generated index and a submodule pin to a commit that was never published.
+
+```sh
+retools/tools/ingest-pr N [--github URL] [--root DIR] [--push] [--allow-failing]
+retools/tools/ingest-pr --github-main [--github URL] [--root DIR] [--push]
+```
+
+Run it from a clean clone of the workspace whose `origin` is the forge. It fetches `pull/N/head` from the
+mirror (`--github URL`, else the remote named `github` or `gh`), lists the commits and says whether they
+fast-forward onto `origin/main`. If not it rebases them with authorship kept; the hashes change, so GitHub
+will not close the PR by itself. `--github-main` takes the commits on the mirror's `main` that `origin/main`
+lacks, for a change already merged there.
+
+It then runs four checks and prints PASS or FAIL for each: every submodule pin the change adds can be fetched
+from its `.gitmodules` URL, `leakcheck.py` over the new commits, `tools/setup-clone.sh` (`--root` is passed
+on) and `ci-check`. The default is a dry run that leaves the result on the local branch `ingest/pr-N`.
+`--push` fast-forwards `origin` `main` (never a force) and only when every check passed; `--allow-failing`
+pushes anyway and names the failures. The last lines say what to do on GitHub: nothing when the PR head is in
+`main` by the same hash, otherwise close the PR with a link to the forge commits. The tool never posts to
+GitHub. Its tests are `python3 -m unittest test_ingest_pr` in `tools/`.
 
 ## For agents without containers
 
