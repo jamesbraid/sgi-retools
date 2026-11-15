@@ -112,6 +112,10 @@ class ModelCheckTest(RepoTest):
         self.edit("defs/uart.toml", "reset = 0\nreset_from = \"fixture notes (reset table)\"\n", "reset = 0x1ffffffff\n")
         self.assert_problem("reset does not fit")
 
+    def test_access_mask_wider_than_register(self):
+        self.edit("defs/uart.toml", "reset = 0\n", "reset = 0\nw1c = 0x1ffffffff\n")
+        self.assert_problem("w1c mask does not fit")
+
     def test_established_reset_needs_reset_from(self):
         self.edit("defs/uart.toml", 'reset_from = "fixture notes (reset table)"\n', "")
         self.assert_problem("established but has no reset_from")

@@ -92,6 +92,10 @@ reset = 0x0                         # or "unknown" (default)
 # reset_grade = "inferred"          # the reset value's own grade and source, when they differ from the register's;
 # reset_from = "vendor guide p.14"  # only valid with a numeric reset, and required when the reset is established.
 #                                   # Add a reset only where a source states it.
+# ro = 0x1                          # bit masks in the QEMU RegisterAccessInfo sense; each defaults to 0 (see below)
+# w1c = 0x0
+# cor = 0x0
+# rsvd = 0x0
 count = 1                           # array of registers; stride defaults to the register size
 space = "hq"                        # default: the unit's own default space
 grade = "established"
@@ -127,6 +131,12 @@ from the file to the register or word, and an item sets its own only when it
 differs. The loader is strict: an unknown key, a wrong type, a missing grade or a
 misspelt grade is an error with the path of the key, and a duplicate key is a parse
 error.
+
+A register may carry `ro`, `w1c`, `cor` and `rsvd`: bit masks over the register's width, with the meanings of
+the same-named members of QEMU's `RegisterAccessInfo`: read-only bits, write-1-to-clear bits, clear-on-read
+bits and reserved bits. Omitted means no bit, and a mask is written only where a source states it. The
+`access` letter is a different thing and is not used for them: it records what a driver table says, not
+what the bits do. Only the rust-regs export carries the masks.
 
 ### Revision overlays
 

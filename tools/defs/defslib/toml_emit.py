@@ -7,7 +7,7 @@ multi-line strings, defaults left out.
 import json
 import re
 
-HEXKEYS = {"offset", "reset"}
+HEXKEYS = {"offset", "reset", "ro", "w1c", "cor", "rsvd"}
 
 
 def _s(v):

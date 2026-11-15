@@ -6,8 +6,8 @@ descriptor words, or a table of constants.
   unit, prefix, block?, title, doc, from, public_from[], c{...}
   spaces{name: {unit: byte|reg, doc}}
   enums{name: {doc, values{label: {value, grade, from?, doc?}}}}
-  registers{name: {offset, access, width, count, stride, space, reset, reset_grade?, reset_from?, grade,
-                   from?, doc, notes, fields{}, tests[]}}
+  registers{name: {offset, access, width, count, stride, space, reset, reset_grade?, reset_from?, ro?, w1c?, cor?, rsvd?,
+                   grade, from?, doc, notes, fields{}, tests[]}}
   words{NAME: {width, grade, from?, doc, type_name?, fields{}, tests[]}}
   constants{NAME: {value, grade, from?, doc, count?, stride?}}
   field: {bits:[hi,lo], grade, from?, doc?, notes?, enum? | enums{label: {...}}}

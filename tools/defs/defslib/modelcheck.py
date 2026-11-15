@@ -46,6 +46,8 @@ def check_unit(u, settings=None):
                 "give reset_from, or grade it inferred (PROM depends on it before its first write) or drop the reset")
         else:
             req("reset_grade" not in r and "reset_from" not in r, at, "reset_grade and reset_from need a reset value")
+        for k in ("ro", "w1c", "cor", "rsvd"):
+            req(r.get(k, 0) <= mask(r["width"]), at, "%s mask does not fit the width" % k)
         req(r["stride"] >= unit_size(u, r), at, "stride smaller than the register")
         req(r["space"] is None or r["space"] in u["spaces"], at, "space %r not declared in spaces" % r["space"])
         req(r["offset"] <= max_off and last_unit(u, r) <= max_addr, at,
