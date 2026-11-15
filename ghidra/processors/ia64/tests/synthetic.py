@@ -5,12 +5,15 @@
   synthetic.py write DIR     write DIR/synthetic.bin for run-ghidra.sh
   synthetic.py check SLOTS   check run-ghidra.sh's slots.tsv for that image
   synthetic.py check-emu OUT check EmuSynthetic.java's output (DIR/emu.tsv is its spec)
+  synthetic.py addr          the address of the status function, for DecompileAt.java
+  synthetic.py check-dec C   check DecompileAt.java's C for it
 
 The encodings are built here from the instruction formats of the Intel
 Itanium Architecture SDM rev 2.3 vol 3 (323207) chapter 4; the expected text
 is the GNU assembler syntax, compared after check.py's normalisation.
 """
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -155,8 +158,24 @@ def emu_cases():
     return out
 
 
+def status_function():
+    """A function that sets r8 only through complementary predicated moves:
+    r8 = r32 == 0 ? 0 : -33. Its decompilation must return a value."""
+    imm = -33
+    cmp_ = slot(op(0xe), (34, 2, 2), (6, 6, 6), (27, 6, 7), (20, 7, 32))
+    mov = [slot(op(8), (34, 2, 2), (6, 7, 8), (20, 7, 0), (13, 7, v), (27, 6, v >> 7), (36, 1, v < 0), qp=q)
+           for q, v in ((6, 0), (7, imm))]
+    ret = slot(op(0), (27, 6, 0x21), (6, 3, 4), (12, 1, 1))
+    return [bundle(0x01, NOP_M, cmp_, NOP_I), bundle(0x10, mov[0], mov[1], ret)]
+
+
+def function_addr():
+    return BASE + 16 * (len(cases()) + len(emu_cases()))
+
+
 def image():
-    return b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
+    return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
+            + b''.join(status_function()))
 
 
 def expected():
@@ -181,6 +200,14 @@ def emu_spec():
             ','.join('%s=%s' % kv for kv in regs.items()), ','.join('%s=%s' % kv for kv in mem.items()),
             ','.join('%s=%s' % kv for kv in want.items())]))
     return '\n'.join(lines) + '\n'
+
+
+def check_dec(path):
+    """The decompiled status function must return r8, not void."""
+    text = open(path).read()
+    ok = not text.lstrip().startswith('void') and re.search(r'\breturn [^;]+;', text)
+    print('%s: %s' % ('status function returns a value' if ok else 'FAIL status function came out void', path))
+    return 0 if ok else 1
 
 
 def check_emu(path):
@@ -237,6 +264,11 @@ def main():
             addr, text = line.rstrip('\n').split('\t', 1)
             got[int(addr.split(':')[-1], 16)] = text
         return compare(got)
+    if sys.argv[1] == 'addr':
+        print('%#x' % function_addr())
+        return 0
+    if sys.argv[1] == 'check-dec':
+        return check_dec(sys.argv[2])
     if sys.argv[1] == 'check-emu':
         return check_emu(sys.argv[2])
     sys.exit(__doc__)

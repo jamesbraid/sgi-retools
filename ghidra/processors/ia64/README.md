@@ -49,6 +49,8 @@ Numbers print in Ghidra's hexadecimal.
   decoder (no arguments) or for Ghidra (`write`, then `check`). `write` also writes `emu.tsv`:
   short sequences that `EmuSynthetic.java` runs in Ghidra's emulator and `check-emu` compares
   with the SDM (signed `extr` with pos+len over 64, `ld` post-incrementing by its own target).
+  It also lays out a status function for `DecompileAt.java` that must not decompile as `void`
+  (`check-dec`).
 - `tests/test_generated.py`: the generator runs and writes a file with the expected landmarks.
 
 ## Running
@@ -75,6 +77,9 @@ retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghi
     .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 EmuSynthetic.java \
     .cache/ia64-syn/emu.tsv .cache/ia64-syn/emu.out
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-emu .cache/ia64-syn/emu.out
+retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
+    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn 0x80130
+python3 retools/ghidra/processors/ia64/tests/synthetic.py check-dec .cache/ia64-syn/0x80130.c
 ```
 
 ## Agreement with objdump
@@ -134,6 +139,8 @@ r32.. before it and puts the caller's r32.. back after it. The callee therefore 
 arguments where its own code reads them, r32..r39, and the cspec passes arguments there
 and returns them in r8. A call reached before any `alloc` in its function copies nothing.
 
-The decompiler sometimes misses a return value that reaches `br.ret` only through a pair
-of complementary predicated moves (`(p6) mov r8=0` / `(p7) mov r8=-33`); the function
-then shows as `void`. Give it a return type and the paths come back.
+r8 is also listed as a ninth input register. The decompiler decides what a function returns
+before it can prove that two predicated writes (`(p6) mov r8=0` / `(p7) mov r8=-33`) are
+complementary, and rejects r8 because the path where neither runs leaves the function's input
+r8; an input that could be a parameter is accepted. Without this such a function came out
+`void`. The cost is a function that reads r8 before writing it can get a ninth parameter.

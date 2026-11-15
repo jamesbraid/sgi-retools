@@ -101,8 +101,7 @@ global pointer the table's descriptors carry. Full analysis of a 6 MiB image tak
 What the processor does not do, in short (its README has the detail): the register stack is
 approximated (no renaming or rotation; calls copy up to eight output registers into r32..), NaT bits
 are not tracked, floating-point registers hold 64 bits, and instructions the architecture leaves to
-the implementation are named p-code ops. A function whose result reaches its return only through
-complementary predicated moves can come out `void` until it is given a return type. Slot addresses
+the implementation are named p-code ops. Slot addresses
 are objdump's (bundle + 0, 6, 0xc), so objdump-based notes and Ghidra agree on every address.
 
 ## System call table
