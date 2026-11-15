@@ -43,11 +43,13 @@ class PlanLanguage(unittest.TestCase):
         self.assertIn('-processor IA64:LE:64:default', script)
         self.assertIn('-preScript IA64Elf.java', script)
         self.assertNotIn('ReMipsGp', script)
+        self.assertIn('-postScript IA64Signatures.java -postScript ReDecompileExport.java', script)
 
     def test_mips_elf_is_unchanged(self):
         script = self.plan(elf32(ge.EM_MIPS, '>'))
         self.assertNotIn('-processor', script)
         self.assertIn('ReMipsGp.java loader -', script)
+        self.assertNotIn('IA64Signatures', script)
 
     def test_wide_mips32_elf_keeps_its_variant(self):
         script = self.plan(elf32(ge.EM_MIPS, '>', flags=0x20000000 | ge.EF_MIPS_ABI2))

@@ -210,9 +210,10 @@ Limits:
   (the stage predicates keep those reads from mattering), so the decompiler can show them
   as parameters.
 
-A callee's argument count is not known, so a call passes every output register the caller's
-frame declares, and one set on only some paths (or in a loop) shows up as an argument
-(`in_r40`).
+A call's arguments are the callee's parameters when the callee's signature is known.
+`ghidra/scripts/IA64Signatures.java` sets one from each function's own body, callees first;
+`tools/ghidra-export.py` runs it for IA-64. Without it, every output register the caller's
+frame declares counts, and one set on only some paths shows up as an argument (`in_r40`).
 
 Banked registers: r16..r31 are one set here, so code that runs between `bsw.0` and `bsw.1` (PAL, interruption
 handlers) reads the other bank's values as `in_r*` or `extraout_r*`. `psr.bn` is not tracked in context.

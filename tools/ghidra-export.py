@@ -356,6 +356,11 @@ def prepare(argv):
     if args.mdebug:
         argv += ['-preScript', 'ReMdebugImport.java', 'names', str(image),
                  '-postScript', 'ReMdebugImport.java', 'types', str(image)]
+    if language == IA64_LANGUAGE:
+        # Callee signatures first, so call sites pass exactly the callee's arguments.
+        whole = args.decompile_all or globs or ranges or args.decompile_component
+        roots = [] if whole else names + addresses
+        argv += ['-postScript', 'IA64Signatures.java'] + roots
     if exporting:
         argv += ['-postScript', 'ReDecompileExport.java', str(job)]
     if args.bsim_db:
