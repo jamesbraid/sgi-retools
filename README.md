@@ -20,7 +20,7 @@ Update the pin with
 | `ghidra/` | start at [ghidra/README.md](ghidra/README.md), the index of the shared Ghidra code and of each workspace's own conventions |
 | `ghidra/scripts/` | the Ghidra scripts for IRIX MIPS objects and the export helpers (`Re*.java`) |
 | `ghidra/processors/<name>/` | Ghidra processor extensions with their generators and tests (`kona-ge`, `kona-ged`, `odsy-buzz`, `ge11`, `ia64`) |
-| `ghidra/import/<name>/`, `ghidra/types/<name>/` | firmware importers and data-type scripts (`kona-arm`, `kona-types`, `mmsc-aout`) |
+| `ghidra/import/<name>/`, `ghidra/types/<name>/` | firmware importers and data-type scripts (`kona-arm`, `kona-types`, `mmsc-aout`, `sn2-prom`) |
 
 There are no symlinks in this repository, and none are needed in a workspace. Tools that name
 paths of their workspace (`evidence/`, `root/`, `tools/config/inventory-config.json`) take the workspace

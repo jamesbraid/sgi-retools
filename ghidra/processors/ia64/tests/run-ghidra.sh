@@ -5,7 +5,8 @@
 #
 # Runs in the Ghidra image (tools/re-run --ghidra). Writes OUTDIR/slots.tsv,
 # every bundle of IMAGE (loaded at BASE) disassembled, one instruction a line.
-# With SCRIPT, runs that post-script from tests/ instead, with ARGS.
+# With SCRIPT, runs that post-script from tests/ instead, with ARGS. With
+# PRESCRIPT=FILE.java in the environment, runs that pre-script first.
 set -eu
 MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$1 IMAGE=$2 BASE=$3
@@ -36,9 +37,16 @@ else
     script=DumpSlots.java
     set -- "$OUT/slots.tsv"
 fi
+spath="$MOD/tests"
+if [ -n "${PRESCRIPT:-}" ]; then
+    spath="$spath;$(cd "$(dirname "$PRESCRIPT")" && pwd)"
+    set -- -preScript "$(basename "$PRESCRIPT")" -postScript "$script" "$@"
+else
+    set -- -postScript "$script" "$@"
+fi
 analyzeHeadless "$proj" p -import "$IMAGE" -loader BinaryLoader -loader-baseAddr "$BASE" \
-    -processor IA64:LE:64:default -noanalysis -scriptPath "$MOD/tests" \
-    -postScript "$script" "$@" -deleteProject > "$OUT/headless.txt" 2>&1 || {
+    -processor IA64:LE:64:default -noanalysis -scriptPath "$spath" \
+    "$@" -deleteProject > "$OUT/headless.txt" 2>&1 || {
     tail -40 "$OUT/headless.txt" >&2
     exit 1
 }
