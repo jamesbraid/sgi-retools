@@ -83,7 +83,7 @@ def gen_rust_regs(m, base, source, commit, names=()):
         if r["width"] != 64:
             parts.append("width %d" % r["width"])
         if r["count"] > 1:
-            parts.append("count %d stride 0x%x" % (r["count"], r["stride"]))
+            parts.append("count %d stride 0x%x end 0x%x" % (r["count"], r["stride"], off + r["count"] * r["stride"]))
         if r["fields"]:
             fl = ["%s: %d..%d" % (fn.upper(), f["bits"][1], f["bits"][0]) for fn, f in r["fields"].items()]
             line = "    %s { %s }" % (" ".join(parts), ", ".join(fl))

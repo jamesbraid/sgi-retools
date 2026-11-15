@@ -319,7 +319,7 @@ regs! {
     const SOME_CONSTANT 0x30;
     CTL     0x0000 width 32 { ENABLE: 0..0, DIVISOR: 16..31 };
     STATUS  0x0004 width 32 { READY: 0..0 };
-    TABLE   0x0100 count 128 stride 0x8;
+    TABLE   0x0100 count 128 stride 0x8 end 0x500;
     BIG     0x0200 {
         F0: 0..3,
         F1: 4..7,
@@ -328,8 +328,8 @@ regs! {
 ```
 
 - A register line is `NAME OFFSET`, then in this order the optional `width N` (omitted for 64 bits) and
-  `count N stride 0xS` (an array: element `i` is at the offset plus `i` times the stride, so the end is the
-  offset plus count times stride). Access and reset are not written: the only consumer reads neither, and
+  `count N stride 0xS end 0xE` (an array: element `i` is at the offset plus `i` times the stride, and `end` is
+  the offset plus count times stride, written so the consumer need not compute it). Access and reset are not written: the only consumer reads neither, and
   both stay in the register map, the reference page and the C header. Every register ends in `;`, with or without fields.
   A register with fields has a brace list of `NAME: LO..HI` entries before the `;`, inclusive bit numbers,
   low first. A register line longer than 100 characters puts each field on its own line, with a trailing

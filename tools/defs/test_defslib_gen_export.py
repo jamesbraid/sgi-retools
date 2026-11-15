@@ -49,7 +49,7 @@ class ExportTest(RepoTest):
         self.assertTrue(ctl.endswith(" };"), ctl)       # every register ends in a semicolon, fields or not
         data = [ln for ln in lines if ln.startswith("    DATA ")][0]
         self.assertIn("DATA 0x0110 ", data)             # relative to the base: 0x120 - 0x10
-        self.assertIn("width 8 count 16 stride 0x1", data)
+        self.assertIn("width 8 count 16 stride 0x1 end 0x120", data)     # 0x110 + 16 * 1
 
     def test_rust_regs_leave_out_what_is_not_a_register(self):
         self.enable()
