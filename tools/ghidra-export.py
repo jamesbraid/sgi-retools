@@ -59,6 +59,11 @@ An SGI SN2 (Altix, Prism) flash PROM is a flat image with its own layout:
                          to end at 4 GiB, laid out by SN2PromImport.java (FIT
                          components, PAL and SAL entries, the SAL dispatch table
                          as sal_<id> functions, SAL_B's gp), then analysed
+  --sal-runtime          with --sn2-prom, also inflate the gzip SAL runtime component
+                         (FIT type 0x12), map its IA-64 ELF at 0x100000000 (its link
+                         address 0) and make its dynamic symbols functions, named as in
+                         the ELF. Reach them by name or in the SAL_runtime_* component.
+                         The address SAL really inflates it to is chosen at run time.
 Ask for its routines by address (@0xffc4e970) or by those names (SALE_ENTRY,
 sal_02000002).
 A flat image has no names: functions are `FUN_` placeholders, found by Ghidra's
@@ -218,6 +223,7 @@ def parser():
     p.add_argument('--processor', default=None)
     p.add_argument('--window', type=lambda v: int(v, 0), default=None, metavar='ADDR')
     p.add_argument('--sn2-prom', action='store_true')
+    p.add_argument('--sal-runtime', action='store_true')
     p.add_argument('--timeout', type=int, default=3600)
     p.add_argument('--cpus', type=int, default=2)
     return p
@@ -242,6 +248,8 @@ def prepare(argv):
     if args.mdebug and args.flat:
         die('--mdebug reads an ELF object')
     flat, mips = None, True
+    if args.sal_runtime and not args.sn2_prom:
+        die('--sal-runtime reads the SAL runtime of an SN2 PROM: add --sn2-prom')
     if args.sn2_prom:
         if args.flat or args.load is not None or args.processor or args.header:
             die('--sn2-prom sets the layout itself; drop --flat, --load, --processor and --header')
@@ -340,7 +348,7 @@ def prepare(argv):
         base = flat['load'] + flat['window']
         argv += ['-loader', 'BinaryLoader', '-loader-baseAddr', '0x%x' % base, '-scriptPath', SCRIPTS]
         if flat['sn2']:
-            argv += ['-preScript', 'SN2PromImport.java']
+            argv += ['-preScript', 'SN2PromImport.java'] + (['sal-runtime'] if args.sal_runtime else [])
         elif flat['processor'].startswith('MIPS'):
             # No header states the global pointer or the entry: recover gp from
             # the code, and start disassembly at the first byte.

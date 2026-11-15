@@ -1,24 +1,53 @@
 #!/usr/bin/env python3
 """Check what SN2PromImport.java laid out against the image itself.
 
-Usage: check.py SYMBOLS IMAGE
+Usage: check.py SYMBOLS IMAGE [--runtime]
 
 SYMBOLS is run-ghidra.sh's symbols.tsv. The FIT, the top-of-flash words and
 the SAL dispatch table are parsed again here, independently of the script;
 every component, entry and table must carry its label, every entry must be a
 function and SAL_B must have its global pointer. Prints the failures and
-exits non-zero on any; prints that it skipped when IMAGE is absent.
+exits non-zero on any; prints that it skipped when IMAGE is absent. With --runtime
+(the import ran with SAL_RUNTIME=1) the SAL runtime component is inflated here too and each
+of its dynamic function symbols must be a function with its name at RUNTIME_BASE + value.
 """
 import os
 import struct
 import sys
+import zlib
 
 TOP = 1 << 32
 UNC = 1 << 63
+RUNTIME_BASE = 1 << 32
+
+
+def runtime_functions(gz):
+    """[(name, link address)] of the dynamic function symbols of the gzip-packed ELF."""
+    elf = zlib.decompressobj(31).decompress(gz)
+    phoff, phnum = struct.unpack_from('<Q', elf, 32)[0], struct.unpack_from('<H', elf, 56)[0]
+    segs = [struct.unpack_from('<IIQQQQQQ', elf, phoff + 56 * i) for i in range(phnum)]
+    img = bytearray(max(s[3] + s[6] for s in segs if s[0] == 1))
+    for t, _, off, va, _, filesz, _, _ in segs:
+        if t == 1:
+            img[va:va + filesz] = elf[off:off + filesz]
+    dyn = [s[3] for s in segs if s[0] == 2][0]
+    tags = {}
+    while struct.unpack_from('<Q', img, dyn)[0]:
+        tags.setdefault(*struct.unpack_from('<QQ', img, dyn))
+        dyn += 16
+    nsyms = struct.unpack_from('<I', img, tags[4] + 4)[0]
+    out = []
+    for i in range(1, nsyms):
+        name, info, _, shndx, value, _ = struct.unpack_from('<IBBHQQ', img, tags[6] + 24 * i)
+        if info & 15 == 2 and shndx and value:
+            end = img.index(0, tags[5] + name)
+            out.append((img[tags[5] + name:end].decode('latin1'), value))
+    return out, tags.get(3, 0)
 
 
 def main():
     syms, image = sys.argv[1], sys.argv[2]
+    runtime = '--runtime' in sys.argv[3:]
     if not os.path.isfile(image):
         print('check: %s is not here (no PROM root); skipped' % image)
         return 0
@@ -105,6 +134,18 @@ def main():
         want(start, name)
         if kind not in (0x01, 0x0e, 0x0f, 0x10, 0x11) and (blocks.get(name) != start or name not in noexec):
             bad.append('%s is not a non-executable block at %#x' % (name, start))
+        if runtime and kind == 0x12:
+            funcs_rt, pltgot = runtime_functions(data[start - base:start - base + size])
+            for fname, value in funcs_rt:
+                want(RUNTIME_BASE + value, fname, True)
+            elf_block = name + '_elf'
+            if blocks.get(elf_block) != RUNTIME_BASE or elf_block in noexec:
+                bad.append('%s is not an executable block at %#x' % (elf_block, RUNTIME_BASE))
+            if not any(a == RUNTIME_BASE and v == '%x' % (RUNTIME_BASE + pltgot) for a, b, v in r1):
+                bad.append('r1 is not %#x over the runtime: %s' % (RUNTIME_BASE + pltgot, r1))
+            print('SAL runtime: %d functions at %#x, gp %#x' % (len(funcs_rt), RUNTIME_BASE, RUNTIME_BASE + pltgot))
+            if not funcs_rt:
+                bad.append('the SAL runtime has no dynamic functions')
         if kind == 0x0e:
             want(start + 0x300, name + '_entry', True)
         if kind in (0x0e, 0x0f):

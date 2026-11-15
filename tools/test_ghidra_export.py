@@ -45,6 +45,21 @@ class PlanLanguage(unittest.TestCase):
         self.assertNotIn('ReMipsGp', script)
         self.assertIn('-postScript IA64Signatures.java -postScript ReDecompileExport.java', script)
 
+    def test_sal_runtime_is_an_sn2_prom_option(self):
+        with tempfile.TemporaryDirectory() as d:
+            obj = os.path.join(d, 'prom.bin')
+            with open(obj, 'wb') as f:
+                f.write(bytes(4096))
+            for flags, want in (([], '-preScript SN2PromImport.java -postScript'),
+                                (['--sal-runtime'], '-preScript SN2PromImport.java sal-runtime -postScript')):
+                job = os.path.join(d, 'job%d' % len(flags))
+                os.mkdir(job)
+                ge.prepare(['--job', job, '--sn2-prom', '--decompile-all'] + flags + [obj])
+                with open(os.path.join(job, 'ghidra.sh')) as f:
+                    self.assertIn(want, f.read())
+            with self.assertRaises(SystemExit):
+                ge.prepare(['--job', d, '--sal-runtime', '--decompile-all', obj])
+
     def test_mips_elf_is_unchanged(self):
         script = self.plan(elf32(ge.EM_MIPS, '>'))
         self.assertNotIn('-processor', script)

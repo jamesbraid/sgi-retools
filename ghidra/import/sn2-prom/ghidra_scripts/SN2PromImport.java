@@ -6,10 +6,14 @@
 // calls (the module README gives the evidence grade). Run as a pre-script on a BinaryLoader
 // import with language IA64:LE:64:default; an image loaded at the wrong base
 // is moved so it ends at 4 GiB, where the processor finds it.
-// Args: none
+// Args: [sal-runtime]  sal-runtime also inflates the gzip SAL runtime component and maps its
+// IA-64 ELF at RUNTIME_BASE, with its dynamic symbols as functions
 // @category IA64
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
 import java.util.*;
+import java.util.zip.GZIPInputStream;
 
 import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.app.cmd.function.CreateFunctionCmd;
@@ -31,6 +35,12 @@ public class SN2PromImport extends GhidraScript {
 
 	// FIT types that hold IA-64 code; the SAL runtime, EFI and OEM components are packed data.
 	static final Set<Integer> CODE = Set.of(0x01, 0x0e, 0x0f, 0x10, 0x11);
+
+	// Where the SAL runtime's ELF is mapped: its link address 0 is this address. SAL_B
+	// allocates the buffer it inflates into at run time, so no fixed address is the real one.
+	static final long RUNTIME_BASE = 0x1_0000_0000L;
+	static final int FIT_SAL_RUNTIME = 0x12;
+	static final long MAX_RUNTIME = 64L << 20;
 
 	Memory mem;
 	boolean vectors;
@@ -110,6 +120,13 @@ public class SN2PromImport extends GhidraScript {
 		for (long[] c : comps) {
 			if (c[2] == 0x0e || c[2] == 0x0f) {
 				markPalServiceCalls(c[0], c[0] + c[1]);
+			}
+		}
+		if (Arrays.asList(getScriptArgs()).contains("sal-runtime")) {
+			for (long[] c : comps) {
+				if (c[2] == FIT_SAL_RUNTIME) {
+					importRuntime(c[0], c[1], name((int) c[2], (int) c[3]));
+				}
 			}
 		}
 		if (vectors) {
@@ -297,6 +314,122 @@ public class SN2PromImport extends GhidraScript {
 			}
 		}
 		println(String.format("SN2PromImport: %d br.ia PAL service call(s) in %#x..%#x", found, start, end));
+	}
+
+	// The component at start is a gzip stream holding an IA-64 shared object (ET_DYN) with one
+	// PT_LOAD at link address 0. Inflate it, map it at RUNTIME_BASE and make its dynamic symbols
+	// functions (code) and labels (data). gp is DT_PLTGOT, the value the linker gives such an object.
+	// Relocations are not applied: its data holds link-time values.
+	void importRuntime(long start, long size, String name) throws Exception {
+		byte[] gz = new byte[(int) size];
+		mem.getBytes(addr(start), gz);
+		byte[] elf = inflate(gz);
+		if (elf == null || elf.length < 64 || le(elf, 0, 4) != 0x464c457fL || le(elf, 18, 2) != 50
+			|| elf[4] != 2) {
+			printerr("SN2PromImport: " + name + " is not a gzip stream holding an IA-64 ELF64 file");
+			return;
+		}
+		long phoff = le(elf, 32, 8);
+		int phnum = (int) le(elf, 56, 2);
+		long top = 0, dyn = -1;
+		for (int i = 0; i < phnum; i++) {
+			int ph = (int) phoff + 56 * i;
+			long type = le(elf, ph, 4);
+			if (type == 1) {
+				top = Math.max(top, le(elf, ph + 16, 8) + le(elf, ph + 40, 8));
+			}
+			else if (type == 2) {
+				dyn = le(elf, ph + 16, 8);
+			}
+		}
+		if (top == 0 || top > MAX_RUNTIME || dyn < 0) {
+			printerr("SN2PromImport: " + name + " has no loadable segment or dynamic section");
+			return;
+		}
+		byte[] image = new byte[(int) top];
+		for (int i = 0; i < phnum; i++) {
+			int ph = (int) phoff + 56 * i;
+			if (le(elf, ph, 4) == 1) {
+				System.arraycopy(elf, (int) le(elf, ph + 8, 8), image, (int) le(elf, ph + 16, 8),
+					(int) le(elf, ph + 32, 8));
+			}
+		}
+		name += "_elf";
+		MemoryBlock b = mem.createInitializedBlock(name, addr(RUNTIME_BASE), new ByteArrayInputStream(image),
+			top, monitor, false);
+		b.setRead(true);
+		b.setWrite(true);
+		b.setExecute(true);
+		// The hash table sits at link address 0, so absent is -1, not 0.
+		long hash = -1, strtab = -1, symtab = -1, pltgot = 0;
+		for (long d = dyn; le(image, (int) d, 8) != 0; d += 16) {
+			long v = le(image, (int) d + 8, 8);
+			switch ((int) le(image, (int) d, 8)) {
+				case 3 -> pltgot = v;
+				case 4 -> hash = v;
+				case 5 -> strtab = v;
+				case 6 -> symtab = v;
+				default -> { }
+			}
+		}
+		if (hash < 0 || strtab < 0 || symtab < 0) {
+			printerr("SN2PromImport: " + name + " has no dynamic symbol table");
+			return;
+		}
+		if (pltgot != 0) {
+			currentProgram.getProgramContext().setValue(currentProgram.getRegister("r1"), b.getStart(),
+				b.getEnd(), BigInteger.valueOf(RUNTIME_BASE + pltgot));
+		}
+		int nsyms = (int) le(image, (int) hash + 4, 4), funcs = 0;
+		for (int i = 1; i < nsyms; i++) {
+			int sym = (int) symtab + 24 * i;
+			int info = image[sym + 4] & 0xf;
+			long value = le(image, sym + 8, 8);
+			if (le(image, sym + 6, 2) == 0 || value == 0 || (info != 1 && info != 2)) {
+				continue;
+			}
+			int n = (int) strtab + (int) le(image, sym, 4), e = n;
+			while (image[e] != 0) {
+				e++;
+			}
+			String sname = new String(image, n, e - n, java.nio.charset.StandardCharsets.ISO_8859_1);
+			if (info == 2) {
+				code(RUNTIME_BASE + value, sname, true);
+				funcs++;
+			}
+			else {
+				label(RUNTIME_BASE + value, sname, null);
+			}
+		}
+		label(RUNTIME_BASE, name + "_base", name + " ELF mapped here, link address 0");
+		println(String.format("SN2PromImport: %s mapped at %#x, %d functions, gp %#x", name, RUNTIME_BASE, funcs,
+			RUNTIME_BASE + pltgot));
+	}
+
+	static byte[] inflate(byte[] gz) {
+		if (gz.length < 10 || (gz[0] & 0xff) != 0x1f || (gz[1] & 0xff) != 0x8b) {
+			return null;
+		}
+		try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(gz))) {
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			byte[] buf = new byte[1 << 16];
+			int n;
+			while ((n = in.read(buf)) > 0 && out.size() <= MAX_RUNTIME) {
+				out.write(buf, 0, n);
+			}
+			return out.toByteArray();
+		}
+		catch (java.io.IOException e) {
+			return null;
+		}
+	}
+
+	static long le(byte[] b, int off, int n) {
+		long v = 0;
+		for (int i = n - 1; i >= 0; i--) {
+			v = v << 8 | (b[off + i] & 0xff);
+		}
+		return v;
 	}
 
 	// Give a data component its own non-executable block and keep disassembly out of such
