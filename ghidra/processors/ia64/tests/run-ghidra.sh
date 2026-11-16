@@ -8,6 +8,8 @@
 # With SCRIPT, runs that post-script from tests/ instead, with ARGS. With
 # PRESCRIPT=FILE.java in the environment, runs that pre-script first, with
 # PRESCRIPT_ARGS (words) after it. The scripts in ghidra/scripts are on the script path.
+# With PE=1, IMAGE is a PE32+ file: Ghidra picks the loader and language from the module's
+# opinion, and BASE is unused (pass 0).
 set -eu
 MOD=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$1 IMAGE=$2 BASE=$3
@@ -48,8 +50,13 @@ if [ -n "${PRESCRIPT:-}" ]; then
 else
     set -- -postScript "$script" "$@"
 fi
-analyzeHeadless "$proj" p -import "$IMAGE" -loader BinaryLoader -loader-baseAddr "$BASE" \
-    -processor IA64:LE:64:default -noanalysis -scriptPath "$spath" \
+if [ -n "${PE:-}" ]; then
+    load=
+else
+    load="-loader BinaryLoader -loader-baseAddr $BASE -processor IA64:LE:64:default"
+fi
+# shellcheck disable=SC2086
+analyzeHeadless "$proj" p -import "$IMAGE" $load -noanalysis -scriptPath "$spath" \
     "$@" -deleteProject > "$OUT/headless.txt" 2>&1 || {
     tail -40 "$OUT/headless.txt" >&2
     exit 1

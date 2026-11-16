@@ -55,5 +55,6 @@ jobs:
         run: |
           python3 ghidra/processors/ia64/tests/synthetic.py
           python3 ghidra/processors/ia64/tests/test_generated.py
+          python3 ghidra/processors/ia64/tests/pe_synthetic.py
       - name: Run the decode-header check
         run: tools/defs/ci-check

@@ -28,7 +28,7 @@
 # Ghidra scripts under /opt/re-scripts, built from retools/ghidra/scripts/.
 #
 # --ghidra-export OBJECT runs Ghidra over OBJECT, a file in the workspace, relative to its top: an ELF
-# object for big-endian MIPS, little-endian ARM or IA-64 (a linked library, a kernel, a gzip-compressed
+# object for big-endian MIPS, little-endian ARM or IA-64, or an IA-64 PE32+ EFI image (a linked library, a kernel, a gzip-compressed
 # kernel such as vmlinuz, a relocatable driver object), or a flat image with --flat or --sn2-prom (an SGI
 # Altix or Prism flash PROM). It writes decompiled C per function as JSON under .cache/ghidra-export/,
 # naming the file on stdout. OPTIONS: --decompile-symbol NAME|GLOB|@0xADDR|@0xLO-0xHI (repeat),

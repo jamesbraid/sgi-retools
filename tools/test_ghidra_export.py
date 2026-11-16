@@ -21,6 +21,11 @@ def elf32(machine, order, flags=0, etype=1):
     return ident + struct.pack(order + 'HHIIIIIHHHHHH', etype, machine, 1, 0, 0, 0, flags, 52, 0, 0, 40, 0, 0)
 
 
+def pe(machine):
+    """A DOS header pointing at a bare PE signature and COFF machine: enough for the planner."""
+    return b'MZ' + bytes(0x3a) + struct.pack('<I', 0x40) + b'PE\0\0' + struct.pack('<H', machine)
+
+
 class PlanLanguage(unittest.TestCase):
     def plan(self, blob):
         with tempfile.TemporaryDirectory() as d:
@@ -44,6 +49,17 @@ class PlanLanguage(unittest.TestCase):
         self.assertIn('-preScript IA64Elf.java', script)
         self.assertNotIn('ReMipsGp', script)
         self.assertIn('-postScript IA64Signatures.java -postScript ReDecompileExport.java', script)
+
+    def test_ia64_pe_gets_the_pe_loader_and_its_descriptor_script(self):
+        script = self.plan(pe(ge.PE_MACHINE_IA64))
+        self.assertIn('-processor IA64:LE:64:default', script)
+        self.assertIn('-loader PeLoader -preScript IA64Pe.java', script)
+        self.assertNotIn('IA64Elf', script)
+        self.assertIn('-postScript IA64Signatures.java -postScript ReDecompileExport.java', script)
+
+    def test_x86_pe_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self.plan(pe(0x8664))
 
     def test_sal_runtime_is_an_sn2_prom_option(self):
         with tempfile.TemporaryDirectory() as d:

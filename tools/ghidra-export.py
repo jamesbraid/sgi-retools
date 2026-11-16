@@ -44,6 +44,10 @@ entry per function with the decompiler's C, warnings and signature. Decompiler
 output and BSim similarity are navigation, not evidence: a committed claim still
 rests on the disassembly.
 
+An IA-64 PE32+ image (an EFI driver or application, machine 0x200) is read with the PE loader and
+IA64Pe.java; its entry point and exports are function descriptors, resolved to functions named `entry`
+and the export's name.
+
 An ELF object (a linked library, a kernel or a relocatable driver object, or a gzip-compressed
 kernel such as vmlinuz, which is inflated first) takes its
 language and calling convention from its header; big-endian MIPS, little-endian
@@ -98,6 +102,7 @@ SCRIPTS = '/opt/re-scripts'
 WIDE_ARCH = {0x20000000, 0x30000000, 0x40000000, 0x60000000, 0x80000000}
 EF_MIPS_ABI2 = 0x20
 EM_MIPS, EM_ARM, EM_IA_64 = 8, 40, 50
+PE_MACHINE_IA64 = 0x200
 ARM_LANGUAGE = 'ARM:LE:32:v4'
 SHF_EXECINSTR = 4
 ET_REL = 1
@@ -115,8 +120,14 @@ def die(message):
 def read_header(path):
     with open(path, 'rb') as f:
         d = f.read(0x40)
+        if d[:2] == b'MZ':
+            f.seek(struct.unpack('<I', d[0x3c:0x40])[0])
+            pe = f.read(6)
+            if pe[:4] != b'PE\0\0' or struct.unpack('<H', pe[4:6])[0] != PE_MACHINE_IA64:
+                die('%s is a PE image, but not for IA-64 (machine 0x200)' % path)
+            return PE_MACHINE_IA64, 2, 0, 0
     if d[:4] != b'\x7fELF':
-        die('%s is not an ELF file; only ELF objects are handled here' % path)
+        die('%s is neither an ELF file nor an IA-64 PE image' % path)
     order = {1: '<', 2: '>'}.get(d[5])
     if order is None:
         die('%s has no byte order in its ELF header' % path)
@@ -132,7 +143,7 @@ def plan_language(machine, klass, flags):
     """(processor, compiler spec): None for both lets Ghidra's ELF loader choose."""
     if machine == EM_ARM:
         return ARM_LANGUAGE, None
-    if machine == EM_IA_64:
+    if machine in (EM_IA_64, PE_MACHINE_IA64):
         return IA64_LANGUAGE, None
     if klass != 1 or (flags & 0xf0000000) not in WIDE_ARCH:
         return None, None
@@ -278,7 +289,7 @@ def prepare(argv):
         die('--mdebug reads an ELF object')
     if args.heap and not re.fullmatch(r'[1-9][0-9]*[MG]', args.heap):
         die('--heap is a size such as 14G or 4096M')
-    flat, mips = None, True
+    flat, mips, pe = None, True, False
     if args.sal_runtime and not args.sn2_prom:
         die('--sal-runtime reads the SAL runtime of an SN2 PROM: add --sn2-prom')
     if args.sn2_prom:
@@ -315,6 +326,7 @@ def prepare(argv):
         if args.mdebug and not mips:
             die('--mdebug reads a MIPS object')
         relocatable = etype == ET_REL
+        pe = machine == PE_MACHINE_IA64
         language, spec = plan_language(machine, klass, flags)
 
     wanted = list(args.decompile_symbol)
@@ -393,6 +405,8 @@ def prepare(argv):
         argv += ['-scriptPath', SCRIPTS]
         if mips:
             argv += ['-preScript', 'ReMipsGp.java', 'loader', '-']
+        elif pe:
+            argv += ['-loader', 'PeLoader', '-preScript', 'IA64Pe.java']
         elif language == IA64_LANGUAGE:
             argv += ['-preScript', 'IA64Elf.java']
     if seeds:

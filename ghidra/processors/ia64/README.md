@@ -261,10 +261,22 @@ complementary, and rejects r8 because the path where neither runs leaves the fun
 r8; an input that could be a parameter is accepted. Without this such a function came out
 `void`. The cost is a function that reads r8 before writing it can get a ninth parameter.
 
-Not imported. An EFI driver in a PROM (`drv_fpswa.efi` in SAL 5.04) is a PE32+ file for IA-64, and
-`ghidra-export.py` reads ELF files only, so such a driver can be header-parsed but not read in Ghidra. The
-SAL runtime and two more gzip components of an SN2 PROM are IA-64 ELF files; the import maps the runtime
-(`ghidra/import/sn2-prom/README.md`).
+## PE32+ images
+
+An IA-64 PE32+ file (machine 0x200: an EFI driver or application, `elilo.efi`) loads through Ghidra's PE loader,
+which `ia64.opinion` maps to this language. `ghidra/scripts/IA64Pe.java` runs before analysis and:
+
+- applies the DIR64 base relocations when the image is not at its preferred base (`base=ADDR` moves it first);
+- resolves the entry point and each export through its function descriptor, `{entry, gp}`: the function is named
+  `entry` or the export's name and the descriptor `entry_descriptor` or `<name>_descriptor`;
+- sets r1 over the executable blocks to the entry descriptor's gp (the GLOBALPTR directory's RVA when the entry is
+  plain code). A descriptor with another gp is not given its own r1;
+- makes a function at every other descriptor in the data (two relocated words, the first into code) and at each
+  `.pdata` entry (begin RVA).
+
+Read one with `tools/re-run --ghidra-export IMAGE.efi --decompile-symbol entry`. An EFI driver in a PROM
+(`drv_fpswa.efi`, `drv_lsisas.efi`, `drv_b57undi64.efi` in SAL 5.04) is in a tar archive inside the FIT's type 0x22
+component, which is gzip packed; extract the PE file first. Not done: a separate r1 for a descriptor whose gp differs from the entry's.
 
 ## Checks
 
@@ -277,6 +289,7 @@ Each runs in the Ghidra image through `retools/tools/re-run --ghidra --` unless 
 | Ghidra on the synthetic image | `synthetic.py write DIR`, `run-ghidra.sh DIR DIR/synthetic.bin 0x80000`, then `synthetic.py check DIR/slots.tsv` | every slot in the listing is as expected |
 | Emulator | `run-ghidra.sh ... EmuSynthetic.java DIR/emu.tsv DIR/emu.out`, then `synthetic.py check-emu DIR/emu.out` | each short sequence and register stack program ends as the SDM says |
 | Decompiler | `run-ghidra.sh ... DecompileAt.java DIR ADDRESS...`, then `synthetic.py check-dec`, `check-call`, `check-frames`, `check-pal`, `check-plain`, `check-predloop`, `check-breaks` or `check-voids` | the C is as each check describes; `synthetic.py` with a function name prints the addresses (see Running) |
+| PE32+ import | `tests/pe_synthetic.py write DIR`, `run-ghidra.sh` with `PE=1` and `PRESCRIPT=IA64Pe.java` (and `PRESCRIPT_ARGS=base=0x20000000` for the moved image), `DumpSymbols.java`, then `pe_synthetic.py check SYMS BASE` | the entry, the export and the `.pdata`-only function are functions, the descriptors are labelled, r1 is the gp at both bases |
 | SN2 PROM import | `ghidra/import/sn2-prom/tests/run-ghidra.sh IMAGE DIR` and `check.py DIR/symbols.tsv IMAGE` | `0 failures` (`ghidra/import/sn2-prom/README.md`) |
 
 A check that needs an image skips, with a message, where the workspace has no PROM root.

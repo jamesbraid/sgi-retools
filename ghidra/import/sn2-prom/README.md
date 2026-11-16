@@ -63,7 +63,7 @@ such an object. In SAL 5.04 `shub1snprom.bin` that is 1032 functions.
 - Relocations are not applied: a function-pointer table in the runtime's data holds link-time values, and
   calls through function descriptors stay indirect.
 - The other gzip components (FIT types 0x13, 0x1f and 0x22 in SAL 5.04) are left packed. 0x13 and 0x1f
-  inflate to IA-64 ELF files too; 0x22 holds a PE32+ EFI driver (`drv_fpswa.efi`), which no tool here imports.
+  inflate to IA-64 ELF files too; 0x22 is a tar archive of three PE32+ EFI drivers (`drv_fpswa.efi`, `drv_lsisas.efi`, `drv_b57undi64.efi` in SAL 5.04), which `--ghidra-export` reads once extracted (processor README, PE32+ images).
 
 ## Checking it
 

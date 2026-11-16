@@ -108,7 +108,7 @@ lists the options, and the top of `tools/ghidra-export.py` explains each.
 | `--heap SIZE` | the Java heap of Ghidra, such as `14G`. Default 2G for an ELF object; for a flat image 2G plus 1G per MiB of it, at most 14G (the 12 MiB SHub 2 PROM runs out at 2G). The container's memory cap is `RE_GHIDRA_MEMORY` (16g), so raise that for a larger heap |
 | `--no-analysis` | skip Ghidra's automatic analysis. Only what the import lays out (an SN2 PROM's entries and labels, an ELF's symbols) and each `@0xADDR` asked for are functions, and callee signatures come only from those; it is the fast way to read known addresses (the SHub 2 PROM's `SALE_ENTRY` and FIT walk take under a minute) |
 
-For IA-64 the export first runs `IA64Elf.java` (an ELF object: r1 from `__gp`) and `IA64Signatures.java` (the
+For IA-64 the export first runs `IA64Elf.java` (an ELF object: r1 from `__gp`) or `IA64Pe.java` (a PE32+ EFI image: relocations, entry and exports through their descriptors, r1 from the entry's gp) and `IA64Signatures.java` (the
 parameters and return each function's body shows, callees first), so a call passes exactly its callee's
 arguments. `ghidra/processors/ia64/tests/DecompileAt.java` is the test helper that makes and decompiles
 functions at addresses in a small flat image; it is not part of the export.
