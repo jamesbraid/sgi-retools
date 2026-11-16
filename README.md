@@ -1,172 +1,51 @@
 # sgi-retools
 
-Tooling shared by every SGI reverse-engineering workspace: graphics hardware and microcode,
-system ASICs and their firmware (MIPS and IA-64 PROMs, PAL and SAL, the L1 controllers), and
-the IRIX kernel and userspace. This is the one home for our Ghidra work: processors, importers
-and scripts for any of those targets land here, whichever workspace needs them first.
+The shared toolbox for our SGI reverse-engineering repositories. Graphics microcode, system ASICs and
+their firmware, PROMs on MIPS and IA-64, L1 controllers, the IRIX kernel and userspace: the findings live
+in each repository, the tools live here.
 
-It also holds the container definitions and the wrapper that drives them, the inventory and
-fact-sheet tools, the hardware-definition generators, and the extractors that are specific to
-one device family. A workspace holds the findings, tables and configuration; the tools live here.
+It is also the one home for our Ghidra work. Processors, loaders and scripts for any of those targets land
+here, whichever repository needs them first.
 
-A workspace pulls this repository in as the `retools/` submodule, pinned to a commit, and
-runs the tools by their submodule path (`retools/tools/re-run`, `retools/tools/inventory.py`).
-Update the pin with
-`git -C retools checkout COMMIT && git add retools`.
+## What's in it
 
-## Layout
+- **A container runner.** `tools/re-run` runs any command in a pinned toolchain container with the
+  repository mounted, so a fresh machine needs only Podman. `--ghidra` swaps in the Ghidra image.
+- **Analysis tools** for reading binaries and grading what we learn from them. [tools/README-analysis.md](tools/README-analysis.md)
+  covers them and sets the evidence order every repository follows.
+- **Hardware definitions.** One TOML file per device becomes headers in C, Rust, Python, JSON and XML,
+  plus the checks that keep them honest. See [tools/defs/README.md](tools/defs/README.md).
+- **Ghidra support.** Processor modules, firmware loaders and scripts. Start at [ghidra/README.md](ghidra/README.md).
+- **Per-family extractors** under `tools/<family>/`, for formats only one device family uses.
+- **[hostfacts](tools/README-hostfacts.md)**, for reading a routine on a machine with no containers.
 
-| Path | Contents |
-|---|---|
-| `tools/` | tools every workspace runs the same way: `leakcheck.py` (internal hostnames and paths in tracked files, run by `ci-check`), `docs-index` (the generated `README.md` of each content directory, checked by `ci-check`), `ingest-pr` (brings a GitHub pull request into the forge), `re-run`, `setup-clone.sh`, `Containerfile`, `Containerfile.ghidra`, `ghidra-export.py`, `inventory.py`, `facts.py`, `hostfacts.py`, `envscan.py`, `mdebug.py`, `syscall_table.py`, `syssgi_selectors.py`, `capability_tree.py`, `mips_shim.py`, `mips_xlate.py`, `reading_round.py`, `render_reading.py`, `grade_readings.py`, `fact_check.py`, `rerender_mismatches.py`, `toolchain.py`, `_workspace.py` and `_layout.py` (where a workspace keeps its files), the shared `clean_asm.py`, `disasm_kernel.py`, `map_binaries.py` and `resolve_got.py`, their tests (`test_*.py`) and data files; `README-analysis.md` describes the analysis tools, every `--ghidra-export` option and the SN2 PROM import, and sets the evidence order; `tools/templates/AGENTS-evidence.md` is the pointer block for a repo's `AGENTS.md` |
-| `tools/defs/` | the hardware-definition framework: `defs-gen`, `defs-check`, `defs-import`, `defs-compare` and `ci-check` over a repo's `devices/*/registers.toml` and `formats/*/format.toml` (or the old `defs/`), and the older publish-safe decode-header tools `check-publish-safe.py` and `gen_decode_rust.py`, driven by `defs.toml`; see [tools/defs/README.md](tools/defs/README.md) |
-| `tools/<device>/` | extractors, disassemblers and analysis scripts for one device family: `kona`, `odsy`, `crime`, `chips`, `voyager`, `kudzu`, `sysco`, `gr4`, `hdsp`. A device's `clean_asm.py`, `disasm_kernel.py` and similar are deliberate forks of the shared ones, not copies to merge |
-| `ghidra/` | start at [ghidra/README.md](ghidra/README.md), the index of the shared Ghidra code and of each workspace's own conventions |
-| `ghidra/scripts/` | the Ghidra scripts for IRIX MIPS objects and the export helpers (`Re*.java`) |
-| `ghidra/processors/<name>/` | Ghidra processor extensions with their generators and tests (`kona-ge`, `kona-ged`, `odsy-buzz`, `ge11`, `ia64`); the IA-64 one, with its checks and limits, is described in [ghidra/processors/ia64/README.md](ghidra/processors/ia64/README.md) |
-| `ghidra/import/<name>/`, `ghidra/types/<name>/` | firmware importers and data-type scripts (`kona-arm`, `kona-types`, `mmsc-aout`, `sn2-prom`); the SN2 PROM import and its SAL runtime option are in [ghidra/import/sn2-prom/README.md](ghidra/import/sn2-prom/README.md) |
+Every tool answers `--help`. That, not this page, is the reference for options.
 
-There are no symlinks in this repository, and none are needed in a workspace. Tools that name
-paths of their workspace (`evidence/`, `root/`, `tools/config/inventory-config.json`) take the workspace
-from `--repo DIR` where the tool has it, else `$RETOOLS_WORKSPACE`, else the git work tree
-around the current directory, else the current directory (`tools/_workspace.py`, and the same
-rule in `tools/re-run`). Run them from the workspace. A workspace on the old layout (`docs/`,
-`scripts/`, `defs/`, `gen/`) works unchanged: `tools/_layout.py` is the one place that maps each path
-to the current layout and to the old one, so repositories move one at a time
-([README-analysis.md](tools/README-analysis.md) lists the paths). A tool finds its own siblings and data
-from its file path, so it does not matter where retools is checked out.
+## Getting started
 
-## Taking a GitHub pull request
-
-The forge is the source of truth for each workspace; the publication run pushes its `main` out to the GitHub
-mirror. A change made on the mirror comes in through `tools/ingest-pr`, not through GitHub's merge button. A
-direct merge once went wrong in a way nothing flagged: it happened to be a fast-forward, and only afterwards
-did anyone find it carried a stale generated index and a submodule pin to a commit that was never published.
+A repository pulls this one in as its `retools/` submodule, pinned to a commit, and runs the tools by that
+path from its own root:
 
 ```sh
-retools/tools/ingest-pr N [--github URL] [--root DIR] [--push] [--allow-failing]
-retools/tools/ingest-pr --github-main [--github URL] [--root DIR] [--push]
+git submodule update --init retools
+tools/setup-clone.sh                  # the repository's own setup script
+retools/tools/re-run --help
+retools/tools/re-run retools/tools/defs/ci-check
 ```
 
-Run it from a clean clone of the workspace whose `origin` is the forge. It fetches `pull/N/head` from the
-mirror (`--github URL`, else the remote named `github` or `gh`), lists the commits and says whether they
-fast-forward onto `origin/main`. If not it rebases them with authorship kept; the hashes change, so GitHub
-will not close the PR by itself. `--github-main` takes the commits on the mirror's `main` that `origin/main`
-lacks, for a change already merged there. A change that is already on `origin/main` under other hashes (an
-equivalent patch, or a squash merge) is reported with the matching `origin/main` commit, and nothing is ingested.
+The first `re-run` builds the container image, which takes a while. Later runs reuse it until the
+Containerfile changes.
 
-It then runs four checks and prints PASS or FAIL for each: every submodule pin the change adds can be fetched
-from its `.gitmodules` URL, `leakcheck.py` over the new commits, `tools/setup-clone.sh` (`--root` is passed
-on) and `ci-check`. The default is a dry run that leaves the result on the local branch `ingest/pr-N`.
-`--push` fast-forwards `origin` `main` (never a force) and only when every check passed; `--allow-failing`
-pushes anyway and names the failures. The last lines say what to do on GitHub: nothing when the PR head is in
-`main` by the same hash, otherwise close the PR with a link to the commits on the GitHub mirror (they appear there once the
-publication run has pushed). Advice never links the forge, whose host is private. The tool never posts to
-GitHub. Its tests are `python3 -m unittest test_ingest_pr` in `tools/`.
+To move a repository to a newer toolbox: `git -C retools checkout COMMIT && git add retools`.
 
-## For agents without containers
+## Contributing
 
-`tools/facts.py` needs the MIPS objdump from the toolchain container, so an agent whose
-sandbox cannot run Podman has had to read raw disassembly, and that is where offsets, branch
-directions and call arguments go wrong. `tools/hostfacts.py` gives the same facts on the host. It
-runs facts.py's analysis with a Capstone decoder in place of objdump, so a run needs only
-Python with `capstone` and `pyelftools`:
-
-```sh
-uv run --with capstone --with pyelftools \
-    python -I retools/tools/hostfacts.py BINARY[:MEMBER] ROUTINE [--size N] [--flat --load ADDR] [--json]
-```
-
-Run it from the workspace root (a clone of this repository elsewhere works too, given by its path) with the same arguments as `facts.py` (ROUTINE is a symbol or
-`0xADDR`; an archive member follows a colon). The text names, for the one routine:
-
-- range, size, ELF class, ABI and ISA;
-- every load and store with its width, base register, the displacement as written and the resolved
-  target, `abs 0xADDR` or `ORIGIN +/-0xOFF`. A displacement from a `lui`-built base keeps its sign,
-  so `lui t0,1; lw t1,-0x6954(t0)` reads as 0x96ac from the origin, not 0x6954;
-- every call with its callee and the argument registers as the callee sees them, after the delay
-  slot (`?` is a register the tool could not follow);
-- basic blocks, each conditional branch with when it is taken and when it falls through, the
-  instruction in its delay slot and whether a branch-likely annuls it, and which blocks reach each
-  return and what v0 holds on the way in;
-- the constants and immediates the routine uses.
-
-Base every offset, condition and argument claim on this output, not on a hand reading of the
-listing. `--json` prints the sheet `facts.py` prints. Its sections match a container run of
-`tools/re-run python3 tools/facts.py` on the same routine, except where objdump prints a
-64-bit constant load as the pseudo-instruction `dli` (N64 code): facts.py does not follow `dli`, so
-the Capstone run, which decodes it as `ori`, shows constants and call arguments the container
-run lacks. `tools/test_hostfacts.py` holds the hand-assembled checks (run it with the same
-`uv run --with` line); it skips itself when Capstone is missing.
-
-### Flat controller firmware
-
-The same `hostfacts.py` entry point also accepts `--arch coldfire`, `m68k`,
-`arm`, `thumb`, `x86-16` and `x86-32`. These modes require `--load ADDR`.
-For raw images, supply `--size N`. The tool does not infer a routine boundary
-from a linear decoder. `--offset N` skips a container header before mapping
-the payload at the load address.
-
-```sh
-uv run --with capstone --with pyelftools python -I tools/hostfacts.py \
-    firmware.bin 0xffe10400 --arch coldfire --flat --load 0xffe00000 --size 0x40
-uv run --with capstone --with pyelftools python -I tools/hostfacts.py \
-    mmscfw.bin _sysNvRamGet --arch x86-32 --load 0x108000
-```
-
-MMSC a.out images use `tools/sysco/mmsc_aout.py` for their text/data map and
-nlist names. Their routine sizes come from the next symbol and are labelled
-inferred. Headers, symbols and bss are not treated as mapped file contents.
-An explicit load address that disagrees with the a.out header is rejected.
-
-The non-MIPS sections report accesses, calls, control flow, returns,
-constants and an instruction listing. Register values are merged across all
-predecessors. Unsupported effects invalidate affected values and produce
-warnings. Predicated ARM accesses carry their execution condition. There are
-no delay slots in these modes.
-
-The default calling conventions are M68K stack arguments, ARM AAPCS registers
-and x86 cdecl32 stack arguments. Argument counts are unknown: the printed
-locations are candidates, not a declaration that the callee accepts them.
-Use `--abi unknown` when the convention is not established, or `--abi cdecl16`
-for a known 16-bit near-call convention. The default x86-16 ABI is unknown.
-Its addresses are segment offsets, with no inferred segment base. ColdFire
-uses Capstone's 68040 decoder for the common instruction subset. This does
-not establish that every decoded opcode is legal on a ColdFire part.
-
-`--arch ppc32` decodes big-endian 32-bit PowerPC with Capstone and uses the
-System V register convention (arguments in r3 to r10, result in r3). It models
-address and constant building (`li`, `lis`, `addi`, `addis`, `ori`, `oris`,
-`mr`), D-form loads and stores, `cmpwi`/`cmpw`, the link and count registers
-and the branch family. Everything else invalidates what it writes and warns.
-Compares through a CR field other than cr0, unsigned compares and indexed
-loads and stores are not tracked.
-
-Run the synthetic regression tests on the host:
-
-```sh
-uv run --with capstone --with pyelftools python -I tools/test_hostfacts.py
-uv run --with capstone --with pyelftools python -I tools/test_hostfacts_firmware.py
-```
-
-The [real-image validation table](tools/hostfacts-firmware-validation.tsv)
-records five routines per extracted image: 60 ColdFire bodies, 20 executable
-ARM segments and 11 MMSC carriers. It preserves the input hashes and mappings.
-These checks compare decoded bytes, emitted locators and required fact-sheet
-sections. The synthetic tests and independent review cover modeled instruction
-effects. Warnings and unknown values remain part of the output.
-
-The CPU families and MMSC mapping follow sysco's `docs/controllers.md` and
-`docs/mmsc/load-map.md`. ColdFire body mappings come from each package header,
-with the layout described in `docs/l1/coldfire-package-sections.md`. ARM
-packages have no load address in their outer headers. The ARM checks use
-executable segments from their userland ELF images and take `p_vaddr` from
-each ELF program header. No outer ARM package load address is assumed.
+Pull requests are welcome on GitHub. Keep each change to one tool or one processor, with its test. A
+change to shared behaviour should say which repositories it affects.
 
 ## Licence
 
-The code written for these workspaces is BSD 3-Clause, see [LICENSE](LICENSE). The tools
-descended from the gr4 project keep that project's notice, [tools/LICENSE-gr4](tools/LICENSE-gr4)
-(BSD 3-Clause, copyright Dominik Behr): the adaptations carry a header naming it and the
-original script they derive from. `tools/gr4/` and `ghidra/processors/ge11/` come from the gr4
-repository under that notice. Keep those headers and that file with any copy of them.
+BSD 3-Clause, see [LICENSE](LICENSE). The tools that came from the gr4 project keep that project's notice,
+[tools/LICENSE-gr4](tools/LICENSE-gr4) (BSD 3-Clause, copyright Dominik Behr). That covers `tools/gr4/`,
+`ghidra/processors/ge11/` and the adapted scripts whose headers name it. Keep those headers and that file
+with any copy.

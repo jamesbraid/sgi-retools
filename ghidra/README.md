@@ -1,54 +1,30 @@
-# Ghidra in the SGI workspaces: index
+# Ghidra
 
-This directory holds the Ghidra code every workspace shares, whatever it reads:
-graphics microcode, system firmware (the IA-64 SN2 PROM, PAL and SAL, L1
-controller images) or IRIX kernel and userspace objects. New processors,
-importers and scripts land here rather than in a workspace. Some workspaces
-(odsy, gr4, kona, crime, chips) also keep a `ghidra/` directory of their own with
-their own README and conventions. This page points at all of them and does not
-repeat them; read the README of the workspace you are in for how to build and
-run its components.
+Everything we add to Ghidra lives here: processor modules for SGI's microcode engines and for IA-64,
+loaders for firmware images, and scripts for IRIX objects.
 
-## What lives here
+- `processors/<name>/` is one instruction set each.
+- `import/<name>/` lays out one kind of firmware image.
+- `types/<name>/` holds data types for one device family.
+- `scripts/` holds the Ghidra scripts any repository can use. [scripts/README.md](scripts/README.md)
+  says when Ghidra beats the assembly-to-C pipeline and when it doesn't.
 
-| Path | What it is | Documented in |
-|---|---|---|
-| [scripts/](scripts/) | Ghidra scripts for IRIX MIPS objects (`IrixGp`, `IrixJumpTables`, `FindWindowStores`, `MarkVolatileWindows`, `DumpCallEdges`, `DecompileFunctions`, `ApplyStruct`, the GOT import workaround, the `Re*.java` export helpers) | [scripts/README.md](scripts/README.md): when to use Ghidra versus the assembly-to-C pipeline, failure modes of both, per-script use |
-| [processors/ge11/](processors/ge11/) | geometry-engine processor extension for the IMPACT GE11 | gr4 `ghidra/README.md` |
-| [processors/kona-ge/](processors/kona-ge/), [processors/kona-ged/](processors/kona-ged/) | geometry-engine microcode processor and its decoder variant | kona `ghidra/README.md` and `docs/tooling.md` |
-| [processors/odsy-buzz/](processors/odsy-buzz/) | BUZZ transform-microcode processor and its import script | odsy `ghidra/README.md` |
-| [processors/ia64/](processors/ia64/) | IA-64 (Itanium) processor for the SGI Altix and Prism system firmware | [processors/ia64/README.md](processors/ia64/README.md) |
-| [import/sn2-prom/](import/sn2-prom/) | layout script for an SN2 flash PROM: FIT, PAL and SAL entries, SAL dispatch table, gp, and with `--sal-runtime` the SAL runtime ELF | [import/sn2-prom/README.md](import/sn2-prom/README.md); `tools/README-analysis.md` for the export options |
-| [import/kona-arm/](import/kona-arm/), [import/mmsc-aout/](import/mmsc-aout/) | firmware loaders | kona `ghidra/README.md` |
-| [types/kona-types/](types/kona-types/) | data-type scripts and tables | kona `ghidra/README.md` |
+Each component has its own README, a `tests/run-ghidra.sh` that runs it in the Ghidra image, and a
+`tests/check.py` that checks the result with plain Python. Read the component's README before using it.
 
-Every processor or importer has `tests/run-ghidra.sh` (runs in the Ghidra image
-and writes a dump) and `tests/check.py` (checks the dump with plain Python 3).
+## Running it
 
-## Per-workspace conventions
+From a repository that has this toolbox as `retools/`:
 
-All five use the same layout: `ghidra/processors/<name>/`,
-`ghidra/import/<name>/`, `ghidra/types/<name>/`. They differ in what they hold
-and in how they reach the shared scripts.
+```sh
+retools/tools/re-run --ghidra-export IMAGE [OPTIONS]      # decompile, list or export one image
+retools/tools/re-run --ghidra -- COMMAND                   # anything else in the Ghidra image
+```
 
-| Workspace | Its `ghidra/` holds | Shared scripts | Run commands |
-|---|---|---|---|
-| odsy | `processors/odsy-buzz` (a link into this repository, kept as a link because its test script locates the module by that path); the README also documents `re-run --ghidra-export` (decompiled C as JSON, typed structures, BSim similarity, flat PROM images) | used directly from `retools/ghidra/scripts/` | `retools/tools/re-run --ghidra ghidra/processors/odsy-buzz/tests/run-ghidra.sh .cache/odsy-buzz` |
-| gr4 | `processors/ge11` (the gr4 project's, kept in this repository), empty `import/` and `types/` | its README says `ghidra/scripts/` is linked from the submodule | `re-run --workspace . --ghidra -- ghidra/processors/NAME/tests/run-ghidra.sh .cache/NAME` |
-| kona | `processors/kona-ge`, `processors/kona-ged`, `import/kona-arm`, `types/kona-types`; `docs/tooling.md` holds the Ghidra versus pipeline comparison | `retools/ghidra/scripts/`, not linked | `retools/tools/re-run --ghidra ghidra/processors/kona-ge/tests/run-ghidra.sh .cache/kona-ge` |
-| crime | layout only (`.gitkeep` directories, no component yet) | `retools/ghidra/scripts/`, not linked | `retools/tools/re-run --ghidra ghidra/processors/NAME/tests/run-ghidra.sh .cache/NAME` |
-| chips | layout only (`.gitkeep` directories, no component yet) | `retools/ghidra/scripts/`; `re-run --ghidra-export` reads them from there | `retools/tools/re-run --ghidra -- ghidra/processors/NAME/tests/run-ghidra.sh .cache/NAME` |
-
-The README of each workspace is `ghidra/README.md` at its root. The run commands
-differ only in how they spell the workspace flag; `retools/tools/re-run` mounts
-the workspace at `/work` and picks the Ghidra image with `--ghidra`, the
-toolchain image without it.
+`retools/tools/re-run python3 retools/tools/ghidra-export.py --help` lists the export options: address
+ranges, symbols, flat PROM images, ELF and PE objects.
 
 ## Adding a component
 
-Put a processor, importer or type script in the workspace that owns the hardware
-(`ghidra/processors/<name>/` and so on) with its `tests/run-ghidra.sh` and
-`tests/check.py`. Move it here only when a second workspace needs it, and leave
-a one-line note in the first workspace's README, as odsy does for `odsy-buzz`.
-Scripts that read IRIX objects and are not specific to one hardware family
-belong in [scripts/](scripts/).
+Add it here, under the layout above, with its README and both test scripts, even when only one repository
+uses it so far. Scripts that read IRIX objects and don't belong to one hardware family go in `scripts/`.
