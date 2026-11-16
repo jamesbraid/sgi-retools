@@ -20,8 +20,8 @@
   synthetic.py check-voids DIR  check their C: the first two are void, the others return a value, the last keeps its r8 over a void call
   synthetic.py rfi           the address of the function that leaves through an rfi
   synthetic.py check-rfi C   check DecompileAt.java's C for it: the code at cr.iip is not part of it
-  synthetic.py ret9          the addresses of the two functions that set r9 (a returned value, and a temporary)
-  synthetic.py check-ret9 DIR  check their C: the first returns r8 and r9, the second only r8
+  synthetic.py ret9          the addresses of the functions that set r9 (a returned value, and a temporary) or r10 and r11
+  synthetic.py check-ret9 DIR  check their C: the first returns r8 and r9, the second only r8, the third r8 to r11, the fourth r8 and r9
   synthetic.py temp8         the address of the function that loads r8, compares it and returns (r8 is a temporary)
   synthetic.py check-temp8 C   check DecompileAt.java's C for it (run with sigs): it is void
   synthetic.py ldr8          the address of the function that replaces r8 with a predicated load
@@ -511,18 +511,21 @@ def ret9_addr():
 
 def ret9_functions():
     """A status function that also returns a value in r9 (SAL's convention) and one that uses
-    r9 only as a temporary, stored through r33 and then read, and returns r8 alone."""
+    r9 only as a temporary, stored through r33 and then read, and returns r8 alone. Then one that sets
+    r8 to r11 (32 bytes) and one that sets r8, r9 and r11 but not r10 (16 bytes)."""
     st9 = slot(op(4), (30, 6, 0x34), (20, 7, 33), (13, 7, 9))
     return [bundle(0x01, NOP_M, adds(8, 0), adds(9, 0, 32)), bundle(0x17, BR_RET, NOP_B, NOP_B),
-            bundle(0x01, NOP_M, adds(9, 1, 32), NOP_I), bundle(0x10, st9, adds(8, 0), BR_RET)]
+            bundle(0x01, NOP_M, adds(9, 1, 32), NOP_I), bundle(0x10, st9, adds(8, 0), BR_RET),
+            bundle(0x01, adds(8, 0), adds(9, 0, 32), adds(10, 0, 32)), bundle(0x11, adds(11, 0, 32), NOP_I, BR_RET),
+            bundle(0x01, adds(8, 0), adds(9, 0, 32), NOP_I), bundle(0x11, adds(11, 0, 32), NOP_I, BR_RET)]
 
 
 def check_ret9(d):
     a = ret9_addr()
-    value, temp = (open(os.path.join(d, '%#x.c' % x)).read().split('{')[0] for x in (a, a + 0x20))
-    ok = '[16]' in value and '[16]' not in temp and 'void' not in temp
-    print('%s: a function that sets r9 and never reads it returns r8 and r9, one that uses r9 as a temporary r8 alone'
-          % ('ok' if ok else 'FAIL r9 return'))
+    value, temp, four, gap = (open(os.path.join(d, '%#x.c' % x)).read().split('{')[0] for x in (a, a + 0x20, a + 0x40, a + 0x60))
+    ok = '[16]' in value and '[16]' not in temp and 'void' not in temp and '[32]' in four and '[16]' in gap
+    print('%s: a function that sets r9 and never reads it returns r8 and r9, one that uses r9 as a temporary r8 alone, '
+          'r8 to r11 return 32 bytes, and a gap at r10 stops at 16' % ('ok' if ok else 'FAIL r9 to r11 return'))
     return 0 if ok else 1
 
 
@@ -834,7 +837,7 @@ def main():
     if sys.argv[1] == 'check-rfi':
         return check_rfi(sys.argv[2])
     if sys.argv[1] == 'ret9':
-        print('%#x %#x' % (ret9_addr(), ret9_addr() + 0x20))
+        print(' '.join('%#x' % (ret9_addr() + 0x20 * k) for k in range(4)))
         return 0
     if sys.argv[1] == 'check-ret9':
         return check_ret9(sys.argv[2])
