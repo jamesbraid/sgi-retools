@@ -77,8 +77,6 @@ such an object. In SAL 5.04 `shub1snprom.bin` that is 1032 functions.
     retools/tools/re-run python3 retools/ghidra/import/sn2-prom/tests/check.py .cache/sn2-prom/symbols.tsv IMAGE
 
 `run-ghidra.sh` loads the image at 0 (the script has to move it), imports it without analysis and writes
-`symbols.tsv`. `check.py` parses the FIT, the top-of-flash words and the SAL dispatch table again in Python
-and fails unless every component, entry, table and `rfi` continuation (found again from the reference decoder's text) has its label, every entry is a function, every `br.ia` is
-flagged and SAL_B has its global pointer. With `SAL_RUNTIME=1` and `GZIP_ELFS=1` in the environment of `run-ghidra.sh` and
-`--runtime` and `--elfs` after the image for `check.py`, it also inflates those components itself and requires each of their
-dynamic functions at its mapped address. `check.py` prints that it skipped when the image is absent.
+`symbols.tsv`. `check.py` parses the FIT, the top-of-flash words, the SAL dispatch table and the `rfi` continuations
+again in Python and fails on any missing label or function. `SAL_RUNTIME=1` and `GZIP_ELFS=1` (pass them with `env` after `re-run --ghidra --`, which does not forward the host's
+environment) for `run-ghidra.sh`, with `--runtime` and `--elfs` for `check.py`, extend the check to the mapped ELFs. `check.py` prints that it skipped when the image is absent.

@@ -138,11 +138,9 @@ Wall times are from the container start to the end of Ghidra, one `--decompile-s
 `shub1snprom.bin` and `shub2snprom.bin` of snprom 10.54, on a 224-thread AMD EPYC 7663 host (kernel
 7.2.11) with a load average of 45 to 90, Ghidra 12.1.3 in the `re-ghidra` image built from retools `e0f4a4f`
 (first runs of 130 s and 114 s agreed). Heap use is from the JVM's GC log: at most 1.7 GiB in use before a collection, 0.26 GiB live after
-one, 2.4 to 2.6 GiB committed, with the default heaps (8G and 14G). A report that full analysis ran out of heap at 16G and 24G did not reproduce.
-With the default `--heap`, Ghidra 12.1.3 and the same PROMs: `shub1snprom.bin` `--decompile-all` took 10.5 minutes (2709 functions),
-1.3 GiB used at most; with `--sal-runtime --gzip-elfs` and one symbol 252 s, 1.5 GiB; `shub2snprom.bin` with both options and
-`--decompile-all` 10.5 minutes (6684 functions), 2.0 GiB used, 2.9 GiB committed. None ran out of memory. The cause of the report is
-unknown. `ghidra/import/sn2-prom/README.md` lists everything it seeds and labels.
+one, 2.4 to 2.6 GiB committed, with the default heaps (8G and 14G). A report that full analysis ran out of heap at 16G and 24G did not reproduce (cause unknown): with the default `--heap`,
+`--decompile-all` of `shub1snprom.bin` took 10.5 minutes (2709 functions, 1.3 GiB used at most) and of `shub2snprom.bin` with
+`--sal-runtime --gzip-elfs` 10.5 minutes (6684 functions, 2.0 GiB used, 2.9 GiB committed). `ghidra/import/sn2-prom/README.md` lists everything it seeds and labels.
 
 With `--sal-runtime` it also inflates the gzip SAL runtime component (FIT type 0x12) and maps its IA-64 ELF at
 `0x100000000` with its dynamic symbols as functions under their own names (1032 in SAL 5.04):

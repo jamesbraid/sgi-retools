@@ -110,17 +110,6 @@ retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghi
     $(python3 retools/ghidra/processors/ia64/tests/synthetic.py predloop)
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-predloop \
     .cache/ia64-syn/$(python3 retools/ghidra/processors/ia64/tests/synthetic.py predloop).c
-retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
-    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn sigs \
-    $(python3 retools/ghidra/processors/ia64/tests/synthetic.py voids) $(python3 retools/ghidra/processors/ia64/tests/synthetic.py itc)
-python3 retools/ghidra/processors/ia64/tests/synthetic.py check-voids .cache/ia64-syn
-python3 retools/ghidra/processors/ia64/tests/synthetic.py check-itc \
-    .cache/ia64-syn/$(python3 retools/ghidra/processors/ia64/tests/synthetic.py itc).c
-retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
-    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn \
-    $(python3 retools/ghidra/processors/ia64/tests/synthetic.py rfi)
-python3 retools/ghidra/processors/ia64/tests/synthetic.py check-rfi \
-    .cache/ia64-syn/$(python3 retools/ghidra/processors/ia64/tests/synthetic.py rfi).c
 ```
 
 ## Agreement with objdump
@@ -162,8 +151,10 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
   `br.wtop`, `br.wexit` on ar.lc, ar.ec and p63.
 - `rfi` is an indirect jump to `cr.iip` (slot `psr.ri`), not a return: `cr.iip` is any address. A constant one is followed, so
   the code there is part of the decompiled function; one taken from a register, such as the PAL's `mov cr.iip=b0` helper
-  at `0xffe96bd0`, stays an unresolved jump that the decompiler prints as a return. `SN2PromImport.java` seeds the code
-  behind each call to that helper.
+  at `0xffe96bd0`, stays an unresolved jump that the decompiler prints as a return, or as an indirect call with a "could not recover jumptable" warning
+  (the kernel's `ia64_switch_mode_phys`). `SN2PromImport.java` seeds the code
+  behind each call to that helper. Open: in the 2.6.5 SN2 kernel the decompiler times
+  out (60 s) on `ia64_switch_mode_virt`, whose `rfi` has a constant `cr.iip`; before the change it decompiled in milliseconds.
 - `break` with an immediate of 0 and no qualifying predicate (Linux's `BUG()`) never falls through: its
   p-code is a jump to itself, so flow, and the function, end there. A nonzero immediate (a system call) and a
   predicated `break` fall through as before.
