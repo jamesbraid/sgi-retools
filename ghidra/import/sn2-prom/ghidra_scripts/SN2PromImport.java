@@ -124,7 +124,8 @@ public class SN2PromImport extends GhidraScript {
 			if (c[2] == 0x0e || c[2] == 0x0f) {
 				markPalServiceCalls(c[0], c[0] + c[1]);
 			}
-		}		for (long[] c : comps) {
+		}
+		for (long[] c : comps) {
 			if (CODE.contains((int) c[2])) {
 				rfiContinuations(c[0], c[0] + c[1]);
 			}
