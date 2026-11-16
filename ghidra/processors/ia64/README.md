@@ -59,7 +59,9 @@ Numbers print in Ghidra's hexadecimal.
   `mov pr=r,mask` must decompile (`predloop`, `check-predloop`). Three functions run `break.m 0`,
   `break.m` with a system call's immediate and `(p6) break.m 0`, then set r8: only the first loses the code behind it
   (`breaks`, `check-breaks`). `DecompileAt.java` with `sigs` first runs `IA64Signatures.java`: a store function
-  and its caller must come out `void`, a function that sets r8 must not (`voids`, `check-voids`).
+  and its caller must come out `void`, a function that sets r8 must not, and one that sets r8 and then calls a void
+  function keeps its r8 (`voids`, `check-voids`). A function that reads `ar.itc` twice and compares the reads (the PAL's
+  timer self-test) must keep both outcomes (`itc`, `check-itc`).
 - `tests/DecompileAt.java`: makes a function at each address it is given in a flat image and writes its C and
   listing. The synthetic tests and a quick look at one function of a PROM use it; for a whole ELF or PROM
   go through `tools/ghidra-export.py` (`tools/README-analysis.md`).
@@ -107,6 +109,12 @@ retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghi
     $(python3 retools/ghidra/processors/ia64/tests/synthetic.py predloop)
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-predloop \
     .cache/ia64-syn/$(python3 retools/ghidra/processors/ia64/tests/synthetic.py predloop).c
+retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
+    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn sigs \
+    $(python3 retools/ghidra/processors/ia64/tests/synthetic.py voids) $(python3 retools/ghidra/processors/ia64/tests/synthetic.py itc)
+python3 retools/ghidra/processors/ia64/tests/synthetic.py check-voids .cache/ia64-syn
+python3 retools/ghidra/processors/ia64/tests/synthetic.py check-itc \
+    .cache/ia64-syn/$(python3 retools/ghidra/processors/ia64/tests/synthetic.py itc).c
 ```
 
 ## Agreement with objdump
@@ -149,6 +157,9 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
 - `break` with an immediate of 0 and no qualifying predicate (Linux's `BUG()`) never falls through: its
   p-code is a jump to itself, so flow, and the function, end there. A nonzero immediate (a system call) and a
   predicated `break` fall through as before.
+- `ar.itc`, `cr.ivr` and `cr.irr0` to `cr.irr3` change between two reads, so the pspec declares them volatile: the
+  decompiler keeps each read. Without that, the PAL's timer self-test (`mov r56=ar.itc` then `mov r55=ar.itc`, fail on equal)
+  folded to a constant failure.
 - Application, control and branch registers are named registers (`ar.lc`, `cr.lid`,
   `b0`). `msr`, `cpuid`, `pmc`, `pmd`, `rr`, `dbr`, `ibr`, `pkr` and `dahr` are address
   spaces indexed by the general register, so `mov r9=msr[r10]` with r10 known shows as
@@ -240,11 +251,20 @@ value return, gets a value return (`strcpy`, `strcmp`). Any other function keeps
 returns through complementary predicated writes still needs a possible r8 from the call; an indirect flow, a call to the
 function itself and a callee with no committed signature do not count as a write.
 
+A function made `void` gets the calling convention `__stdcall_void` (the cspec), which does not list r8 as killed by a
+call: it provably leaves r8 alone, so a caller that set r8 before the call returns that value. A call to a void function
+also leaves r8 as it was for the "sets r8 on every return" test above.
+
 Call limits. A decompiled caller does not see what a callee does to the callee's own input registers: the
 copy of r32.. back after the call restores the caller's values, although emulation, where the callee's
 `br.ret` restores the frame, does show them. An indirect call, a call to a function with no committed
 signature and the arguments a varargs callee takes beyond its fixed ones are not known, so a call can show
 arguments the callee never reads or miss ones it does.
+
+A callee that edits the rrb.pr field of its saved `ar.pfs` before `br.ret` (the PAL_B 5.73 self-test at `0xffeec990` does,
+and so rotates its caller's predicates by one per call) is not followed: `br.ret` restores the rrb fields but moves no
+predicate values, and the decompiled caller sees its predicates unchanged. Such a caller's checks decompile in full, but the
+rotation-dependent ones read as failing.
 
 Banked registers: r16..r31 are one set here, so code that runs between `bsw.0` and `bsw.1` (PAL, interruption
 handlers) reads the other bank's values as `in_r*` or `extraout_r*`. `psr.bn` is not tracked in context.

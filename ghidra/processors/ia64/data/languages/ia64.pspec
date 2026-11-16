@@ -5,6 +5,10 @@
        registers, so the decompiler keeps every access in order. -->
   <volatile outputop="write_volatile" inputop="read_volatile">
     <range space="ram" first="0x8000000000000000" last="0xffffffffffffffff"/>
+    <!-- ar.itc, cr.ivr and cr.irr0-3 change between two reads. -->
+    <range space="register" first="0x2360" last="0x2367"/>
+    <range space="register" first="0x2a08" last="0x2a0f"/>
+    <range space="register" first="0x2a20" last="0x2a3f"/>
   </volatile>
   <!-- 127 is no real frame size: before an alloc a call passes r32.. on unchanged (gen_slaspec.py NO_FRAME). -->
   <context_data>

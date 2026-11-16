@@ -159,7 +159,10 @@ public class IA64Signatures extends GhidraScript {
 		else {
 			rt = Undefined.getUndefinedDataType(rt.getLength());
 		}
-		f.updateFunction(currentProgram.getCompilerSpec().getDefaultCallingConvention().getName(),
+		// A void function keeps r8, so its callers keep what they had put there.
+		String convention = rt instanceof VoidDataType ? "__stdcall_void"
+				: currentProgram.getCompilerSpec().getDefaultCallingConvention().getName();
+		f.updateFunction(convention,
 			new ReturnParameterImpl(rt, currentProgram), params,
 			FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, true, SourceType.ANALYSIS);
 		f.setVarArgs(varargs);
@@ -232,7 +235,13 @@ public class IA64Signatures extends GhidraScript {
 					Function g = getFunctionAt(a);
 					value &= g != null && g != f && returnsValue(g);
 				}
-				def = predicated ? def && value : value;
+				// A void callee leaves r8 as it was.
+				boolean leaves = flows.length > 0;
+				for (Address a : flows) {
+					Function g = getFunctionAt(a);
+					leaves &= g != null && g != f && g.getReturnType() instanceof VoidDataType;
+				}
+				def = predicated ? def && (value || leaves) : value || (def && leaves);
 			}
 			else if (ft.isTerminal()) {
 				if (!def) {

@@ -16,8 +16,10 @@
   synthetic.py check-predloop C  check DecompileAt.java's C for it: it decompiles
   synthetic.py breaks        the addresses of the three break functions (BUG, a system call, predicated)
   synthetic.py check-breaks DIR  check DecompileAt.java's C for them: `break 0` ends its function
-  synthetic.py voids         the addresses of the store, caller, status, copy and wrapper functions (run DecompileAt with sigs)
-  synthetic.py check-voids DIR  check their C: the first two are void, the others return a value
+  synthetic.py voids         the addresses of the store, caller, status, copy, wrapper and r8-keeping functions (run DecompileAt with sigs)
+  synthetic.py check-voids DIR  check their C: the first two are void, the others return a value, the last keeps its r8 over a void call
+  synthetic.py itc           the address of the timer self-test function
+  synthetic.py check-itc C   check DecompileAt.java's C for it: two reads of ar.itc are not one value
   synthetic.py frames        the addresses of the register stack programs' functions
   synthetic.py check-frames DIR  check DecompileAt.java's C for them
 
@@ -414,27 +416,55 @@ def void_functions():
     """A function that only stores through r32, one that calls it, and one that sets r8
     (the status function), then two more that return a value: strcpy's `mov r8=r32`, used as the store address, and a
     function that only calls the status function and returns. IA64Signatures makes the
-    first two return void and leaves the others a value."""
+    first two return void and leaves the others a value. The last sets r8 to 0 and then calls the store
+    function: the call must not take the 0 away."""
     here = voids_addr()
     st8 = slot(op(4), (30, 6, 0x34), (20, 7, 32), (13, 7, 33))
     call = br_call(here, here + 0x20)
     copy = adds(8, 0, 32)
     st_r8 = slot(op(4), (30, 6, 0x34), (20, 7, 8), (13, 7, 33))
     wrap = br_call(here + 0x40, here + 0x80)
+    keep = br_call(here, here + 0xb0)
     return [bundle(0x01, st8, NOP_I, NOP_I), bundle(0x17, BR_RET, NOP_B, NOP_B),
             bundle(0x17, call, NOP_B, NOP_B), bundle(0x17, BR_RET, NOP_B, NOP_B)] + status_function() + [
             bundle(0x01, NOP_M, copy, NOP_I), bundle(0x10, st_r8, NOP_I, BR_RET),
-            bundle(0x17, wrap, NOP_B, NOP_B), bundle(0x17, BR_RET, NOP_B, NOP_B)]
+            bundle(0x17, wrap, NOP_B, NOP_B), bundle(0x17, BR_RET, NOP_B, NOP_B),
+            bundle(0x01, NOP_M, adds(8, 0), NOP_I), bundle(0x17, keep, NOP_B, NOP_B),
+            bundle(0x17, BR_RET, NOP_B, NOP_B)]
 
 
 def check_voids(d):
     a = voids_addr()
-    store, caller, status, copy, wrap = (open(os.path.join(d, '%#x.c' % x)).read()
-                                         for x in (a, a + 0x20, a + 0x40, a + 0x60, a + 0x80))
-    void = [t.lstrip().startswith('void ') for t in (store, caller, status, copy, wrap)]
-    ok = void == [True, True, False, False, False]
+    store, caller, status, copy, wrap, keep = (open(os.path.join(d, '%#x.c' % x)).read()
+                                               for x in (a, a + 0x20, a + 0x40, a + 0x60, a + 0x80, a + 0xa0))
+    void = [t.lstrip().startswith('void ') for t in (store, caller, status, copy, wrap, keep)]
+    ok = void == [True, True, False, False, False, False]
     print('%s: functions that never write r8 return void, ones that return r8 (set, copied or from a callee) do not'
           % ('ok' if ok else 'FAIL void return %s' % void))
+    kept = re.search(r'\w+ = 0;', keep) is not None and 'extraout_r8' not in keep and not keep.lstrip().startswith('void')
+    print('%s: a call to a void function leaves the r8 set before it' % ('ok' if kept else 'FAIL r8 over a void call'))
+    return 0 if ok and kept else 1
+
+
+def itc_addr():
+    return voids_addr() + 16 * len(void_functions())
+
+
+def itc_function():
+    """The PAL's timer self-test: read ar.itc twice (the second read into r55, the first into r56), fail
+    when the two are equal. The counter moves between the reads, so both outcomes must show."""
+    cmp_eq_or_andcm = slot(op(0xe), (36, 1, 0), (33, 1, 1), (27, 6, 7), (20, 7, 56), (13, 7, 55), (6, 6, 6))
+    mov = [slot(op(8), (34, 2, 2), (6, 7, 8), (20, 7, 0), (13, 7, v), (27, 6, v >> 7), (36, 1, v < 0), qp=q)
+           for q, v in ((6, -1), (7, 0))]
+    return [bundle(0x09, mov_m_from_ar(56, 44), mov_m_from_ar(55, 44), NOP_I),
+            bundle(0x01, NOP_M, cmp_eq_or_andcm, NOP_I), bundle(0x10, mov[0], mov[1], BR_RET)]
+
+
+def check_itc(path):
+    """Both r8 values come out: ar.itc is not one value that makes the compare constant."""
+    text = open(path).read()
+    ok = re.search(r'\bif\b', text) is not None and 'ffffffffffffffff' in text and re.search(r'\b0\b', text) is not None
+    print('%s: %s' % ('timer self-test keeps both outcomes' if ok else 'FAIL timer self-test is constant', path))
     return 0 if ok else 1
 
 
@@ -473,7 +503,7 @@ def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
             + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function())
-            + b''.join(break_functions()) + b''.join(void_functions()))
+            + b''.join(break_functions()) + b''.join(void_functions()) + b''.join(itc_function()))
 
 
 def expected():
@@ -658,10 +688,15 @@ def main():
     if sys.argv[1] == 'check-breaks':
         return check_breaks(sys.argv[2])
     if sys.argv[1] == 'voids':
-        print(' '.join('%#x' % (voids_addr() + o) for o in (0, 0x20, 0x40, 0x60, 0x80)))
+        print(' '.join('%#x' % (voids_addr() + o) for o in (0, 0x20, 0x40, 0x60, 0x80, 0xa0)))
         return 0
     if sys.argv[1] == 'check-voids':
         return check_voids(sys.argv[2])
+    if sys.argv[1] == 'itc':
+        print('%#x' % itc_addr())
+        return 0
+    if sys.argv[1] == 'check-itc':
+        return check_itc(sys.argv[2])
     if sys.argv[1] == 'frames':
         print(' '.join('%#x' % a for a in frame_functions()))
         return 0

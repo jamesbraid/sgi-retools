@@ -110,4 +110,85 @@
       </pcode>
     </prototype>
   </default_proto>
+  <!-- A function that provably leaves r8 alone (IA64Signatures.java): a call to it keeps r8. -->
+    <prototype name="__stdcall_void" extrapop="0" stackshift="0">
+      <input>
+        <pentry minsize="1" maxsize="8"><register name="r32"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r33"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r34"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r35"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r36"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r37"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r38"/></pentry>
+        <pentry minsize="1" maxsize="8"><register name="r39"/></pentry>
+        <!-- Not an argument register: it makes the decompiler accept a returned r8 that may be the
+             function's input r8 (two predicated writes it cannot yet prove complementary). -->
+        <pentry minsize="1" maxsize="8"><register name="r8"/></pentry>
+      </input>
+      <output>
+        <pentry minsize="1" maxsize="8"><register name="r8"/></pentry>
+      </output>
+      <unaffected>
+        <register name="r1"/>
+        <register name="r4"/>
+        <register name="r5"/>
+        <register name="r6"/>
+        <register name="r7"/>
+        <register name="r12"/>
+        <register name="r13"/>
+        <register name="b1"/>
+        <register name="b2"/>
+        <register name="b3"/>
+        <register name="b4"/>
+        <register name="b5"/>
+        <register name="noarg"/>
+        <register name="fsbsp"/>
+        <register name="bof"/>
+        <register name="ar.bsp"/>
+        <!-- r40..r127 -->
+        <varnode space="register" offset="0x140" size="0x2c0"/>
+        <register name="ar.pfs"/>
+        <register name="ar.unat"/>
+        <register name="ar.lc"/>
+        <!-- fs0..fs95 -->
+        <varnode space="register" offset="0x3200" size="0x300"/>
+      </unaffected>
+      <killedbycall>
+        <register name="r2"/>
+        <register name="r3"/>
+        <register name="r9"/>
+        <register name="r10"/>
+        <register name="r11"/>
+        <register name="r14"/>
+        <register name="r15"/>
+        <register name="r16"/>
+        <register name="r17"/>
+        <register name="r18"/>
+        <register name="r19"/>
+        <register name="r20"/>
+        <register name="r21"/>
+        <register name="r22"/>
+        <register name="r23"/>
+        <register name="r24"/>
+        <register name="r25"/>
+        <register name="r26"/>
+        <register name="r27"/>
+        <register name="r28"/>
+        <register name="r29"/>
+        <register name="r30"/>
+        <register name="r31"/>
+        <register name="b6"/>
+        <register name="b7"/>
+      </killedbycall>
+      <!-- A function is entered by br.call: its rrb's are 0 (SDM vol 3 br, 3:25). bof places the
+           model's physical stacked registers; any constant lets the decompiler drop their copies. -->
+      <pcode inject="uponentry">
+        <body><![CDATA[
+          bof = 0;
+          rrb_gr = 0;
+          rrb_fr = 0;
+          rrb_pr = 0;
+        ]]></body>
+      </pcode>
+    </prototype>
 </compiler_spec>
