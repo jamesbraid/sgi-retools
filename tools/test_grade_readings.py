@@ -378,8 +378,8 @@ class SentenceChecks(unittest.TestCase):
 
 class CheckDoc(unittest.TestCase):
     """--check-doc: the lint of a docs/routines file, one entry at a time."""
-    BINARY = "sw22/var/sysgen/boot/fsdrv.o"
-    OTHER = "sw23/var/sysgen/boot/fsdrv.o"
+    BINARY = "b100/var/sysgen/boot/fsdrv.o"
+    OTHER = "b200/var/sysgen/boot/fsdrv.o"
     ROLE = ("Copies a 12-byte block in at 0x1f9c and calls `swf_mount_fs` at 0x2080. The return is the "
             "constant 0xe or the mount result at 0x2084.")
 

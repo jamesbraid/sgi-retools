@@ -422,7 +422,7 @@ class ReadingEntries(unittest.TestCase):
     table of builds that share a routine name: fsio_mount sits at a different address in every build
     and its code differs in some."""
     NAME = 'fsio_mount'
-    SW22 = 'b100-ip30-a/var/sysgen/boot/fsdrv.o'
+    B100 = 'b100-ip30-a/var/sysgen/boot/fsdrv.o'
     BUILDS = (('b100-ip30-a/var/sysgen/boot/fsdrv.o', 0x1f80, 'aa'),
               ('b200-ip27-b/var/sysgen/boot/fsdrv.o', 0x1fe0, 'bb'),
               ('b300-ip30-c/var/sysgen/boot/fsdrv.o', 0x2040, 'cc'),
@@ -456,28 +456,28 @@ class ReadingEntries(unittest.TestCase):
             out[img['label']] = inv.function_status(docs, self.NAME, hits, demote)[0]
         return out
 
-    def only_sw22(self):
-        return {lab: ('located' if lab == self.SW22 else 'named-only') for lab, _a, _c in self.BUILDS}
+    def only_b100(self):
+        return {lab: ('located' if lab == self.B100 else 'named-only') for lab, _a, _c in self.BUILDS}
 
     def test_a_header_line_and_its_text_credit_only_the_cited_row(self):
-        doc = '- `fsio_mount` in `%s` at 0x1f80: %s\n' % (self.SW22, self.ROLE)
-        self.assertEqual(self.statuses(doc), self.only_sw22())
+        doc = '- `fsio_mount` in `%s` at 0x1f80: %s\n' % (self.B100, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_b100())
 
     def test_a_heading_and_its_paragraph_credit_only_the_cited_row(self):
-        doc = '### `fsio_mount` in `%s` at 0x1f80\n\n%s\n\nGrade: inferred.\n' % (self.SW22, self.ROLE)
-        self.assertEqual(self.statuses(doc), self.only_sw22())
+        doc = '### `fsio_mount` in `%s` at 0x1f80\n\n%s\n\nGrade: inferred.\n' % (self.B100, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_b100())
 
     def test_a_heading_with_the_build_and_address_and_a_paragraph_that_names_the_routine(self):
-        doc = '### `%s` at 0x1f80\n\n`fsio_mount`, 292 bytes. %s\n' % (self.SW22, self.ROLE)
-        self.assertEqual(self.statuses(doc), self.only_sw22())
+        doc = '### `%s` at 0x1f80\n\n`fsio_mount`, 292 bytes. %s\n' % (self.B100, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_b100())
 
     def test_a_heading_with_the_build_the_address_and_the_name_after_them(self):
-        doc = '### %s:0x1f80 fsio_mount\n\n%s\n' % (self.SW22, self.ROLE)
-        self.assertEqual(self.statuses(doc), self.only_sw22())
+        doc = '### %s:0x1f80 fsio_mount\n\n%s\n' % (self.B100, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_b100())
 
     def test_a_bare_file_name_credits_the_builds_that_have_the_routine_at_that_address(self):
         doc = '### fsdrv.o at 0x1f80\n\n`fsio_mount`, 292 bytes. %s\n' % self.ROLE
-        self.assertEqual(self.statuses(doc), self.only_sw22())
+        self.assertEqual(self.statuses(doc), self.only_b100())
 
     def test_a_bare_file_name_credits_nothing_when_another_build_differs_at_that_address(self):
         doc = '### fsdrv.o at 0x1f80\n\n`fsio_mount`, 292 bytes. %s\n' % self.ROLE
@@ -487,27 +487,27 @@ class ReadingEntries(unittest.TestCase):
     def test_a_build_line_under_a_bare_file_name_names_the_build(self):
         # the shape driver-functions.md uses: a shared member name in the header, the full path on a Build line
         doc = ('- `fsio_mount` (`fsdrv.o`, offset 0x1f80, 292 bytes): **established.**\n'
-               '  Build: `%s`.\n  %s\n' % (self.SW22, self.ROLE))
+               '  Build: `%s`.\n  %s\n' % (self.B100, self.ROLE))
         other = (self.BUILDS[3][0], 0x1f80, 'dd')     # same address, different code
         got = self.statuses(doc, builds=(self.BUILDS[0], other))
-        self.assertEqual(got, {self.SW22: 'located', other[0]: 'named-only'})
+        self.assertEqual(got, {self.B100: 'located', other[0]: 'named-only'})
 
     def test_a_long_paragraph_naming_many_callees_still_credits_its_routine(self):
         callees = ', '.join('`swf_callee_%d` at 0x%x' % (k, 0x2000 + 4 * k) for k in range(inv.MAX_ITEMS + 4))
-        doc = '### `%s` at 0x1f80\n\n`fsio_mount`, 292 bytes. It calls %s. Grade: inferred.\n' % (self.SW22, callees)
-        self.assertEqual(self.statuses(doc)[self.SW22], 'understood')
+        doc = '### `%s` at 0x1f80\n\n`fsio_mount`, 292 bytes. It calls %s. Grade: inferred.\n' % (self.B100, callees)
+        self.assertEqual(self.statuses(doc)[self.B100], 'understood')
 
     def test_a_header_line_with_an_indented_paragraph_after_a_blank_line_is_one_entry(self):
-        doc = '- `fsio_mount` in `%s` at 0x1f80\n\n  %s\n' % (self.SW22, self.ROLE)
-        self.assertEqual(self.statuses(doc), self.only_sw22())
+        doc = '- `fsio_mount` in `%s` at 0x1f80\n\n  %s\n' % (self.B100, self.ROLE)
+        self.assertEqual(self.statuses(doc), self.only_b100())
 
     def test_identical_code_in_another_build_shares_the_credit(self):
-        doc = '### `fsio_mount` in `%s` at 0x1f80\n\n%s\n' % (self.SW22, self.ROLE)
+        doc = '### `fsio_mount` in `%s` at 0x1f80\n\n%s\n' % (self.B100, self.ROLE)
         same = self.statuses(doc, builds=(self.BUILDS[0], (self.BUILDS[3][0], 0x1f8c, 'aa')))
         self.assertEqual(set(same.values()), {'located'})
 
     def test_a_heading_without_an_address_is_not_folded_into_its_paragraph(self):
-        doc = '### Mounting\n\n`fsio_mount` in `%s`: %s\n' % (self.SW22, self.ROLE)
+        doc = '### Mounting\n\n`fsio_mount` in `%s`: %s\n' % (self.B100, self.ROLE)
         self.assertFalse(any(e.text.startswith('Mounting') for e in self.index(doc).entries))
 
     def test_a_heading_with_an_address_and_no_binary_is_not_folded_into_its_paragraph(self):
@@ -515,7 +515,7 @@ class ReadingEntries(unittest.TestCase):
         self.assertFalse(any(e.text.startswith('Register') for e in self.index(doc).entries))
 
     def test_text_after_a_list_under_a_routine_heading_is_not_folded_in(self):
-        doc = '### `%s` at 0x1f80\n\n- Something else.\n\nLater prose about the area.\n' % self.SW22
+        doc = '### `%s` at 0x1f80\n\n- Something else.\n\nLater prose about the area.\n' % self.B100
         texts = [e.text for e in self.index(doc).entries]
         self.assertFalse(any('Later prose' in t and '0x1f80' in t for t in texts))
 
