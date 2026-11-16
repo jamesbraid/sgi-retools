@@ -104,6 +104,7 @@ lists the options, and the top of `tools/ghidra-export.py` explains each.
 | `--flat`, `--load ADDR`, `--header N`, `--processor LANG`, `--window ADDR` | read OBJECT as raw bytes: the address of the first byte after N header bytes, the Ghidra language (default MIPS 64-bit) and, for a 64-bit MIPS language, the upper address bits of the window it runs in |
 | `--sn2-prom` | OBJECT is an SN2 PROM: IA-64, loaded to end at 4 GiB, laid out by `SN2PromImport.java` (below) |
 | `--sal-runtime` | with `--sn2-prom`, also map the SAL runtime ELF (below) |
+| `--gzip-elfs` | with `--sn2-prom`, also map the other gzip ELF components, FIT types 0x13 and 0x1f, at `0x200000000` and `0x300000000` |
 | `--timeout SECONDS`, `--cpus N` | analysis limits (3600, 2) |
 | `--heap SIZE` | the Java heap of Ghidra, such as `14G`. Default 2G for an ELF object; for a flat image 2G plus 1G per MiB of it, at most 14G (a 2G heap did not run out on the 12 MiB SHub 2 PROM, see the SN2 section). The container's memory cap is `RE_GHIDRA_MEMORY` (16g), so raise that for a larger heap |
 | `--no-analysis` | skip Ghidra's automatic analysis. Only what the import lays out (an SN2 PROM's entries and labels, an ELF's symbols) and each `@0xADDR` asked for are functions, and callee signatures come only from those; it is the fast way to read known addresses (the SHub 2 PROM's `SALE_ENTRY` and FIT walk take under a minute) |

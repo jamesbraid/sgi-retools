@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check what SN2PromImport.java laid out against the image itself.
 
-Usage: check.py SYMBOLS IMAGE [--runtime]
+Usage: check.py SYMBOLS IMAGE [--runtime] [--elfs]
 
 SYMBOLS is run-ghidra.sh's symbols.tsv. The FIT, the top-of-flash words and
 the SAL dispatch table are parsed again here, independently of the script;
@@ -9,7 +9,8 @@ every component, entry and table must carry its label, every entry must be a
 function and SAL_B must have its global pointer. Prints the failures and
 exits non-zero on any; prints that it skipped when IMAGE is absent. With --runtime
 (the import ran with SAL_RUNTIME=1) the SAL runtime component is inflated here too and each
-of its dynamic function symbols must be a function with its name at RUNTIME_BASE + value.
+of its dynamic function symbols must be a function with its name at RUNTIME_BASE + value. --elfs
+(GZIP_ELFS=1) does the same for the FIT type 0x13 and 0x1f components, at 2 * and 3 * RUNTIME_BASE.
 """
 import os
 import re
@@ -23,6 +24,7 @@ import ia64_isa as isa  # noqa: E402
 TOP = 1 << 32
 UNC = 1 << 63
 RUNTIME_BASE = 1 << 32
+ELF_BASE = {0x12: RUNTIME_BASE, 0x13: 2 * RUNTIME_BASE, 0x1f: 3 * RUNTIME_BASE}
 
 
 def runtime_functions(gz):
@@ -51,7 +53,7 @@ def runtime_functions(gz):
 
 def main():
     syms, image = sys.argv[1], sys.argv[2]
-    runtime = '--runtime' in sys.argv[3:]
+    mapped = ([0x12] if '--runtime' in sys.argv[3:] else []) + ([0x13, 0x1f] if '--elfs' in sys.argv[3:] else [])
     if not os.path.isfile(image):
         print('check: %s is not here (no PROM root); skipped' % image)
         return 0
@@ -172,18 +174,19 @@ def main():
         want(start, name)
         if kind not in (0x01, 0x0e, 0x0f, 0x10, 0x11) and (blocks.get(name) != start or name not in noexec):
             bad.append('%s is not a non-executable block at %#x' % (name, start))
-        if runtime and kind == 0x12:
+        if kind in mapped:
+            where = ELF_BASE[kind]
             funcs_rt, pltgot = runtime_functions(data[start - base:start - base + size])
             for fname, value in funcs_rt:
-                want(RUNTIME_BASE + value, fname, True)
+                want(where + value, fname, True)
             elf_block = name + '_elf'
-            if blocks.get(elf_block) != RUNTIME_BASE or elf_block in noexec:
-                bad.append('%s is not an executable block at %#x' % (elf_block, RUNTIME_BASE))
-            if not any(a == RUNTIME_BASE and v == '%x' % (RUNTIME_BASE + pltgot) for a, b, v in r1):
-                bad.append('r1 is not %#x over the runtime: %s' % (RUNTIME_BASE + pltgot, r1))
-            print('SAL runtime: %d functions at %#x, gp %#x' % (len(funcs_rt), RUNTIME_BASE, RUNTIME_BASE + pltgot))
+            if blocks.get(elf_block) != where or elf_block in noexec:
+                bad.append('%s is not an executable block at %#x' % (elf_block, where))
+            if not any(a == where and v == '%x' % (where + pltgot) for a, b, v in r1):
+                bad.append('r1 is not %#x over %s: %s' % (where + pltgot, name, r1))
+            print('%s: %d functions at %#x, gp %#x' % (name, len(funcs_rt), where, where + pltgot))
             if not funcs_rt:
-                bad.append('the SAL runtime has no dynamic functions')
+                bad.append('%s has no dynamic functions' % name)
         if kind in (0x01, 0x0e, 0x0f, 0x10, 0x11):
             conts = rfi_continuations(start, start + size)
             for c in conts:

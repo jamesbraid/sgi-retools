@@ -66,8 +66,10 @@ such an object. In SAL 5.04 `shub1snprom.bin` that is 1032 functions.
 - SAL_B inflates the stream into a buffer it allocates at run time, so no fixed address is the real one.
 - Relocations are not applied: a function-pointer table in the runtime's data holds link-time values, and
   calls through function descriptors stay indirect.
-- The other gzip components (FIT types 0x13, 0x1f and 0x22 in SAL 5.04) are left packed. 0x13 and 0x1f
-  inflate to IA-64 ELF files too; 0x22 is a tar archive of three PE32+ EFI drivers (`drv_fpswa.efi`, `drv_lsisas.efi`, `drv_b57undi64.efi` in SAL 5.04), which `--ghidra-export` reads once extracted (processor README, PE32+ images).
+- The other gzip ELF components, FIT types 0x13 and 0x1f, map the same way with `--gzip-elfs` (`gzip-elfs`): link address 0 at
+  `0x200000000` and `0x300000000`, blocks `OEM_13_0_01_elf` and `EFI_0_01_elf` (the component names in SAL 5.04), each with
+  its own r1. FIT type 0x22 is a tar archive of three PE32+ EFI drivers (`drv_fpswa.efi`, `drv_lsisas.efi`,
+  `drv_b57undi64.efi` in SAL 5.04), left packed: `--ghidra-export` reads them once extracted (processor README, PE32+ images).
 
 ## Checking it
 
@@ -77,6 +79,6 @@ such an object. In SAL 5.04 `shub1snprom.bin` that is 1032 functions.
 `run-ghidra.sh` loads the image at 0 (the script has to move it), imports it without analysis and writes
 `symbols.tsv`. `check.py` parses the FIT, the top-of-flash words and the SAL dispatch table again in Python
 and fails unless every component, entry, table and `rfi` continuation (found again from the reference decoder's text) has its label, every entry is a function, every `br.ia` is
-flagged and SAL_B has its global pointer. With `SAL_RUNTIME=1` in the environment of `run-ghidra.sh` and
-`--runtime` after the image for `check.py`, it also inflates the runtime itself and requires each of its
+flagged and SAL_B has its global pointer. With `SAL_RUNTIME=1` and `GZIP_ELFS=1` in the environment of `run-ghidra.sh` and
+`--runtime` and `--elfs` after the image for `check.py`, it also inflates those components itself and requires each of their
 dynamic functions at its mapped address. `check.py` prints that it skipped when the image is absent.

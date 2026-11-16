@@ -66,15 +66,20 @@ class PlanLanguage(unittest.TestCase):
             obj = os.path.join(d, 'prom.bin')
             with open(obj, 'wb') as f:
                 f.write(bytes(4096))
-            for flags, want in (([], '-preScript SN2PromImport.java -postScript'),
-                                (['--sal-runtime'], '-preScript SN2PromImport.java sal-runtime -postScript')):
-                job = os.path.join(d, 'job%d' % len(flags))
+            for n, (flags, want) in enumerate((([], '-preScript SN2PromImport.java -postScript'),
+                                (['--sal-runtime'], '-preScript SN2PromImport.java sal-runtime -postScript'),
+                                (['--gzip-elfs'], '-preScript SN2PromImport.java gzip-elfs -postScript'),
+                                (['--sal-runtime', '--gzip-elfs'],
+                                 '-preScript SN2PromImport.java sal-runtime gzip-elfs -postScript'))):
+                job = os.path.join(d, 'job%d' % n)
                 os.mkdir(job)
                 ge.prepare(['--job', job, '--sn2-prom', '--decompile-all'] + flags + [obj])
                 with open(os.path.join(job, 'ghidra.sh')) as f:
                     self.assertIn(want, f.read())
             with self.assertRaises(SystemExit):
                 ge.prepare(['--job', d, '--sal-runtime', '--decompile-all', obj])
+            with self.assertRaises(SystemExit):
+                ge.prepare(['--job', d, '--gzip-elfs', '--decompile-all', obj])
 
     def test_gzip_kernel_is_inflated_and_planned_by_its_machine(self):
         import gzip

@@ -3,8 +3,8 @@
 #
 #   retools/ghidra/import/sn2-prom/tests/run-ghidra.sh IMAGE [OUTDIR]   (default .cache/sn2-prom)
 #
-# With SAL_RUNTIME=1 in the environment the import also maps the SAL runtime ELF
-# (tests/check.py takes --runtime to check it).
+# With SAL_RUNTIME=1 in the environment the import also maps the SAL runtime ELF, with GZIP_ELFS=1 the
+# other gzip ELF components (tests/check.py takes --runtime and --elfs to check them).
 #
 # Run inside the Ghidra image (tools/re-run --ghidra --). Writes
 # OUTDIR/symbols.tsv for tests/check.py. The image is loaded at 0 on purpose:
@@ -15,6 +15,6 @@ IMAGE=$1
 OUT=${2:-.cache/sn2-prom}
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
-PRESCRIPT=$HERE/../ghidra_scripts/SN2PromImport.java PRESCRIPT_ARGS=${SAL_RUNTIME:+sal-runtime} \
+PRESCRIPT=$HERE/../ghidra_scripts/SN2PromImport.java PRESCRIPT_ARGS="${SAL_RUNTIME:+sal-runtime} ${GZIP_ELFS:+gzip-elfs}" \
     sh "$HERE/../../../processors/ia64/tests/run-ghidra.sh" "$OUT" "$IMAGE" 0 DumpSymbols.java "$OUT/symbols.tsv"
 grep 'SN2PromImport' "$OUT/headless.txt" | grep -v '^INFO  SCRIPT' || true

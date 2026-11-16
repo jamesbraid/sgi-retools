@@ -6,8 +6,9 @@
 // calls (the module README gives the evidence grade). Run as a pre-script on a BinaryLoader
 // import with language IA64:LE:64:default; an image loaded at the wrong base
 // is moved so it ends at 4 GiB, where the processor finds it.
-// Args: [sal-runtime]  sal-runtime also inflates the gzip SAL runtime component and maps its
-// IA-64 ELF at RUNTIME_BASE, with its dynamic symbols as functions
+// Args: [sal-runtime] [gzip-elfs]  sal-runtime also inflates the gzip SAL runtime component and maps its
+// IA-64 ELF at RUNTIME_BASE, with its dynamic symbols as functions; gzip-elfs does the same for the
+// other gzip ELF components (FIT types 0x13 and 0x1f), each at its own base
 // @category IA64
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -40,6 +41,8 @@ public class SN2PromImport extends GhidraScript {
 	// allocates the buffer it inflates into at run time, so no fixed address is the real one.
 	static final long RUNTIME_BASE = 0x1_0000_0000L;
 	static final int FIT_SAL_RUNTIME = 0x12;
+	// The other gzip ELF components: link address 0 of the type 0x13 file is 0x200000000, of 0x1f 0x300000000.
+	static final Map<Integer, Long> ELF_BASE = Map.of(0x13, 2 * RUNTIME_BASE, 0x1f, 3 * RUNTIME_BASE);
 	static final long MAX_RUNTIME = 64L << 20;
 
 	Memory mem;
@@ -126,11 +129,13 @@ public class SN2PromImport extends GhidraScript {
 				rfiContinuations(c[0], c[0] + c[1]);
 			}
 		}
-		if (Arrays.asList(getScriptArgs()).contains("sal-runtime")) {
-			for (long[] c : comps) {
-				if (c[2] == FIT_SAL_RUNTIME) {
-					importRuntime(c[0], c[1], name((int) c[2], (int) c[3]));
-				}
+		List<String> opts = Arrays.asList(getScriptArgs());
+		for (long[] c : comps) {
+			if (c[2] == FIT_SAL_RUNTIME && opts.contains("sal-runtime")) {
+				importRuntime(c[0], c[1], name((int) c[2], (int) c[3]), RUNTIME_BASE);
+			}
+			else if (ELF_BASE.containsKey((int) c[2]) && opts.contains("gzip-elfs")) {
+				importRuntime(c[0], c[1], name((int) c[2], (int) c[3]), ELF_BASE.get((int) c[2]));
 			}
 		}
 		if (vectors) {
@@ -449,10 +454,10 @@ public class SN2PromImport extends GhidraScript {
 	}
 
 	// The component at start is a gzip stream holding an IA-64 shared object (ET_DYN) with one
-	// PT_LOAD at link address 0. Inflate it, map it at RUNTIME_BASE and make its dynamic symbols
+	// PT_LOAD at link address 0. Inflate it, map it at base and make its dynamic symbols
 	// functions (code) and labels (data). gp is DT_PLTGOT, the value the linker gives such an object.
 	// Relocations are not applied: its data holds link-time values.
-	void importRuntime(long start, long size, String name) throws Exception {
+	void importRuntime(long start, long size, String name, long base) throws Exception {
 		byte[] gz = new byte[(int) size];
 		mem.getBytes(addr(start), gz);
 		byte[] elf = inflate(gz);
@@ -487,7 +492,7 @@ public class SN2PromImport extends GhidraScript {
 			}
 		}
 		name += "_elf";
-		MemoryBlock b = mem.createInitializedBlock(name, addr(RUNTIME_BASE), new ByteArrayInputStream(image),
+		MemoryBlock b = mem.createInitializedBlock(name, addr(base), new ByteArrayInputStream(image),
 			top, monitor, false);
 		b.setRead(true);
 		b.setWrite(true);
@@ -510,7 +515,7 @@ public class SN2PromImport extends GhidraScript {
 		}
 		if (pltgot != 0) {
 			currentProgram.getProgramContext().setValue(currentProgram.getRegister("r1"), b.getStart(),
-				b.getEnd(), BigInteger.valueOf(RUNTIME_BASE + pltgot));
+				b.getEnd(), BigInteger.valueOf(base + pltgot));
 		}
 		int nsyms = (int) le(image, (int) hash + 4, 4), funcs = 0;
 		for (int i = 1; i < nsyms; i++) {
@@ -526,16 +531,16 @@ public class SN2PromImport extends GhidraScript {
 			}
 			String sname = new String(image, n, e - n, java.nio.charset.StandardCharsets.ISO_8859_1);
 			if (info == 2) {
-				code(RUNTIME_BASE + value, sname, true);
+				code(base + value, sname, true);
 				funcs++;
 			}
 			else {
-				label(RUNTIME_BASE + value, sname, null);
+				label(base + value, sname, null);
 			}
 		}
-		label(RUNTIME_BASE, name + "_base", name + " ELF mapped here, link address 0");
-		println(String.format("SN2PromImport: %s mapped at %#x, %d functions, gp %#x", name, RUNTIME_BASE, funcs,
-			RUNTIME_BASE + pltgot));
+		label(base, name + "_base", name + " ELF mapped here, link address 0");
+		println(String.format("SN2PromImport: %s mapped at %#x, %d functions, gp %#x", name, base, funcs,
+			base + pltgot));
 	}
 
 	static byte[] inflate(byte[] gz) {
