@@ -206,13 +206,12 @@ public class IA64Signatures extends GhidraScript {
 	// Every return of f is reached with rN written: by an unpredicated instruction of f, or by a
 	// call to a function that returns a value (for r9..r11, one that returns that many registers).
 	// A predicated write, an indirect flow, a call to f itself or to a function with no known
-	// return, and a function with no return, do not count. A value read again after the write is
-	// a temporary, unless it copies an argument (strcpy stores through its r8 and returns it).
+	// return, and a function with no return, do not count.
 	boolean setsOnEveryReturn(Function f, int n) throws Exception {
 		Register reg = currentProgram.getRegister("r" + n);
-		Map<Address, Integer> in = new HashMap<>();
+		Map<Address, Boolean> in = new HashMap<>();
 		Deque<Address> work = new ArrayDeque<>();
-		in.put(f.getEntryPoint(), UNSET);
+		in.put(f.getEntryPoint(), false);
 		work.add(f.getEntryPoint());
 		boolean returns = false;
 		while (!work.isEmpty()) {
@@ -221,28 +220,15 @@ public class IA64Signatures extends GhidraScript {
 			if (ins == null) {
 				return false;
 			}
-			int st = in.get(at);
+			boolean def = in.get(at);
 			PcodeOp[] ops = ins.getPcode();
 			boolean predicated = false;
-			boolean loads = false;
-			boolean writes = false;
-			for (PcodeOp op : ops) {
-				loads |= op.getOpcode() == PcodeOp.LOAD;
-				writes |= op.getOutput() != null && overlaps(op.getOutput(), reg);
-			}
-			// An instruction that overwrites the register as it reads it (a predicated ld8 r8=[r8]) reads no temporary.
-			for (PcodeOp op : ops) {
-				for (Varnode v : op.getInputs()) {
-					if (st == FRESH && !writes && overlaps(v, reg)) {
-						st = READ;
-					}
-				}
-			}
 			for (PcodeOp op : ops) {
 				predicated |= op.getOpcode() == PcodeOp.CBRANCH;
 				Varnode out = op.getOutput();
-				if (!predicated && out != null && overlaps(out, reg)) {
-					st = loads || !fromArguments(op) ? FRESH : ARGUMENT;
+				if (!predicated && out != null && out.isRegister()
+						&& overlaps(out, reg)) {
+					def = true;
 				}
 			}
 			FlowType ft = ins.getFlowType();
@@ -260,15 +246,10 @@ public class IA64Signatures extends GhidraScript {
 					Function g = getFunctionAt(a);
 					leaves &= n == 8 && g != null && g != f && g.getReturnType() instanceof VoidDataType;
 				}
-				if (value && !predicated) {
-					st = FRESH;
-				}
-				else if (!(leaves || (predicated && value && st != UNSET))) {
-					st = UNSET;
-				}
+				def = predicated ? def && (value || leaves) : value || (def && leaves);
 			}
 			else if (ft.isTerminal()) {
-				if (st == UNSET || st == READ) {
+				if (!def) {
 					return false;
 				}
 				returns = true;
@@ -283,7 +264,7 @@ public class IA64Signatures extends GhidraScript {
 					}
 					else {
 						Function g = getFunctionAt(a);
-						if ((st != UNSET && st != READ) || (g != null && g != f && returnsValue(g, n))) {
+						if (def || (g != null && g != f && returnsValue(g, n))) {
 							returns = true;
 						}
 						else {
@@ -299,41 +280,14 @@ public class IA64Signatures extends GhidraScript {
 				}
 			}
 			for (Address a : next) {
-				Integer old = in.get(a);
-				int joined = old == null ? st : join(old, st);
-				if (old == null || joined != old) {
-					in.put(a, joined);
+				Boolean old = in.get(a);
+				if (old == null || (old && !def)) {
+					in.put(a, old == null ? def : false);
 					work.add(a);
 				}
 			}
 		}
 		return returns;
-	}
-
-	// The states of the register being tested for a return value, along a path.
-	static final int UNSET = 0, FRESH = 1, READ = 2, ARGUMENT = 3;
-
-	static int join(int a, int b) {
-		if (a == UNSET || b == UNSET) {
-			return UNSET;
-		}
-		return a == READ || b == READ ? READ : a == FRESH || b == FRESH ? FRESH : ARGUMENT;
-	}
-
-	// op reads only argument registers r32..r39 and constants.
-	boolean fromArguments(PcodeOp op) {
-		for (Varnode v : op.getInputs()) {
-			if (v.isRegister()) {
-				Register r = currentProgram.getRegister(v.getAddress(), v.getSize());
-				if (r == null || !r.getName().matches("r3[2-9]")) {
-					return false;
-				}
-			}
-			else if (!v.isConstant()) {
-				return false;
-			}
-		}
-		return true;
 	}
 
 	boolean returnsValue(Function g) {

@@ -66,6 +66,7 @@ ok $S check-breaks $out
 dec sigs $($S voids) $($S itc) $($S ret9) $($S temp8) $($S ldr8) $($S rotpr)
 ok $S check-voids $out
 ok $S check-ret9 $out
+# A known limit: prints XFAIL, and fails only if such a function comes out void.
 ok $S check-temp8 $out/$($S temp8).c
 ok $S check-ldr8 $out/$($S ldr8).c
 # A known limit: prints XFAIL, and fails only if the predicates start being renamed.
