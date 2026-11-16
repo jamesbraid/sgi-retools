@@ -24,6 +24,8 @@
   synthetic.py check-ret9 DIR  check their C: the first returns r8 and r9, the second only r8
   synthetic.py temp8         the address of the function that loads r8, compares it and returns (r8 is a temporary)
   synthetic.py check-temp8 C   check DecompileAt.java's C for it (run with sigs): it is void
+  synthetic.py rotpr         the addresses of the helper that decrements its saved ar.pfs's rrb.pr and its caller
+  synthetic.py check-rotpr C   expected failure: the caller's p17 does not get the p16 the helper rotated (a documented limit)
   synthetic.py itc           the address of the timer self-test function
   synthetic.py check-itc C   check DecompileAt.java's C for it: two reads of ar.itc are not one value
   synthetic.py frames        the addresses of the register stack programs' functions
@@ -543,6 +545,38 @@ def check_temp8(path):
     return 0 if ok else 1
 
 
+def rotpr_addr():
+    return temp8_addr() + 16 * len(temp8_function())
+
+
+def rotpr_functions():
+    """The PAL_B self-test's helper: it takes the rrb.pr field of its saved ar.pfs down by one (47 from 0) and
+    returns through it, so its caller's p16..p63 are renamed up one place. The caller sets p16 and clears p17,
+    sets r8 to 0x66 and calls the helper, then sets r8 to 0x55 if p17: it only does so when the rename happened."""
+    here = rotpr_addr()
+    cmp_eq = lambda p1, p2, r3: slot(op(0xe), (34, 2, 2), (6, 6, p1), (27, 6, p2), (20, 7, r3))
+    extr_u = slot(op(5), (34, 2, 1), (33, 1, 0), (13, 1, 0), (6, 7, 34), (20, 7, 33), (14, 6, 32), (27, 6, 5))
+    dep = slot(op(4), (6, 7, 33), (13, 7, 34), (20, 7, 33), (31, 6, 31), (27, 4, 5))
+    helper = [bundle(0x01, alloc(33, 3, 3), NOP_I, NOP_I), bundle(0x01, NOP_M, extr_u, NOP_I),
+              bundle(0x01, NOP_M, cmp_eq(6, 7, 34), NOP_I),
+              bundle(0x01, NOP_M, adds(34, 47, 0, qp=6), adds(34, -1, 34, qp=7)),
+              bundle(0x01, NOP_M, dep, NOP_I), bundle(0x11, NOP_M, mov_i_ar(64, 33), BR_RET)]
+    call = br_call(here, here + 16 * (len(helper) + 1))
+    caller = [bundle(0x01, alloc(34, 4, 3), cmp_eq(16, 17, 0), adds(8, 0x66)), bundle(0x17, call, NOP_B, NOP_B),
+              bundle(0x01, NOP_M, adds(8, 0x55, 0, qp=17), NOP_I), bundle(0x17, BR_RET, NOP_B, NOP_B)]
+    return helper + caller
+
+
+def check_rotpr(path):
+    """Known limit, not a fix: the callee's rename of p16..p63 is not seen by its caller, so the caller still returns 0x66.
+    Prints XFAIL while that holds and XPASS (exit 1, so the limit gets removed) if the rename ever shows."""
+    text = open(path).read()
+    renamed = '0x55' in text and '0x66' not in text
+    print('%s: %s' % ('XPASS the callee renames the caller\'s predicates; drop the limit from the README' if renamed
+                      else 'XFAIL a callee that edits its saved rrb.pr does not rename its caller\'s predicates (README limit)', path))
+    return 1 if renamed else 0
+
+
 def prog_runs():
     """Emulator runs over programs(): (name, start, stop, regs, memory, expected)."""
     a = prog_addrs()
@@ -579,7 +613,7 @@ def image():
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
             + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function())
             + b''.join(break_functions()) + b''.join(void_functions()) + b''.join(itc_function()) + b''.join(rfi_function())
-            + b''.join(ret9_functions()) + b''.join(temp8_function()))
+            + b''.join(ret9_functions()) + b''.join(temp8_function()) + b''.join(rotpr_functions()))
 
 
 def expected():
@@ -783,6 +817,11 @@ def main():
         return 0
     if sys.argv[1] == 'check-temp8':
         return check_temp8(sys.argv[2])
+    if sys.argv[1] == 'rotpr':
+        print('%#x %#x' % (rotpr_addr(), rotpr_addr() + 0x60))
+        return 0
+    if sys.argv[1] == 'check-rotpr':
+        return check_rotpr(sys.argv[2])
     if sys.argv[1] == 'itc':
         print('%#x' % itc_addr())
         return 0

@@ -267,9 +267,13 @@ signature and the arguments a varargs callee takes beyond its fixed ones are not
 arguments the callee never reads or miss ones it does.
 
 A callee that edits the rrb.pr field of its saved `ar.pfs` before `br.ret` (the PAL_B 5.73 self-test at `0xffeec990` does,
-and so rotates its caller's predicates by one per call) is not followed: `br.ret` restores the rrb fields but moves no
-predicate values, and the decompiled caller sees its predicates unchanged. Such a caller's checks decompile in full, but the
-rotation-dependent ones read as failing.
+and so rotates its caller's predicates by one per call) is not followed: `br.ret` restores the rrb fields but renames no
+predicate, and the decompiled caller sees its predicates unchanged, so its rotation-dependent checks read as failing
+(the rest of it decompiles in full). The caller's p-code cannot see what a callee did to its saved `ar.pfs`: the call is
+opaque and `ar.pfs` is preserved across it, and renaming at the callee's `br.ret` is dead code in the callee. Passing it on
+would need each call to know its callee's rename, a change to the p-code of every `br.call`, which was not worth it for one
+helper. `synthetic.py check-rotpr` keeps the limit visible: it reports XFAIL while a caller of such a helper keeps its
+predicates, and fails (XPASS) the day they are renamed, so the limit can go.
 
 Banked registers: r16..r31 are one set here, so code that runs between `bsw.0` and `bsw.1` (PAL, interruption
 handlers) reads the other bank's values as `in_r*` or `extraout_r*`. `psr.bn` is not tracked in context.
@@ -318,7 +322,7 @@ decompiler and PE32+ ones); the `ghidra-check` workflow runs it.
 | Agreement with objdump | `run-ghidra.sh .cache/ia64 IMAGE BASE`, then `python3 retools/ghidra/processors/ia64/tests/check.py .cache/ia64/slots.tsv IMAGE` | the summary line reads `mismatches: 0` (see below) |
 | Ghidra on the synthetic image | `synthetic.py write DIR`, `run-ghidra.sh DIR DIR/synthetic.bin 0x80000`, then `synthetic.py check DIR/slots.tsv` | every slot in the listing is as expected |
 | Emulator | `run-ghidra.sh ... EmuSynthetic.java DIR/emu.tsv DIR/emu.out`, then `synthetic.py check-emu DIR/emu.out` | each short sequence and register stack program ends as the SDM says |
-| Decompiler | `run-ghidra.sh ... DecompileAt.java DIR ADDRESS...`, then `synthetic.py check-dec`, `check-call`, `check-frames`, `check-pal`, `check-plain`, `check-predloop`, `check-breaks`, `check-voids`, `check-itc`, `check-rfi`, `check-ret9` or `check-temp8` | the C is as each check describes; `synthetic.py` with a function name prints the addresses (see Running) |
+| Decompiler | `run-ghidra.sh ... DecompileAt.java DIR ADDRESS...`, then `synthetic.py check-dec`, `check-call`, `check-frames`, `check-pal`, `check-plain`, `check-predloop`, `check-breaks`, `check-voids`, `check-itc`, `check-rfi`, `check-ret9`, `check-temp8` or `check-rotpr` (an expected failure) | the C is as each check describes; `synthetic.py` with a function name prints the addresses (see Running) |
 | PE32+ import | `tests/pe_synthetic.py write DIR`, `run-ghidra.sh` with `PE=1` and `PRESCRIPT=IA64Pe.java` (and `PRESCRIPT_ARGS=base=0x20000000` for the moved image), `DumpSymbols.java`, then `pe_synthetic.py check SYMS BASE` | the entry, the export and the `.pdata`-only function are functions, the descriptors are labelled, r1 is the gp at both bases |
 | SN2 PROM import | `ghidra/import/sn2-prom/tests/run-ghidra.sh IMAGE DIR` and `check.py DIR/symbols.tsv IMAGE` | `0 failures` (`ghidra/import/sn2-prom/README.md`) |
 
