@@ -18,6 +18,8 @@
   synthetic.py check-breaks DIR  check DecompileAt.java's C for them: `break 0` ends its function
   synthetic.py voids         the addresses of the store, caller, status, copy, wrapper and r8-keeping functions (run DecompileAt with sigs)
   synthetic.py check-voids DIR  check their C: the first two are void, the others return a value, the last keeps its r8 over a void call
+  synthetic.py rfi           the address of the function that leaves through an rfi
+  synthetic.py check-rfi C   check DecompileAt.java's C for it: the code at cr.iip is part of it
   synthetic.py itc           the address of the timer self-test function
   synthetic.py check-itc C   check DecompileAt.java's C for it: two reads of ar.itc are not one value
   synthetic.py frames        the addresses of the register stack programs' functions
@@ -468,6 +470,32 @@ def check_itc(path):
     return 0 if ok else 1
 
 
+def rfi_addr():
+    return itc_addr() + 16 * len(itc_function())
+
+
+def rfi_function():
+    """Sets cr.iip to the bundle after this function and leaves through an rfi; the code there
+    sets r8 to 0x55 and returns. Flow must continue at cr.iip."""
+    here = rfi_addr()
+    imm = here + 0x30
+    movl = slot(op(6), (6, 7, 2), (13, 7, imm), (27, 9, imm >> 7), (22, 5, imm >> 16), (21, 1, imm >> 21),
+                (36, 1, imm >> 63))
+    mov_cr = lambda cr, r2: slot(op(1), (27, 6, 0x2c), (20, 7, cr), (13, 7, r2))   # M32
+    mov8 = slot(op(8), (34, 2, 2), (6, 7, 8), (20, 7, 0), (13, 7, 0x55))
+    return [bundle(0x05, NOP_M, (imm >> 22) & (2 ** 41 - 1), movl),
+            bundle(0x09, mov_cr(19, 2), mov_cr(23, 0), NOP_I),
+            bundle(0x11, mov_cr(16, 0), NOP_I, RFI), bundle(0x10, NOP_M, mov8, BR_RET)]
+
+
+def check_rfi(path):
+    """The decompiler follows a constant cr.iip: the code there is in the function."""
+    text = open(path).read()
+    ok = '0x55' in text
+    print('%s: %s' % ('rfi continues at cr.iip' if ok else 'FAIL rfi ends the function', path))
+    return 0 if ok else 1
+
+
 def prog_runs():
     """Emulator runs over programs(): (name, start, stop, regs, memory, expected)."""
     a = prog_addrs()
@@ -503,7 +531,7 @@ def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
             + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function())
-            + b''.join(break_functions()) + b''.join(void_functions()) + b''.join(itc_function()))
+            + b''.join(break_functions()) + b''.join(void_functions()) + b''.join(itc_function()) + b''.join(rfi_function()))
 
 
 def expected():
@@ -692,6 +720,11 @@ def main():
         return 0
     if sys.argv[1] == 'check-voids':
         return check_voids(sys.argv[2])
+    if sys.argv[1] == 'rfi':
+        print('%#x' % rfi_addr())
+        return 0
+    if sys.argv[1] == 'check-rfi':
+        return check_rfi(sys.argv[2])
     if sys.argv[1] == 'itc':
         print('%#x' % itc_addr())
         return 0

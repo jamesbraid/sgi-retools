@@ -34,6 +34,10 @@ options.
   (`pale_reset_handler`, `pale_init_handler`, `pale_check_handler`), and `pale_reset_fit_walk` at
   `0xffff8470`, the code `PALE_RESET` leaves to through an `rfi` that flow cannot follow. The `PALE_INIT` and
   `PALE_CHECK` roles are inferred from PAL_B's hand-offs.
+- The code behind each call to the PAL's `rfi` helper (`rsm; mov cr.iip=b0; rfi`), as `rfi_continuation_<address>`
+  functions. A caller sets `b0 = ip + constant` (`mov r1=ip; addl r1=imm,r1; mov b0=r1`) and branches to the helper, so
+  that code is reached only through the `rfi`. Found by shape in every code component: 39 in each PAL_B of
+  `shub1snprom.bin`, one in each PAL_A.
 - Each `br.ia` in a PAL_A component, flagged with the processor's `pal` context bit so that it reads as a PAL
   service call (the processor README gives the evidence grade).
 - Each processor-specific PAL_A entered at image + `0x300` (`<name>_entry`); PAL_B's run of entry bundles
@@ -72,7 +76,7 @@ such an object. In SAL 5.04 `shub1snprom.bin` that is 1032 functions.
 
 `run-ghidra.sh` loads the image at 0 (the script has to move it), imports it without analysis and writes
 `symbols.tsv`. `check.py` parses the FIT, the top-of-flash words and the SAL dispatch table again in Python
-and fails unless every component, entry and table has its label, every entry is a function, every `br.ia` is
+and fails unless every component, entry, table and `rfi` continuation (found again from the reference decoder's text) has its label, every entry is a function, every `br.ia` is
 flagged and SAL_B has its global pointer. With `SAL_RUNTIME=1` in the environment of `run-ghidra.sh` and
 `--runtime` after the image for `check.py`, it also inflates the runtime itself and requires each of its
 dynamic functions at its mapped address. `check.py` prints that it skipped when the image is absent.

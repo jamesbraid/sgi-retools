@@ -121,6 +121,10 @@ public class SN2PromImport extends GhidraScript {
 			if (c[2] == 0x0e || c[2] == 0x0f) {
 				markPalServiceCalls(c[0], c[0] + c[1]);
 			}
+		}		for (long[] c : comps) {
+			if (CODE.contains((int) c[2])) {
+				rfiContinuations(c[0], c[0] + c[1]);
+			}
 		}
 		if (Arrays.asList(getScriptArgs()).contains("sal-runtime")) {
 			for (long[] c : comps) {
@@ -197,6 +201,134 @@ public class SN2PromImport extends GhidraScript {
 			if (in != null && in.getFlowType().isUnConditional() && in.getFlowType().isJump()) {
 				Address[] f = in.getFlows();
 				return f.length == 1 ? f[0] : null;
+			}
+		}
+		return null;
+	}
+
+	// Slot units by template (M, I, F, B, or L+X as 'L'); null for a reserved template.
+	static final String[] UNITS = new String[32];
+	static {
+		String[] u = { "MII", "MII", "MII", "MII", "MLX", "MLX", null, null, "MMI", "MMI", "MMI", "MMI", "MFI",
+			"MFI", "MMF", "MMF", "MIB", "MIB", "MBB", "MBB", null, null, "BBB", "BBB", "MMB", "MMB", null, null,
+			"MFB", "MFB", null, null };
+		System.arraycopy(u, 0, UNITS, 0, 32);
+	}
+	static final long SLOT = (1L << 41) - 1;
+
+	// The 41-bit slots of the bundle at a, or null if its template is reserved.
+	long[] slots(long a) throws Exception {
+		if (!mem.contains(addr(a)) || !mem.contains(addr(a + 15))) {
+			return null;
+		}
+		long lo = q(a), hi = q(a + 8);
+		if (UNITS[(int) (lo & 31)] == null) {
+			return null;
+		}
+		return new long[] { (lo >>> 5) & SLOT, ((lo >>> 46) | (hi << 18)) & SLOT, (hi >>> 23) & SLOT };
+	}
+
+	char unit(long a, int i) throws Exception {
+		return UNITS[(int) (q(a) & 31)].charAt(i);
+	}
+
+	// The PAL's rfi helper (rsm; mov cr.iip=b0; rfi) is entered with b0 = ip + a constant, so the code
+	// after the branch to it is reached only through the rfi: make each such continuation a function.
+	int rfiContinuations(long start, long end) throws Exception {
+		Map<Long, List<long[]>> jumps = new TreeMap<>();
+		for (long a = start; a + 16 <= end; a += 16) {
+			long[] sl = slots(a);
+			if (sl == null) {
+				continue;
+			}
+			for (int i = 0; i < 3; i++) {
+				long x = sl[i];
+				if (unit(a, i) == 'B' && ((x >>> 37) & 0xf) == 4 && ((x >>> 6) & 7) == 0 && (x & 0x3f) == 0) {
+					long d = (((x >>> 36) & 1) << 20) | ((x >>> 13) & 0xfffff);
+					jumps.computeIfAbsent(a + (((d << 43) >> 43) << 4), k -> new ArrayList<>())
+						.add(new long[] { a, i });
+				}
+			}
+		}
+		Set<Long> conts = new TreeSet<>();
+		for (Map.Entry<Long, List<long[]>> e : jumps.entrySet()) {
+			if (!isRfiHelper(e.getKey())) {
+				continue;
+			}
+			for (long[] site : e.getValue()) {
+				Long c = continuation(site[0], (int) site[1]);
+				if (c != null && mem.contains(addr(c))) {
+					conts.add(c);
+				}
+			}
+		}
+		for (long c : conts) {
+			code(c, String.format("rfi_continuation_%x", c), true);
+		}
+		println(String.format("SN2PromImport: %d rfi continuation(s) in %#x..%#x", conts.size(), start, end));
+		return conts.size();
+	}
+
+	// Straight-line code from t sets cr.iip and then reaches an rfi, with no branch before it.
+	boolean isRfiHelper(long t) throws Exception {
+		boolean iip = false;
+		for (int k = 0; k < 12; k++) {
+			long a = t + 16 * k;
+			long[] sl = slots(a);
+			if (sl == null) {
+				return false;
+			}
+			for (int i = 0; i < 3; i++) {
+				long x = sl[i];
+				int op = (int) ((x >>> 37) & 0xf);
+				int x6 = (int) ((x >>> 27) & 0x3f);
+				char u = unit(a, i);
+				if (u == 'M' && op == 1 && ((x >>> 33) & 7) == 0 && x6 == 0x2c && ((x >>> 20) & 0x7f) == 19) {
+					iip = true;
+				}
+				else if (u == 'B' && op == 0 && x6 == 8 && ((x >>> 33) & 7) == 0) {
+					return iip;
+				}
+				else if (u == 'B' && (op == 4 || op == 5 || (op == 0 && (x6 == 0x20 || x6 == 0x21)))) {
+					return false;
+				}
+			}
+		}
+		return false;
+	}
+
+	// The address b0 holds at the branch in slot br of the bundle at a, when the few instructions
+	// before it make b0 = ip + a constant; null otherwise.
+	Long continuation(long a, int br) throws Exception {
+		int stage = 0;
+		int reg = -1;
+		long off = 0;
+		for (int k = 0; k < 8; k++) {
+			long b = a - 16 * k;
+			long[] sl = slots(b);
+			if (sl == null) {
+				return null;
+			}
+			for (int i = (k == 0 ? br : 3) - 1; i >= 0; i--) {
+				long x = sl[i];
+				int op = (int) ((x >>> 37) & 0xf);
+				char u = unit(b, i);
+				if (stage == 0 && u == 'I' && op == 0 && ((x >>> 33) & 7) == 7 && ((x >>> 6) & 7) == 0
+					&& (x & 0x3f) == 0) {
+					reg = (int) ((x >>> 13) & 0x7f);
+					stage = 1;
+				}
+				else if (stage == 1 && (u == 'M' || u == 'I') && op == 9 && (x & 0x3f) == 0
+					&& ((x >>> 6) & 0x7f) == reg && ((x >>> 20) & 3) == reg) {
+					long v = (((x >>> 36) & 1) << 21) | (((x >>> 22) & 0x1f) << 16) | (((x >>> 27) & 0x1ff) << 7)
+						| ((x >>> 13) & 0x7f);
+					off = (v << 42) >> 42;
+					stage = 2;
+				}
+				else if (stage == 2 && u == 'I' && op == 0 && ((x >>> 33) & 7) == 0 && ((x >>> 27) & 0x3f) == 0x30
+					&& ((x >>> 6) & 0x7f) == reg && (x & 0x3f) == 0) {
+					return b + off;
+				}
 			}
 		}
 		return null;

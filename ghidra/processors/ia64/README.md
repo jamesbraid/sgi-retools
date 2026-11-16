@@ -61,7 +61,8 @@ Numbers print in Ghidra's hexadecimal.
   (`breaks`, `check-breaks`). `DecompileAt.java` with `sigs` first runs `IA64Signatures.java`: a store function
   and its caller must come out `void`, a function that sets r8 must not, and one that sets r8 and then calls a void
   function keeps its r8 (`voids`, `check-voids`). A function that reads `ar.itc` twice and compares the reads (the PAL's
-  timer self-test) must keep both outcomes (`itc`, `check-itc`).
+  timer self-test) must keep both outcomes (`itc`, `check-itc`). A function that sets `cr.iip` to a constant and leaves through `rfi` must
+  include the code there (`rfi`, `check-rfi`).
 - `tests/DecompileAt.java`: makes a function at each address it is given in a flat image and writes its C and
   listing. The synthetic tests and a quick look at one function of a PROM use it; for a whole ELF or PROM
   go through `tools/ghidra-export.py` (`tools/README-analysis.md`).
@@ -115,6 +116,11 @@ retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghi
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-voids .cache/ia64-syn
 python3 retools/ghidra/processors/ia64/tests/synthetic.py check-itc \
     .cache/ia64-syn/$(python3 retools/ghidra/processors/ia64/tests/synthetic.py itc).c
+retools/tools/re-run --ghidra -- sh retools/ghidra/processors/ia64/tests/run-ghidra.sh \
+    .cache/ia64-syn .cache/ia64-syn/synthetic.bin 0x80000 DecompileAt.java .cache/ia64-syn \
+    $(python3 retools/ghidra/processors/ia64/tests/synthetic.py rfi)
+python3 retools/ghidra/processors/ia64/tests/synthetic.py check-rfi \
+    .cache/ia64-syn/$(python3 retools/ghidra/processors/ia64/tests/synthetic.py rfi).c
 ```
 
 ## Agreement with objdump
@@ -154,6 +160,10 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
 - Branches: conditional, indirect, `br.call` (return address in b1 is the next bundle),
   `br.ret`, `br.cloop` on ar.lc, and the modulo-scheduled `br.ctop`, `br.cexit`,
   `br.wtop`, `br.wexit` on ar.lc, ar.ec and p63.
+- `rfi` is an indirect jump to `cr.iip` (slot `psr.ri`), not a return: `cr.iip` is any address. A constant one is followed, so
+  the code there is part of the decompiled function; one taken from a register, such as the PAL's `mov cr.iip=b0` helper
+  at `0xffe96bd0`, stays an unresolved jump that the decompiler prints as a return. `SN2PromImport.java` seeds the code
+  behind each call to that helper.
 - `break` with an immediate of 0 and no qualifying predicate (Linux's `BUG()`) never falls through: its
   p-code is a jump to itself, so flow, and the function, end there. A nonzero immediate (a system call) and a
   predicated `break` fall through as before.
@@ -310,7 +320,7 @@ Each runs in the Ghidra image through `retools/tools/re-run --ghidra --` unless 
 | Agreement with objdump | `run-ghidra.sh .cache/ia64 IMAGE BASE`, then `python3 retools/ghidra/processors/ia64/tests/check.py .cache/ia64/slots.tsv IMAGE` | the summary line reads `mismatches: 0` (see below) |
 | Ghidra on the synthetic image | `synthetic.py write DIR`, `run-ghidra.sh DIR DIR/synthetic.bin 0x80000`, then `synthetic.py check DIR/slots.tsv` | every slot in the listing is as expected |
 | Emulator | `run-ghidra.sh ... EmuSynthetic.java DIR/emu.tsv DIR/emu.out`, then `synthetic.py check-emu DIR/emu.out` | each short sequence and register stack program ends as the SDM says |
-| Decompiler | `run-ghidra.sh ... DecompileAt.java DIR ADDRESS...`, then `synthetic.py check-dec`, `check-call`, `check-frames`, `check-pal`, `check-plain`, `check-predloop`, `check-breaks` or `check-voids` | the C is as each check describes; `synthetic.py` with a function name prints the addresses (see Running) |
+| Decompiler | `run-ghidra.sh ... DecompileAt.java DIR ADDRESS...`, then `synthetic.py check-dec`, `check-call`, `check-frames`, `check-pal`, `check-plain`, `check-predloop`, `check-breaks`, `check-voids`, `check-itc` or `check-rfi` | the C is as each check describes; `synthetic.py` with a function name prints the addresses (see Running) |
 | PE32+ import | `tests/pe_synthetic.py write DIR`, `run-ghidra.sh` with `PE=1` and `PRESCRIPT=IA64Pe.java` (and `PRESCRIPT_ARGS=base=0x20000000` for the moved image), `DumpSymbols.java`, then `pe_synthetic.py check SYMS BASE` | the entry, the export and the `.pdata`-only function are functions, the descriptors are labelled, r1 is the gp at both bases |
 | SN2 PROM import | `ghidra/import/sn2-prom/tests/run-ghidra.sh IMAGE DIR` and `check.py DIR/symbols.tsv IMAGE` | `0 failures` (`ghidra/import/sn2-prom/README.md`) |
 

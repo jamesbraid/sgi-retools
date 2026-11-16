@@ -12,9 +12,13 @@ exits non-zero on any; prints that it skipped when IMAGE is absent. With --runti
 of its dynamic function symbols must be a function with its name at RUNTIME_BASE + value.
 """
 import os
+import re
 import struct
 import sys
 import zlib
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'processors', 'ia64', 'tools'))
+import ia64_isa as isa  # noqa: E402
 
 TOP = 1 << 32
 UNC = 1 << 63
@@ -110,6 +114,40 @@ def main():
             if link >> 32 == 0x80000000 and lo <= handler < hi:
                 want(handler, 'pal_proc_%d' % q(a + 24 * i), True)
 
+    def rfi_continuations(lo, hi):
+        # The reference decoder's text: a branch to a helper that sets cr.iip and reaches an rfi,
+        # after mov rN=ip; addl rN=imm,rN; mov b0=rN, continues at the address in b0.
+        ins = []
+        for a in range(lo, hi - 15, 16):
+            ins += [(x, p, t or '') for x, p, t, _ in isa.decode_bundle(data[a - base:a - base + 16], a)]
+        index = {a: i for i, (a, _, _) in enumerate(ins)}
+
+        def helper(t):
+            iip = False
+            for _, p, text in ins[index.get(t, len(ins)):][:36]:
+                if text.startswith('mov cr.iip='):
+                    iip = True
+                elif text == 'rfi':
+                    return iip
+                elif re.match(r'br\.(call|ret|cond)|br\.few|br\.ia', text):
+                    return False
+            return False
+        out = set()
+        for i, (a, p, text) in enumerate(ins):
+            m = re.match(r'br\.few 0x([0-9a-f]+)$', text)
+            if p or not m or not helper(int(m.group(1), 16)):
+                continue
+            seq, stage = ins[max(0, i - 24):i], 0
+            for x, q_, t in reversed(seq):
+                if stage == 0 and (m2 := re.match(r'mov b0=r(\d+)$', t)):
+                    reg, stage = m2.group(1), 1
+                elif stage == 1 and (m2 := re.match(r'addl r%s=(-?\d+),r%s$' % (reg, reg), t)):
+                    off, stage = int(m2.group(1)), 2
+                elif stage == 2 and re.match(r'mov r%s=ip$' % reg, t):
+                    out.add((x & ~0xf) + off)
+                    break
+        return out
+
     def want(addr, name, func=False):
         if name not in labels.get(addr, ()):
             bad.append('no label %s at %#x (have %s)' % (name, addr, sorted(labels.get(addr, ()))))
@@ -146,6 +184,11 @@ def main():
             print('SAL runtime: %d functions at %#x, gp %#x' % (len(funcs_rt), RUNTIME_BASE, RUNTIME_BASE + pltgot))
             if not funcs_rt:
                 bad.append('the SAL runtime has no dynamic functions')
+        if kind in (0x01, 0x0e, 0x0f, 0x10, 0x11):
+            conts = rfi_continuations(start, start + size)
+            for c in conts:
+                want(c, 'rfi_continuation_%x' % c, True)
+            print('%s: %d rfi continuations' % (name, len(conts)))
         if kind == 0x0e:
             want(start + 0x300, name + '_entry', True)
         if kind in (0x0e, 0x0f):
