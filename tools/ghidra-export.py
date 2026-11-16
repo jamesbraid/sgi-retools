@@ -31,7 +31,7 @@ Options (after OBJECT, a path inside the workspace):
   --timeout SECONDS  --cpus N             Ghidra analysis limits (3600, 2)
   --heap SIZE                             the Java heap of Ghidra, such as 14G. Default: 2G for an
                                           ELF object; for a flat image 2G plus 1G for each MiB of
-                                          it, at most 14G (a 12 MiB SHub 2 PROM runs out at 2G).
+                                          it, at most 14G (a 12 MiB SHub 2 PROM completed at 2G).
                                           The container's memory cap is RE_GHIDRA_MEMORY (16g);
                                           raise it for a larger heap
   --no-analysis                           skip Ghidra's automatic analysis. Only what the import

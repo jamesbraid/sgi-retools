@@ -12,8 +12,8 @@ from [`ghidra/processors/ia64/`](../../processors/ia64/README.md).
     retools/tools/re-run --ghidra-export IMAGE --sn2-prom --decompile-symbol @0xffff8470
     retools/tools/re-run --ghidra-export IMAGE --sn2-prom --sal-runtime --decompile-symbol strcpy
 
-`IMAGE` is a PROM such as `shub1snprom.bin`. The exporter analyses the whole 6 MiB image, which takes about
-fifteen minutes. `--decompile-symbol` takes a label (below), a glob, `@0xADDR` or `@0xLO-0xHI`;
+`IMAGE` is a PROM such as `shub1snprom.bin`. The exporter analyses the whole 6 MiB image, which took about two minutes
+(`tools/README-analysis.md` has the measurement). `--decompile-symbol` takes a label (below), a glob, `@0xADDR` or `@0xLO-0xHI`;
 `--decompile-component` takes a program-tree fragment name (below). `tools/README-analysis.md` has the other
 options.
 

@@ -105,7 +105,7 @@ lists the options, and the top of `tools/ghidra-export.py` explains each.
 | `--sn2-prom` | OBJECT is an SN2 PROM: IA-64, loaded to end at 4 GiB, laid out by `SN2PromImport.java` (below) |
 | `--sal-runtime` | with `--sn2-prom`, also map the SAL runtime ELF (below) |
 | `--timeout SECONDS`, `--cpus N` | analysis limits (3600, 2) |
-| `--heap SIZE` | the Java heap of Ghidra, such as `14G`. Default 2G for an ELF object; for a flat image 2G plus 1G per MiB of it, at most 14G (the 12 MiB SHub 2 PROM runs out at 2G). The container's memory cap is `RE_GHIDRA_MEMORY` (16g), so raise that for a larger heap |
+| `--heap SIZE` | the Java heap of Ghidra, such as `14G`. Default 2G for an ELF object; for a flat image 2G plus 1G per MiB of it, at most 14G (a 2G heap did not run out on the 12 MiB SHub 2 PROM, see the SN2 section). The container's memory cap is `RE_GHIDRA_MEMORY` (16g), so raise that for a larger heap |
 | `--no-analysis` | skip Ghidra's automatic analysis. Only what the import lays out (an SN2 PROM's entries and labels, an ELF's symbols) and each `@0xADDR` asked for are functions, and callee signatures come only from those; it is the fast way to read known addresses (the SHub 2 PROM's `SALE_ENTRY` and FIT walk take under a minute) |
 
 For IA-64 the export first runs `IA64Elf.java` (an ELF object: r1 from `__gp`) or `IA64Pe.java` (a PE32+ EFI image: relocations, entry and exports through their descriptors, r1 from the entry's gp) and `IA64Signatures.java` (the
@@ -131,8 +131,13 @@ non-executable blocks so analysis does not disassemble them; disassembles and na
 generic PAL_A vectors (`PALE_RESET` at `0xffffffb0`), each processor-specific PAL_A entry (image +
 `0x300`), `SALE_ENTRY` and the three SAL_B entries; finds the physical-mode SAL dispatch table in
 SAL_B by its shape, makes each handler a function named `sal_<id>`, and sets r1 over SAL_B to the
-global pointer the table's descriptors carry. Full analysis of a 6 MiB image takes minutes, longer on a
-busy host. `ghidra/import/sn2-prom/README.md` lists everything it seeds and labels.
+global pointer the table's descriptors carry. Full analysis of a 6 MiB image took 118 s; the 12 MiB SHub 2 PROM
+took 108 s with its default 14G heap and 173 s with `--heap 2G` (one run, under more load), which completed without running out of memory.
+Wall times are from the container start to the end of Ghidra, one `--decompile-symbol SALE_ENTRY` export of
+`shub1snprom.bin` and `shub2snprom.bin` of snprom 10.54, on a 224-thread AMD EPYC 7663 host (kernel
+7.2.11) with a load average of 45 to 90, Ghidra 12.1.3 in the `re-ghidra` image built from retools `e0f4a4f`
+(first runs of 130 s and 114 s agreed). Heap use is from the JVM's GC log: at most 1.7 GiB in use before a collection, 0.26 GiB live after
+one, 2.4 to 2.6 GiB committed, with the default heaps (8G and 14G). `ghidra/import/sn2-prom/README.md` lists everything it seeds and labels.
 
 With `--sal-runtime` it also inflates the gzip SAL runtime component (FIT type 0x12) and maps its IA-64 ELF at
 `0x100000000` with its dynamic symbols as functions under their own names (1032 in SAL 5.04):
