@@ -63,10 +63,11 @@ dec $($S predloop)
 ok $S check-predloop $out/$($S predloop).c
 dec $($S breaks)
 ok $S check-breaks $out
-dec sigs $($S voids) $($S itc) $($S ret9) $($S temp8) $($S rotpr)
+dec sigs $($S voids) $($S itc) $($S ret9) $($S temp8) $($S ldr8) $($S rotpr)
 ok $S check-voids $out
 ok $S check-ret9 $out
 ok $S check-temp8 $out/$($S temp8).c
+ok $S check-ldr8 $out/$($S ldr8).c
 # A known limit: prints XFAIL, and fails only if the predicates start being renamed.
 ok $S check-rotpr $out/$(echo $($S rotpr) | cut -d' ' -f2).c
 ok $S check-itc $out/$($S itc).c

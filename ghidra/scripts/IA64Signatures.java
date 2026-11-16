@@ -225,10 +225,15 @@ public class IA64Signatures extends GhidraScript {
 			PcodeOp[] ops = ins.getPcode();
 			boolean predicated = false;
 			boolean loads = false;
+			boolean writes = false;
 			for (PcodeOp op : ops) {
 				loads |= op.getOpcode() == PcodeOp.LOAD;
+				writes |= op.getOutput() != null && overlaps(op.getOutput(), reg);
+			}
+			// An instruction that overwrites the register as it reads it (a predicated ld8 r8=[r8]) reads no temporary.
+			for (PcodeOp op : ops) {
 				for (Varnode v : op.getInputs()) {
-					if (st == FRESH && overlaps(v, reg)) {
+					if (st == FRESH && !writes && overlaps(v, reg)) {
 						st = READ;
 					}
 				}

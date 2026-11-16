@@ -24,6 +24,8 @@
   synthetic.py check-ret9 DIR  check their C: the first returns r8 and r9, the second only r8
   synthetic.py temp8         the address of the function that loads r8, compares it and returns (r8 is a temporary)
   synthetic.py check-temp8 C   check DecompileAt.java's C for it (run with sigs): it is void
+  synthetic.py ldr8          the address of the function that replaces r8 with a predicated load
+  synthetic.py check-ldr8 C  check DecompileAt.java's C for it (run with sigs): it returns a value
   synthetic.py rotpr         the addresses of the helper that decrements its saved ar.pfs's rrb.pr and its caller
   synthetic.py check-rotpr C   expected failure: the caller's p17 does not get the p16 the helper rotated (a documented limit)
   synthetic.py itc           the address of the timer self-test function
@@ -545,8 +547,31 @@ def check_temp8(path):
     return 0 if ok else 1
 
 
-def rotpr_addr():
+def ldr8_addr():
     return temp8_addr() + 16 * len(temp8_function())
+
+
+def ldr8_function():
+    """The SAL table lookup: r8 starts as a pointer, and each pass either replaces it by a predicated ld8 r8=[r8]
+    and leaves, or steps it on and leaves with a predicated mov, or loops. The load reads r8 only to replace it."""
+    here = ldr8_addr()
+    ld8 = slot(op(4), (30, 6, 0x03), (6, 7, 8), (20, 7, 8), qp=6)
+    cmp_eq = lambda p1, p2, r3: slot(op(0xe), (34, 2, 2), (6, 6, p1), (27, 6, p2), (20, 7, r3))
+    loop = slot(op(4), (6, 3, 0), (12, 1, 1), *rel(here + 16, here + 0x50, (13, 20), (36, 1)))
+    return [bundle(0x01, NOP_M, adds(8, 0x10), NOP_I), bundle(0x01, NOP_M, cmp_eq(6, 7, 32), cmp_eq(8, 9, 33)),
+            bundle(0x11, ld8, NOP_I, BR_RET | 6), bundle(0x01, adds(8, 8, 8), adds(8, 0, 33, qp=9), NOP_I),
+            bundle(0x11, NOP_M, NOP_I, BR_RET | 9), bundle(0x17, loop, NOP_B, NOP_B)]
+
+
+def check_ldr8(path):
+    ok = not open(path).read().lstrip().startswith('void ')
+    print('%s: %s' % ('a predicated load that replaces r8 leaves the return value' if ok
+                      else 'FAIL a predicated ld8 r8=[r8] made r8 a temporary', path))
+    return 0 if ok else 1
+
+
+def rotpr_addr():
+    return ldr8_addr() + 16 * len(ldr8_function())
 
 
 def rotpr_functions():
@@ -613,7 +638,8 @@ def image():
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
             + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function())
             + b''.join(break_functions()) + b''.join(void_functions()) + b''.join(itc_function()) + b''.join(rfi_function())
-            + b''.join(ret9_functions()) + b''.join(temp8_function()) + b''.join(rotpr_functions()))
+            + b''.join(ret9_functions()) + b''.join(temp8_function()) + b''.join(ldr8_function())
+            + b''.join(rotpr_functions()))
 
 
 def expected():
@@ -817,6 +843,11 @@ def main():
         return 0
     if sys.argv[1] == 'check-temp8':
         return check_temp8(sys.argv[2])
+    if sys.argv[1] == 'ldr8':
+        print('%#x' % ldr8_addr())
+        return 0
+    if sys.argv[1] == 'check-ldr8':
+        return check_ldr8(sys.argv[2])
     if sys.argv[1] == 'rotpr':
         print('%#x %#x' % (rotpr_addr(), rotpr_addr() + 0x60))
         return 0
