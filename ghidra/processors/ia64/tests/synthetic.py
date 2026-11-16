@@ -22,6 +22,8 @@
   synthetic.py check-rfi C   check DecompileAt.java's C for it: the code at cr.iip is not part of it
   synthetic.py ret9          the addresses of the two functions that set r9 (a returned value, and a temporary)
   synthetic.py check-ret9 DIR  check their C: the first returns r8 and r9, the second only r8
+  synthetic.py temp8         the address of the function that loads r8, compares it and returns (r8 is a temporary)
+  synthetic.py check-temp8 C   check DecompileAt.java's C for it (run with sigs): it is void
   synthetic.py itc           the address of the timer self-test function
   synthetic.py check-itc C   check DecompileAt.java's C for it: two reads of ar.itc are not one value
   synthetic.py frames        the addresses of the register stack programs' functions
@@ -520,6 +522,27 @@ def check_ret9(d):
     return 0 if ok else 1
 
 
+def temp8_addr():
+    return ret9_addr() + 16 * len(ret9_functions())
+
+
+def temp8_function():
+    """A kernel-style function (ia64_flush_fph) that loads r8, compares it and stores on one outcome: r8 is a temporary,
+    written on every path to the return and read again, and the function returns nothing."""
+    ld8 = slot(op(4), (30, 6, 0x03), (6, 7, 8), (20, 7, 32))
+    cmp_eq = slot(op(0xe), (34, 2, 2), (6, 6, 6), (27, 6, 7), (20, 7, 8))
+    st8 = slot(op(4), (30, 6, 0x34), (20, 7, 33), (13, 7, 32), qp=6)
+    return [bundle(0x01, ld8, NOP_I, NOP_I), bundle(0x01, NOP_M, cmp_eq, NOP_I),
+            bundle(0x11, st8, NOP_I, BR_RET)]
+
+
+def check_temp8(path):
+    ok = open(path).read().lstrip().startswith('void ')
+    print('%s: %s' % ('a loaded r8 that is compared and not returned leaves the function void' if ok
+                      else 'FAIL r8 used as a temporary becomes a return value', path))
+    return 0 if ok else 1
+
+
 def prog_runs():
     """Emulator runs over programs(): (name, start, stop, regs, memory, expected)."""
     a = prog_addrs()
@@ -556,7 +579,7 @@ def image():
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
             + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function())
             + b''.join(break_functions()) + b''.join(void_functions()) + b''.join(itc_function()) + b''.join(rfi_function())
-            + b''.join(ret9_functions()))
+            + b''.join(ret9_functions()) + b''.join(temp8_function()))
 
 
 def expected():
@@ -755,6 +778,11 @@ def main():
         return 0
     if sys.argv[1] == 'check-ret9':
         return check_ret9(sys.argv[2])
+    if sys.argv[1] == 'temp8':
+        print('%#x' % temp8_addr())
+        return 0
+    if sys.argv[1] == 'check-temp8':
+        return check_temp8(sys.argv[2])
     if sys.argv[1] == 'itc':
         print('%#x' % itc_addr())
         return 0

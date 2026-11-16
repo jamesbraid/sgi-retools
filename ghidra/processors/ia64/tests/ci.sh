@@ -63,9 +63,10 @@ dec $($S predloop)
 ok $S check-predloop $out/$($S predloop).c
 dec $($S breaks)
 ok $S check-breaks $out
-dec sigs $($S voids) $($S itc) $($S ret9)
+dec sigs $($S voids) $($S itc) $($S ret9) $($S temp8)
 ok $S check-voids $out
 ok $S check-ret9 $out
+ok $S check-temp8 $out/$($S temp8).c
 ok $S check-itc $out/$($S itc).c
 dec $($S rfi)
 ok $S check-rfi $out/$($S rfi).c
