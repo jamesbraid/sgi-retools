@@ -44,6 +44,10 @@
       </input>
       <output>
         <pentry minsize="1" maxsize="8"><register name="r8"/></pentry>
+        <!-- SAL's status in r8 and values in r9..r11 (IA64Signatures commits these sizes). -->
+        <pentry minsize="9" maxsize="16"><addr space="join" piece1="r9" piece2="r8"/></pentry>
+        <pentry minsize="17" maxsize="24"><addr space="join" piece1="r10" piece2="r9" piece3="r8"/></pentry>
+        <pentry minsize="25" maxsize="32"><addr space="join" piece1="r11" piece2="r10" piece3="r9" piece4="r8"/></pentry>
       </output>
       <unaffected>
         <register name="r1"/>

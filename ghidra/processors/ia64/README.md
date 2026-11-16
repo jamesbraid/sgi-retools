@@ -62,7 +62,8 @@ Numbers print in Ghidra's hexadecimal.
   and its caller must come out `void`, a function that sets r8 must not, and one that sets r8 and then calls a void
   function keeps its r8 (`voids`, `check-voids`). A function that reads `ar.itc` twice and compares the reads (the PAL's
   timer self-test) must keep both outcomes (`itc`, `check-itc`). A function that sets `cr.iip` to a constant and leaves through `rfi` must
-  not include the code there (`rfi`, `check-rfi`).
+  not include the code there (`rfi`, `check-rfi`). A function that sets r8 and r9 returns both, and one that stores r9
+  and reads it back only r8 (`ret9`, `check-ret9`).
 - `tests/DecompileAt.java`: makes a function at each address it is given in a flat image and writes its C and
   listing. The synthetic tests and a quick look at one function of a PROM use it; for a whole ELF or PROM
   go through `tools/ghidra-export.py` (`tools/README-analysis.md`).
@@ -249,6 +250,8 @@ A function that writes r8 on every path to a return, by an unpredicated instruct
 value return, gets a value return (`strcpy`, `strcmp`). Any other function keeps its return open, because a caller that
 returns through complementary predicated writes still needs a possible r8 from the call; an indirect flow, a call to the
 function itself and a callee with no committed signature do not count as a write.
+A function that also sets r9 (then r10, r11) on every path, and never reads it, returns r8..r9 (..r11), SAL's
+status-in-r8 convention (the cspec's joined outputs); one that reads what it wrote is using a temporary and returns r8 alone.
 
 A function made `void` gets the calling convention `__stdcall_void` (the cspec), which does not list r8 as killed by a
 call: it provably leaves r8 alone, so a caller that set r8 before the call returns that value. A call to a void function
@@ -312,7 +315,7 @@ decompiler and PE32+ ones); the `ghidra-check` workflow runs it.
 | Agreement with objdump | `run-ghidra.sh .cache/ia64 IMAGE BASE`, then `python3 retools/ghidra/processors/ia64/tests/check.py .cache/ia64/slots.tsv IMAGE` | the summary line reads `mismatches: 0` (see below) |
 | Ghidra on the synthetic image | `synthetic.py write DIR`, `run-ghidra.sh DIR DIR/synthetic.bin 0x80000`, then `synthetic.py check DIR/slots.tsv` | every slot in the listing is as expected |
 | Emulator | `run-ghidra.sh ... EmuSynthetic.java DIR/emu.tsv DIR/emu.out`, then `synthetic.py check-emu DIR/emu.out` | each short sequence and register stack program ends as the SDM says |
-| Decompiler | `run-ghidra.sh ... DecompileAt.java DIR ADDRESS...`, then `synthetic.py check-dec`, `check-call`, `check-frames`, `check-pal`, `check-plain`, `check-predloop`, `check-breaks`, `check-voids`, `check-itc` or `check-rfi` | the C is as each check describes; `synthetic.py` with a function name prints the addresses (see Running) |
+| Decompiler | `run-ghidra.sh ... DecompileAt.java DIR ADDRESS...`, then `synthetic.py check-dec`, `check-call`, `check-frames`, `check-pal`, `check-plain`, `check-predloop`, `check-breaks`, `check-voids`, `check-itc`, `check-rfi` or `check-ret9` | the C is as each check describes; `synthetic.py` with a function name prints the addresses (see Running) |
 | PE32+ import | `tests/pe_synthetic.py write DIR`, `run-ghidra.sh` with `PE=1` and `PRESCRIPT=IA64Pe.java` (and `PRESCRIPT_ARGS=base=0x20000000` for the moved image), `DumpSymbols.java`, then `pe_synthetic.py check SYMS BASE` | the entry, the export and the `.pdata`-only function are functions, the descriptors are labelled, r1 is the gp at both bases |
 | SN2 PROM import | `ghidra/import/sn2-prom/tests/run-ghidra.sh IMAGE DIR` and `check.py DIR/symbols.tsv IMAGE` | `0 failures` (`ghidra/import/sn2-prom/README.md`) |
 

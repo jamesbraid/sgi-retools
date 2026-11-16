@@ -20,6 +20,8 @@
   synthetic.py check-voids DIR  check their C: the first two are void, the others return a value, the last keeps its r8 over a void call
   synthetic.py rfi           the address of the function that leaves through an rfi
   synthetic.py check-rfi C   check DecompileAt.java's C for it: the code at cr.iip is not part of it
+  synthetic.py ret9          the addresses of the two functions that set r9 (a returned value, and a temporary)
+  synthetic.py check-ret9 DIR  check their C: the first returns r8 and r9, the second only r8
   synthetic.py itc           the address of the timer self-test function
   synthetic.py check-itc C   check DecompileAt.java's C for it: two reads of ar.itc are not one value
   synthetic.py frames        the addresses of the register stack programs' functions
@@ -497,6 +499,27 @@ def check_rfi(path):
     return 0 if ok else 1
 
 
+def ret9_addr():
+    return rfi_addr() + 16 * len(rfi_function())
+
+
+def ret9_functions():
+    """A status function that also returns a value in r9 (SAL's convention) and one that uses
+    r9 only as a temporary, stored through r33 and then read, and returns r8 alone."""
+    st9 = slot(op(4), (30, 6, 0x34), (20, 7, 33), (13, 7, 9))
+    return [bundle(0x01, NOP_M, adds(8, 0), adds(9, 0, 32)), bundle(0x17, BR_RET, NOP_B, NOP_B),
+            bundle(0x01, NOP_M, adds(9, 1, 32), NOP_I), bundle(0x10, st9, adds(8, 0), BR_RET)]
+
+
+def check_ret9(d):
+    a = ret9_addr()
+    value, temp = (open(os.path.join(d, '%#x.c' % x)).read().split('{')[0] for x in (a, a + 0x20))
+    ok = '[16]' in value and '[16]' not in temp and 'void' not in temp
+    print('%s: a function that sets r9 and never reads it returns r8 and r9, one that uses r9 as a temporary r8 alone'
+          % ('ok' if ok else 'FAIL r9 return'))
+    return 0 if ok else 1
+
+
 def prog_runs():
     """Emulator runs over programs(): (name, start, stop, regs, memory, expected)."""
     a = prog_addrs()
@@ -532,7 +555,8 @@ def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
             + b''.join(b for _, prog in programs() for b, _ in prog) + b''.join(predloop_function())
-            + b''.join(break_functions()) + b''.join(void_functions()) + b''.join(itc_function()) + b''.join(rfi_function()))
+            + b''.join(break_functions()) + b''.join(void_functions()) + b''.join(itc_function()) + b''.join(rfi_function())
+            + b''.join(ret9_functions()))
 
 
 def expected():
@@ -726,6 +750,11 @@ def main():
         return 0
     if sys.argv[1] == 'check-rfi':
         return check_rfi(sys.argv[2])
+    if sys.argv[1] == 'ret9':
+        print('%#x %#x' % (ret9_addr(), ret9_addr() + 0x20))
+        return 0
+    if sys.argv[1] == 'check-ret9':
+        return check_ret9(sys.argv[2])
     if sys.argv[1] == 'itc':
         print('%#x' % itc_addr())
         return 0

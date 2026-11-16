@@ -11,7 +11,8 @@
  * Args: none for every function, or function names and 0x addresses to do just
  * those and the functions they call.
  * A function that never writes r8, and calls and jumps only to functions already committed as
- * void, gets a void return.
+ * void, gets a void return. One that sets r9 (then r10, r11) on every return path and never reads
+ * it returns r8..r9 (..r11), the SAL convention of a status in r8 and values behind it.
  *
  * @category IA64
  */
@@ -147,10 +148,14 @@ public class IA64Signatures extends GhidraScript {
 		if (neverWritesR8(f)) {
 			rt = VoidDataType.dataType;
 		}
-		else if (setsR8OnEveryReturn(f)) {
+		else if (setsOnEveryReturn(f, 8)) {
 			// The decompiler can call such a function void (strcpy copies r32 to r8 and then
 			// uses r8 as a pointer), and an open return would then commit as void.
-			rt = Undefined.getUndefinedDataType(8);
+			int regs = 1;
+			while (regs < 4 && setsOnEveryReturn(f, 8 + regs) && !readsRegister(f, 8 + regs)) {
+				regs++;
+			}
+			rt = Undefined.getUndefinedDataType(8 * regs);
 		}
 		else if (rt == null || proto.getReturnStorage() == null || proto.getReturnStorage().isVoidStorage()
 				|| rt.getLength() > 8 || rt instanceof VoidDataType) {
@@ -198,11 +203,12 @@ public class IA64Signatures extends GhidraScript {
 		return true;
 	}
 
-	// Every return of f is reached with r8 written: by an unpredicated instruction of f, or by a
-	// call to a function that returns a value. A predicated write, an indirect flow, a call to f
-	// itself or to a function with no known return, and a function with no return, do not count.
-	boolean setsR8OnEveryReturn(Function f) throws Exception {
-		Register r8 = currentProgram.getRegister("r8");
+	// Every return of f is reached with rN written: by an unpredicated instruction of f, or by a
+	// call to a function that returns a value (for r9..r11, one that returns that many registers).
+	// A predicated write, an indirect flow, a call to f itself or to a function with no known
+	// return, and a function with no return, do not count.
+	boolean setsOnEveryReturn(Function f, int n) throws Exception {
+		Register reg = currentProgram.getRegister("r" + n);
 		Map<Address, Boolean> in = new HashMap<>();
 		Deque<Address> work = new ArrayDeque<>();
 		in.put(f.getEntryPoint(), false);
@@ -221,8 +227,7 @@ public class IA64Signatures extends GhidraScript {
 				predicated |= op.getOpcode() == PcodeOp.CBRANCH;
 				Varnode out = op.getOutput();
 				if (!predicated && out != null && out.isRegister()
-						&& out.getAddress().getOffset() < r8.getAddress().getOffset() + r8.getNumBytes()
-						&& out.getAddress().getOffset() + out.getSize() > r8.getAddress().getOffset()) {
+						&& overlaps(out, reg)) {
 					def = true;
 				}
 			}
@@ -233,13 +238,13 @@ public class IA64Signatures extends GhidraScript {
 				boolean value = flows.length > 0;
 				for (Address a : flows) {
 					Function g = getFunctionAt(a);
-					value &= g != null && g != f && returnsValue(g);
+					value &= g != null && g != f && returnsValue(g, n);
 				}
-				// A void callee leaves r8 as it was.
+				// A void callee leaves r8 as it was, but kills r9..r11.
 				boolean leaves = flows.length > 0;
 				for (Address a : flows) {
 					Function g = getFunctionAt(a);
-					leaves &= g != null && g != f && g.getReturnType() instanceof VoidDataType;
+					leaves &= n == 8 && g != null && g != f && g.getReturnType() instanceof VoidDataType;
 				}
 				def = predicated ? def && (value || leaves) : value || (def && leaves);
 			}
@@ -259,7 +264,7 @@ public class IA64Signatures extends GhidraScript {
 					}
 					else {
 						Function g = getFunctionAt(a);
-						if (def || (g != null && g != f && returnsValue(g))) {
+						if (def || (g != null && g != f && returnsValue(g, n))) {
 							returns = true;
 						}
 						else {
@@ -286,8 +291,34 @@ public class IA64Signatures extends GhidraScript {
 	}
 
 	boolean returnsValue(Function g) {
+		return returnsValue(g, 8);
+	}
+
+	// g returns a value in rN: for r9..r11, a return as wide as r8..rN.
+	boolean returnsValue(Function g, int n) {
 		DataType t = g.getReturnType();
-		return !(t instanceof VoidDataType) && t != DataType.DEFAULT;
+		return !(t instanceof VoidDataType) && t != DataType.DEFAULT
+			&& (n == 8 || t.getLength() >= 8 * (n - 7));
+	}
+
+	static boolean overlaps(Varnode v, Register r) {
+		return v.isRegister() && v.getAddress().getOffset() < r.getAddress().getOffset() + r.getNumBytes()
+			&& v.getAddress().getOffset() + v.getSize() > r.getAddress().getOffset();
+	}
+
+	// Some instruction of f reads rN: a value written and read is a temporary, not a return value.
+	boolean readsRegister(Function f, int n) {
+		Register reg = currentProgram.getRegister("r" + n);
+		for (Instruction in : currentProgram.getListing().getInstructions(f.getBody(), true)) {
+			for (PcodeOp op : in.getPcode()) {
+				for (Varnode v : op.getInputs()) {
+					if (overlaps(v, reg)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	// The incoming value goes only to stack slots, through copies and merges, and is
