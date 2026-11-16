@@ -16,8 +16,8 @@
   synthetic.py check-predloop C  check DecompileAt.java's C for it: it decompiles
   synthetic.py breaks        the addresses of the three break functions (BUG, a system call, predicated)
   synthetic.py check-breaks DIR  check DecompileAt.java's C for them: `break 0` ends its function
-  synthetic.py voids         the addresses of the store, caller and r8 functions (run DecompileAt with sigs)
-  synthetic.py check-voids DIR  check their C: the first two are void, the third returns a value
+  synthetic.py voids         the addresses of the store, caller, status, copy and wrapper functions (run DecompileAt with sigs)
+  synthetic.py check-voids DIR  check their C: the first two are void, the others return a value
   synthetic.py frames        the addresses of the register stack programs' functions
   synthetic.py check-frames DIR  check DecompileAt.java's C for them
 
@@ -411,20 +411,30 @@ def voids_addr():
 
 
 def void_functions():
-    """A function that only stores through r32, one that calls it, and one that sets r8:
-    IA64Signatures makes the first two return void and leaves the third a value."""
+    """A function that only stores through r32, one that calls it, and one that sets r8
+    (the status function), then two more that return a value: strcpy's `mov r8=r32`, used as the store address, and a
+    function that only calls the status function and returns. IA64Signatures makes the
+    first two return void and leaves the others a value."""
     here = voids_addr()
     st8 = slot(op(4), (30, 6, 0x34), (20, 7, 32), (13, 7, 33))
     call = br_call(here, here + 0x20)
+    copy = adds(8, 0, 32)
+    st_r8 = slot(op(4), (30, 6, 0x34), (20, 7, 8), (13, 7, 33))
+    wrap = br_call(here + 0x40, here + 0x80)
     return [bundle(0x01, st8, NOP_I, NOP_I), bundle(0x17, BR_RET, NOP_B, NOP_B),
-            bundle(0x17, call, NOP_B, NOP_B), bundle(0x17, BR_RET, NOP_B, NOP_B)] + status_function()
+            bundle(0x17, call, NOP_B, NOP_B), bundle(0x17, BR_RET, NOP_B, NOP_B)] + status_function() + [
+            bundle(0x01, NOP_M, copy, NOP_I), bundle(0x10, st_r8, NOP_I, BR_RET),
+            bundle(0x17, wrap, NOP_B, NOP_B), bundle(0x17, BR_RET, NOP_B, NOP_B)]
 
 
 def check_voids(d):
     a = voids_addr()
-    store, caller, status = (open(os.path.join(d, '%#x.c' % x)).read() for x in (a, a + 0x20, a + 0x40))
-    ok = all(t.lstrip().startswith('void ') for t in (store, caller)) and not status.lstrip().startswith('void ')
-    print('%s: functions that never write r8 return void' % ('ok' if ok else 'FAIL void return'))
+    store, caller, status, copy, wrap = (open(os.path.join(d, '%#x.c' % x)).read()
+                                         for x in (a, a + 0x20, a + 0x40, a + 0x60, a + 0x80))
+    void = [t.lstrip().startswith('void ') for t in (store, caller, status, copy, wrap)]
+    ok = void == [True, True, False, False, False]
+    print('%s: functions that never write r8 return void, ones that return r8 (set, copied or from a callee) do not'
+          % ('ok' if ok else 'FAIL void return %s' % void))
     return 0 if ok else 1
 
 
@@ -648,7 +658,7 @@ def main():
     if sys.argv[1] == 'check-breaks':
         return check_breaks(sys.argv[2])
     if sys.argv[1] == 'voids':
-        print(' '.join('%#x' % (voids_addr() + o) for o in (0, 0x20, 0x40)))
+        print(' '.join('%#x' % (voids_addr() + o) for o in (0, 0x20, 0x40, 0x60, 0x80)))
         return 0
     if sys.argv[1] == 'check-voids':
         return check_voids(sys.argv[2])

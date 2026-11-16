@@ -147,6 +147,11 @@ public class IA64Signatures extends GhidraScript {
 		if (neverWritesR8(f)) {
 			rt = VoidDataType.dataType;
 		}
+		else if (setsR8OnEveryReturn(f)) {
+			// The decompiler can call such a function void (strcpy copies r32 to r8 and then
+			// uses r8 as a pointer), and an open return would then commit as void.
+			rt = Undefined.getUndefinedDataType(8);
+		}
 		else if (rt == null || proto.getReturnStorage() == null || proto.getReturnStorage().isVoidStorage()
 				|| rt.getLength() > 8 || rt instanceof VoidDataType) {
 			rt = DataType.DEFAULT;
@@ -188,6 +193,92 @@ public class IA64Signatures extends GhidraScript {
 			}
 		}
 		return true;
+	}
+
+	// Every return of f is reached with r8 written: by an unpredicated instruction of f, or by a
+	// call to a function that returns a value. A predicated write, an indirect flow, a call to f
+	// itself or to a function with no known return, and a function with no return, do not count.
+	boolean setsR8OnEveryReturn(Function f) throws Exception {
+		Register r8 = currentProgram.getRegister("r8");
+		Map<Address, Boolean> in = new HashMap<>();
+		Deque<Address> work = new ArrayDeque<>();
+		in.put(f.getEntryPoint(), false);
+		work.add(f.getEntryPoint());
+		boolean returns = false;
+		while (!work.isEmpty()) {
+			Address at = work.poll();
+			Instruction ins = getInstructionAt(at);
+			if (ins == null) {
+				return false;
+			}
+			boolean def = in.get(at);
+			PcodeOp[] ops = ins.getPcode();
+			boolean predicated = false;
+			for (PcodeOp op : ops) {
+				predicated |= op.getOpcode() == PcodeOp.CBRANCH;
+				Varnode out = op.getOutput();
+				if (!predicated && out != null && out.isRegister()
+						&& out.getAddress().getOffset() < r8.getAddress().getOffset() + r8.getNumBytes()
+						&& out.getAddress().getOffset() + out.getSize() > r8.getAddress().getOffset()) {
+					def = true;
+				}
+			}
+			FlowType ft = ins.getFlowType();
+			Address[] flows = ins.getFlows();
+			List<Address> next = new ArrayList<>();
+			if (ft.isCall()) {
+				boolean value = flows.length > 0;
+				for (Address a : flows) {
+					Function g = getFunctionAt(a);
+					value &= g != null && g != f && returnsValue(g);
+				}
+				def = predicated ? def && value : value;
+			}
+			else if (ft.isTerminal()) {
+				if (!def) {
+					return false;
+				}
+				returns = true;
+			}
+			else if (ft.isJump()) {
+				if (flows.length == 0) {
+					return false;
+				}
+				for (Address a : flows) {
+					if (f.getBody().contains(a)) {
+						next.add(a);
+					}
+					else {
+						Function g = getFunctionAt(a);
+						if (def || (g != null && g != f && returnsValue(g))) {
+							returns = true;
+						}
+						else {
+							return false;
+						}
+					}
+				}
+			}
+			if (ft.isConditional() || ft.isFallthrough() || ft.isCall()) {
+				Address ft2 = ins.getFallThrough();
+				if (ft2 != null && f.getBody().contains(ft2)) {
+					next.add(ft2);
+				}
+			}
+			for (Address a : next) {
+				Boolean old = in.get(a);
+				if (old == null || (old && !def)) {
+					in.put(a, old == null ? def : false);
+					work.add(a);
+				}
+			}
+		}
+		return returns;
+	}
+
+	boolean returnsValue(Function g) {
+		DataType t = g.getReturnType();
+		return !(t instanceof VoidDataType) && t != DataType.DEFAULT;
 	}
 
 	// The incoming value goes only to stack slots, through copies and merges, and is

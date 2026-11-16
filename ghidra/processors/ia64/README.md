@@ -235,8 +235,10 @@ A call's arguments are the callee's parameters when the callee's signature is kn
 `tools/ghidra-export.py` runs it for IA-64. Without it, every output register the caller's
 frame declares counts, and one set on only some paths shows up as an argument (`in_r40`). It also gives a
 function that never writes r8, and calls and jumps only to functions it has made void, a `void` return.
-Any other function keeps its return open, because a caller that returns through complementary predicated
-writes still needs a possible r8 from the call.
+A function that writes r8 on every path to a return, by an unpredicated instruction or through a call to a function with a
+value return, gets a value return (`strcpy`, `strcmp`). Any other function keeps its return open, because a caller that
+returns through complementary predicated writes still needs a possible r8 from the call; an indirect flow, a call to the
+function itself and a callee with no committed signature do not count as a write.
 
 Call limits. A decompiled caller does not see what a callee does to the callee's own input registers: the
 copy of r32.. back after the call restores the caller's values, although emulation, where the callee's
