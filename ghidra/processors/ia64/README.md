@@ -314,9 +314,12 @@ component, which is gzip packed; extract the PE file first. Not done: a separate
 
 Each runs in the Ghidra image through `retools/tools/re-run --ghidra --` unless it is marked Python.
 
+`tests/ci.sh` builds the image and runs every check below that needs no firmware (the synthetic, emulator,
+decompiler and PE32+ ones); the `ghidra-check` workflow runs it.
+
 | Check | Command (from the workspace, retools as `retools/`) | Passes when |
 |---|---|---|
-| Table and decoder (Python) | `python3 retools/ghidra/processors/ia64/tests/synthetic.py` and `tests/test_generated.py` | every hand-encoded slot gives its expected text; the generator writes the landmarks (CI runs both) |
+| Table and decoder (Python) | `python3 retools/ghidra/processors/ia64/tests/synthetic.py` and `tests/test_generated.py` | every hand-encoded slot gives its expected text; the generator writes the landmarks (the `re-check` workflow runs both) |
 | Agreement with objdump | `run-ghidra.sh .cache/ia64 IMAGE BASE`, then `python3 retools/ghidra/processors/ia64/tests/check.py .cache/ia64/slots.tsv IMAGE` | the summary line reads `mismatches: 0` (see below) |
 | Ghidra on the synthetic image | `synthetic.py write DIR`, `run-ghidra.sh DIR DIR/synthetic.bin 0x80000`, then `synthetic.py check DIR/slots.tsv` | every slot in the listing is as expected |
 | Emulator | `run-ghidra.sh ... EmuSynthetic.java DIR/emu.tsv DIR/emu.out`, then `synthetic.py check-emu DIR/emu.out` | each short sequence and register stack program ends as the SDM says |

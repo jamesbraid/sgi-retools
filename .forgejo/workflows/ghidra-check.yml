@@ -1,0 +1,27 @@
+# The IA-64 processor and SN2 PROM import checks that need no firmware: builds the Ghidra image
+# and runs the synthetic checks in it (ghidra/processors/ia64/tests/ci.sh). The checks against
+# a real PROM stay hand-run, because the firmware is not in this repository.
+name: ghidra-check
+on:
+  push:
+    paths:
+      - ghidra/**
+      - tools/Containerfile.ghidra
+      - .forgejo/workflows/ghidra-check.yml
+  pull_request:
+    paths:
+      - ghidra/**
+      - tools/Containerfile.ghidra
+      - .forgejo/workflows/ghidra-check.yml
+
+jobs:
+  ia64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: https://code.forgejo.org/actions/checkout@v4
+      - name: Build the Ghidra image and run the synthetic checks
+        env:
+          ENGINE: docker
+        run: sh ghidra/processors/ia64/tests/ci.sh
