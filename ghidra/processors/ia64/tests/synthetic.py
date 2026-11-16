@@ -19,7 +19,7 @@
   synthetic.py voids         the addresses of the store, caller, status, copy, wrapper and r8-keeping functions (run DecompileAt with sigs)
   synthetic.py check-voids DIR  check their C: the first two are void, the others return a value, the last keeps its r8 over a void call
   synthetic.py rfi           the address of the function that leaves through an rfi
-  synthetic.py check-rfi C   check DecompileAt.java's C for it: the code at cr.iip is part of it
+  synthetic.py check-rfi C   check DecompileAt.java's C for it: the code at cr.iip is not part of it
   synthetic.py itc           the address of the timer self-test function
   synthetic.py check-itc C   check DecompileAt.java's C for it: two reads of ar.itc are not one value
   synthetic.py frames        the addresses of the register stack programs' functions
@@ -476,7 +476,7 @@ def rfi_addr():
 
 def rfi_function():
     """Sets cr.iip to the bundle after this function and leaves through an rfi; the code there
-    sets r8 to 0x55 and returns. Flow must continue at cr.iip."""
+    sets r8 to 0x55 and returns. The rfi ends the function: flow must not follow cr.iip."""
     here = rfi_addr()
     imm = here + 0x30
     movl = slot(op(6), (6, 7, 2), (13, 7, imm), (27, 9, imm >> 7), (22, 5, imm >> 16), (21, 1, imm >> 21),
@@ -489,10 +489,11 @@ def rfi_function():
 
 
 def check_rfi(path):
-    """The decompiler follows a constant cr.iip: the code there is in the function."""
+    """rfi is a return: the code at a constant cr.iip is not in the function (in the SN2 kernel,
+    following it timed the decompiler out)."""
     text = open(path).read()
-    ok = '0x55' in text
-    print('%s: %s' % ('rfi continues at cr.iip' if ok else 'FAIL rfi ends the function', path))
+    ok = '0x55' not in text and 'decompile failed' not in text
+    print('%s: %s' % ('rfi ends the function' if ok else 'FAIL rfi follows cr.iip', path))
     return 0 if ok else 1
 
 

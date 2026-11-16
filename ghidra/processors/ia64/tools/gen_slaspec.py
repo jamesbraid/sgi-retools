@@ -400,15 +400,15 @@ def cover_sem():
 
 def rfi_sem():
     """rfi (SDM vol 3 3:236): psr from cr.ipsr; with cr.ifs.v the covered frame
-    comes back; resume at cr.iip's bundle, slot psr.ri. A jump, not a return: cr.iip is any
-    address, a fixed hand-off as often as a return address, so the decompiler follows a constant one."""
+    comes back; resume at cr.iip's bundle, slot psr.ri. A return, not a jump: following cr.iip
+    drags code that is not the function's own into it."""
     body = ['psr = cr.ipsr;', 'if ((cr.ifs >> 63) == 0) goto <nofr>;',
             'bof = bof - %d;' % (8 * NSTACKED)]
     body += ['r%d = %s;' % (32 + k, phys(k)) for k in range(NSTACKED)]
     body.append(bsp_shrink('(cr.ifs & 0x7f)'))
     body.append(cfm_from('cr.ifs'))
     body.append('<nofr> local t:8 = (cr.iip & 0xfffffffffffffff0) + ((cr.ipsr >> 41) & 3) * 6;')
-    body.append('goto [t];')
+    body.append('return [t];')
     return ' '.join(body)
 
 

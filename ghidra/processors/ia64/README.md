@@ -62,7 +62,7 @@ Numbers print in Ghidra's hexadecimal.
   and its caller must come out `void`, a function that sets r8 must not, and one that sets r8 and then calls a void
   function keeps its r8 (`voids`, `check-voids`). A function that reads `ar.itc` twice and compares the reads (the PAL's
   timer self-test) must keep both outcomes (`itc`, `check-itc`). A function that sets `cr.iip` to a constant and leaves through `rfi` must
-  include the code there (`rfi`, `check-rfi`).
+  not include the code there (`rfi`, `check-rfi`).
 - `tests/DecompileAt.java`: makes a function at each address it is given in a flat image and writes its C and
   listing. The synthetic tests and a quick look at one function of a PROM use it; for a whole ELF or PROM
   go through `tools/ghidra-export.py` (`tools/README-analysis.md`).
@@ -149,12 +149,10 @@ Enough to read SAL and PAL as C. What is modelled and what is approximated:
 - Branches: conditional, indirect, `br.call` (return address in b1 is the next bundle),
   `br.ret`, `br.cloop` on ar.lc, and the modulo-scheduled `br.ctop`, `br.cexit`,
   `br.wtop`, `br.wexit` on ar.lc, ar.ec and p63.
-- `rfi` is an indirect jump to `cr.iip` (slot `psr.ri`), not a return: `cr.iip` is any address. A constant one is followed, so
-  the code there is part of the decompiled function; one taken from a register, such as the PAL's `mov cr.iip=b0` helper
-  at `0xffe96bd0`, stays an unresolved jump that the decompiler prints as a return, or as an indirect call with a "could not recover jumptable" warning
-  (the kernel's `ia64_switch_mode_phys`). `SN2PromImport.java` seeds the code
-  behind each call to that helper. Open: in the 2.6.5 SN2 kernel the decompiler times
-  out (60 s) on `ia64_switch_mode_virt`, whose `rfi` has a constant `cr.iip`; before the change it decompiled in milliseconds.
+- `rfi` is a return: flow ends there, with no fall-through and no followed target. `cr.iip` is any address, and
+  following a constant one pulled unrelated kernel code into `ia64_switch_mode_virt` (a 60 s decompiler timeout)
+  and ran flow into data in the INIT handlers. The code a PAL's `rfi` helper (`rsm; mov cr.iip=b0; rfi`, at
+  `0xffe96bd0`) leaves to is therefore not reached by flow; `SN2PromImport.java` makes a function of it behind each call.
 - `break` with an immediate of 0 and no qualifying predicate (Linux's `BUG()`) never falls through: its
   p-code is a jump to itself, so flow, and the function, end there. A nonzero immediate (a system call) and a
   predicated `break` fall through as before.
