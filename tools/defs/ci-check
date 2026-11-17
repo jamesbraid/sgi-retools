@@ -48,9 +48,16 @@ def leak_check():
 
 
 def docs_index_check():
-    """Fail on a missing or stale README.md in devices/, platforms/, formats/, software/, questions/ or evidence/."""
+    """Fail on a missing or stale README.md in devices/, platforms/, formats/, software/ or questions/."""
     run("directory index is missing or stale",
         [sys.executable, os.path.join(os.path.dirname(HERE), "docs-index"), "--check"])
+
+
+def evidence_check():
+    """Fail on an evidence/ directory in a workspace that files by subject (COVERAGE.md or generated/inventory)."""
+    if os.path.isdir("evidence") and (os.path.exists("COVERAGE.md") or os.path.isdir("generated/inventory")):
+        failures.append("evidence/ exists: file new pages by subject (devices/, platforms/, formats/, software/), "
+                        "lists in references/, tool output in generated/, tallies in COVERAGE.md")
 
 
 def main_toml():
@@ -59,6 +66,7 @@ def main_toml():
               % Layout(".").defs_check_file, file=sys.stderr)
     leak_check()
     docs_index_check()
+    evidence_check()
     p = subprocess.run([sys.executable, os.path.join(HERE, "defs-check"), "--build"], capture_output=True, text=True)
     sys.stdout.write(p.stdout)
     sys.stderr.write(p.stderr)
@@ -77,6 +85,7 @@ def main():
         return main_toml()
     leak_check()
     docs_index_check()
+    evidence_check()
     if not os.path.isfile("defs.toml"):
         print("no decode headers")
         for f in failures:

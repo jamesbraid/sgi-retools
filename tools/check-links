@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""List relative Markdown links of a workspace that point at nothing.
+
+    retools/tools/re-run python3 retools/tools/check-links [--repo DIR] [--prefix evidence/]
+
+Reads every tracked .md file outside root/, retools/ and references/code/, and reports each relative link whose
+target file or directory does not exist (anchors are not checked). With --prefix it reports only links whose
+resolved target starts with that path. Exit status 1 when it reports anything.
+"""
+import argparse
+import os
+import posixpath
+import re
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from _workspace import find_workspace  # noqa: E402
+
+LINK = re.compile(r'\]\(([^)\s]+)(?:\s+"[^"]*")?\)')
+REF = re.compile(r'^\s*\[[^\]]+\]:\s*(\S+)', re.M)
+SKIP = ('root/', 'retools/', 'references/code/')
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    ap.add_argument('--repo')
+    ap.add_argument('--prefix', default='')
+    args = ap.parse_args()
+    root = find_workspace(args.repo)
+    files = subprocess.run(['git', '-C', root, 'ls-files', '*.md'], capture_output=True, text=True, check=True).stdout.split()
+    bad = 0
+    for rel in files:
+        if rel.startswith(SKIP) or not os.path.isfile(os.path.join(root, rel)):
+            continue
+        with open(os.path.join(root, rel), encoding='utf-8', errors='replace') as f:
+            text = f.read()
+        fence = False
+        body = []
+        for line in text.split('\n'):
+            if line.lstrip().startswith(('```', '~~~')):
+                fence = not fence
+            elif not fence:
+                body.append(line)
+        text = '\n'.join(body)
+        for target in LINK.findall(text) + REF.findall(text):
+            if target.startswith(('#', '/', 'mailto:')) or '://' in target:
+                continue
+            path = target.split('#', 1)[0]
+            if not path:
+                continue
+            res = posixpath.normpath(posixpath.join(posixpath.dirname(rel), path))
+            if res.startswith(args.prefix) and not os.path.exists(os.path.join(root, res)):
+                print('%s: %s' % (rel, target))
+                bad += 1
+    return 1 if bad else 0
+
+
+sys.exit(main())
