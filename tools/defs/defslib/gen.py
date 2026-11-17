@@ -76,7 +76,7 @@ def render(repo, profile=None):
     return files, errors
 
 
-def existing(root):
+def existing(root, export_dirs=()):
     """Every generated file on disk, relative to root: the generated tree, and in the current layout
     the register tables that sit beside their sources."""
     from _layout import Layout
@@ -85,6 +85,7 @@ def existing(root):
     base = os.path.join(root, lay.gen_root())
     # generated/ also holds tool output (inventory/, version-diffs/, ...) that no unit writes
     mine = set(lay.gen_dir(k).split("/", 1)[1] for k in ("c", "rust", "py", "json", "xml"))
+    mine.update(os.path.basename(d) for d in export_dirs)
     for d, dirs, names in os.walk(base):
         if d == base:
             dirs[:] = [x for x in dirs if x in mine]
@@ -124,7 +125,7 @@ def stale(repo, files, scope=None):
             continue
         if gen_export.mask_commit(have) != gen_export.mask_commit(text):
             probs.append("%s: stale against its source; run defs-gen" % rel)
-    for rel in existing(repo.root):
+    for rel in existing(repo.root, gen_export.export_dirs(repo)):
         if rel not in files and in_scope(rel, scope):
             probs.append("%s: no unit generates this file; run defs-gen to remove it" % rel)
     return probs
@@ -149,7 +150,7 @@ def write(repo, files, scope=None):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(text)
             written.append(rel)
-    for rel in existing(repo.root):
+    for rel in existing(repo.root, gen_export.export_dirs(repo)):
         if rel in files or not in_scope(rel, scope):
             continue
         path = os.path.join(repo.root, rel)

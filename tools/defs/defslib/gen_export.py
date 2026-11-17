@@ -236,4 +236,5 @@ def rust_file(units, name):
 
 def export_dirs(repo):
     root = repo.layout.gen_root()
-    return ["%s/%s" % (root, d) for d in (RUST_DIR, C_DIR, CLEAN_DIR)]
+    profiles = repo.settings.get("gen", {}).get("export", {}).get("profiles", ())
+    return ["%s/%s" % (root, d) for d in (RUST_DIR, C_DIR, CLEAN_DIR) if d in profiles]

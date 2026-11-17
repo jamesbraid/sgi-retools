@@ -179,6 +179,21 @@ class ToolsTest(CurrentRepoTest):
         tool(GEN, self.root)
         self.assertTrue(os.path.isfile(self.path("generated/inventory/functions.tsv")))
 
+    def test_removed_export_outputs_are_pruned_but_other_generated_output_remains(self):
+        config = self.read("tools/config/defs-check.toml")
+        self.write("tools/config/defs-check.toml", config + '\n[gen.export]\nprofiles = ["rust-regs", "c-regfields"]\n\n'
+                   '[gen.export.units.uart]\nbase = 0x10\n')
+        self.assertEqual(self.gen_all().returncode, 0)
+        self.write("generated/inventory/functions.tsv", "x\n")
+        self.edit("tools/config/defs-check.toml", "[gen.export.units.uart]\nbase = 0x10\n", "")
+
+        r = self.gen_all()
+
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.path("generated/rust-regs/uart.rs")))
+        self.assertFalse(os.path.exists(self.path("generated/c-regfields/uart.h")))
+        self.assertTrue(os.path.isfile(self.path("generated/inventory/functions.tsv")))
+
     def test_hand_written_helpers_are_included_and_scanned(self):
         self.write("devices/uart/helpers.h", "/* hand-written */\n#define UART_CTL_DIV(v) (((v) >> 16) & 0xffff)\n")
         self.gen_all()
