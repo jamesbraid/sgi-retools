@@ -88,6 +88,7 @@ def existing(root):
     for d, dirs, names in os.walk(base):
         if d == base:
             dirs[:] = [x for x in dirs if x in mine]
+            continue
         for n in names:
             found.append(os.path.relpath(os.path.join(d, n), root))
     if lay.defs_mode == "new":

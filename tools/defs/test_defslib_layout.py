@@ -173,6 +173,7 @@ class ToolsTest(CurrentRepoTest):
         self.gen_all()
         self.write("generated/inventory/functions.tsv", "x\n")
         self.write("generated/version-diffs/a.tsv", "x\n")
+        self.write("generated/version-diffs.tsv", "x\n")
         r = tool(GEN, self.root, "--check")
         self.assertEqual(r.returncode, 0, r.stdout)
         tool(GEN, self.root)
