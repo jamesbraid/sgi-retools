@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate the access tables of the register page (devices/display/bit-layouts.md; evidence/registers.md and docs/registers.md on the old layouts).
+"""Regenerate the access tables of the register page (devices/display/bit-layouts.md).
 
 Usage: retools/tools/voyager/register_table.py [--public-root DIR] [--reuse DIR] [--check]
 
@@ -48,7 +48,7 @@ from _workspace import find_workspace  # noqa: E402
 from _layout import Layout  # noqa: E402
 REPO = find_workspace()
 LAYOUT = Layout(REPO)
-DOC_REL = LAYOUT.pick('devices/display/bit-layouts.md', LAYOUT.pick('evidence/registers.md', 'docs/registers.md'))
+DOC_REL = 'devices/display/bit-layouts.md'
 DOC = os.path.join(REPO, DOC_REL)
 CONFIG = os.path.join(REPO, LAYOUT.inventory_config)
 FUNCS = os.path.join(REPO, LAYOUT.functions_table)

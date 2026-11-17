@@ -27,7 +27,7 @@ allowlists; its path and commit allowlists cannot apply here. With none of
 these the check runs the built-in patterns and says so on stderr.
 
 An exact string that is fine despite matching goes in the workspace's
-leak-allow.txt (tools/config/, else scripts/) as STRING<TAB>REASON; a line
+leak-allow.txt (tools/config/) as STRING<TAB>REASON; a line
 without a reason is an error. An allowed string is removed from a line before
 it is matched, so the rest of the line is still checked. The term and allow
 files, this checker and its tests are never themselves checked, and binary files are skipped.
@@ -51,7 +51,7 @@ BUILTIN = [
     ('agent scratch path', r'(?<![\w.~-])/tmp/claude'),
 ]
 # The checker and its tests spell out the patterns they look for.
-NEVER_CHECKED = ('.re-leak-terms', 'tools/config/leak-allow.txt', 'scripts/leak-allow.txt',
+NEVER_CHECKED = ('.re-leak-terms', 'tools/config/leak-allow.txt',
                  'tools/leakcheck.py', 'tools/test_leakcheck.py')
 
 

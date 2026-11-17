@@ -25,13 +25,11 @@ SPEC.loader.exec_module(ot)  # must not generate anything: main() runs only as a
 SCOPE = {'groups': [{'group': 'g1', 'scope': 'in', 'reason': 'r'}], 'structure_prefixes': ['x'], 'narrow_prefixes': ['y']}
 
 
-# directory names of each layout: where the scope rules, the tables and the coverage page live
-OLD = dict(config='scripts', inventory='docs/inventory', coverage='docs/coverage.md', pages='docs')
-CURRENT = dict(config='tools/config', inventory='evidence/inventory', coverage='evidence/coverage.md',
-               pages='software/kernel')
+# where the scope rules, the tables and the coverage page live
+LAYOUT = dict(config='tools/config', inventory='generated/inventory', coverage='COVERAGE.md')
 
 
-def fake_repo(root, L=OLD):
+def fake_repo(root, L=LAYOUT):
     inv = os.path.join(root, *L['inventory'].split('/'))
     os.makedirs(inv)
     os.makedirs(os.path.join(root, *L['config'].split('/')))
@@ -45,7 +43,7 @@ def fake_repo(root, L=OLD):
 
 @unittest.skipUnless(HAVE_ELFTOOLS, 'pyelftools is not installed')
 class Check(unittest.TestCase):
-    L = OLD
+    L = LAYOUT
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix='test_os_tables-')
@@ -72,7 +70,7 @@ class Check(unittest.TestCase):
         with self.assertRaises(SystemExit) as e:
             ot.check(self.inv)
         self.assertIn('scope.tsv', str(e.exception))
-        self.assertIn('coverage.md', str(e.exception))
+        self.assertIn('COVERAGE.md', str(e.exception))
 
     def test_check_leaves_the_repository_alone(self):
         before = open(os.path.join(self.dir, *self.L['coverage'].split('/'))).read()
@@ -85,11 +83,6 @@ class Check(unittest.TestCase):
             ot.check(self.inv)
         self.assertIn('formats.tsv', str(e.exception))
 
-
-@unittest.skipUnless(HAVE_ELFTOOLS, 'pyelftools is not installed')
-class CheckCurrentLayout(Check):
-    """The same checks on a workspace laid out as devices/, software/, evidence/ and tools/config/."""
-    L = CURRENT
 
     def test_documented_names_come_from_the_pages_of_the_components(self):
         os.makedirs(os.path.join(self.dir, 'software', 'kernel'))

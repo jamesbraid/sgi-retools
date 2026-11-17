@@ -36,6 +36,9 @@ def pick(rows, doc_lines=(), links=((), ()), **options):
         inventory(*rows), names, addrs, set(links[0]), set(links[1]), **options)]
 
 
+SUBJECTS = {"default": "software/firmware", "rules": []}
+
+
 class SelectionTests(unittest.TestCase):
     def test_container_segments_are_offered(self):
         got = pick([
@@ -182,13 +185,16 @@ FUNCTIONS = ("binary\trole\taddress\tsize\tname\tscope\tstatus\trejected\n"
 class FirmwareRoundTests(unittest.TestCase):
     """A whole round on a throwaway workspace: select, render, grade, call-check, commit."""
 
-    INVENTORY = "docs/inventory"        # the old layout; CurrentFirmwareRoundTests runs the same on the current one
-    READINGS = "docs"
+    INVENTORY = "generated/inventory"
+    READINGS = "out"                    # the working copy of the round's document; entries are filed by subject
 
     def run_round(self, image, arch, status="located", from_grade="located", extra=(), mutate=None):
         with tempfile.TemporaryDirectory() as work:
             os.makedirs(os.path.join(work, "root", "fw"))
             os.makedirs(os.path.join(work, self.INVENTORY))
+            os.makedirs(os.path.join(work, "tools", "config"))
+            with open(os.path.join(work, "tools", "config", "readings-subjects.json"), "w") as handle:
+                json.dump(SUBJECTS, handle)
             with open(os.path.join(work, "root", "fw", "img.bin"), "wb") as handle:
                 handle.write(image)
             with open(os.path.join(work, self.INVENTORY, "functions.tsv"), "w") as handle:
@@ -267,18 +273,12 @@ class FirmwareRoundTests(unittest.TestCase):
 
 
 @unittest.skipUnless(have_capstone(), "needs capstone and pyelftools")
-class CurrentFirmwareRoundTests(FirmwareRoundTests):
-    INVENTORY = "evidence/inventory"
-    READINGS = "evidence"
-
-
-@unittest.skipUnless(have_capstone(), "needs capstone and pyelftools")
 class SegmentRoundTests(unittest.TestCase):
     """Rows keyed by a segment of a firmware container render and grade like any other routine."""
 
-    INVENTORY = "docs/inventory"        # the old layout; CurrentSegmentRoundTests runs the same on the current one
-    READINGS = "docs"
-    CONFIG = "scripts"
+    INVENTORY = "generated/inventory"
+    READINGS = "out"
+    CONFIG = "tools/config"
 
     def run_round(self, rows, extra=()):
         import test_firmware_layout as fl
@@ -288,6 +288,8 @@ class SegmentRoundTests(unittest.TestCase):
             os.makedirs(os.path.join(work, self.CONFIG))
             with open(os.path.join(work, self.CONFIG, "inventory-config.json"), "w") as handle:
                 json.dump(fl.CONFIG, handle)
+            with open(os.path.join(work, self.CONFIG, "readings-subjects.json"), "w") as handle:
+                json.dump(SUBJECTS, handle)
             with open(os.path.join(work, self.INVENTORY, "functions.tsv"), "w") as handle:
                 handle.write(HEADER + "".join("\t".join(r) + "\n" for r in rows))
             for name in ("mmio", "ioctls", "tokens"):
@@ -357,12 +359,6 @@ class SegmentRoundTests(unittest.TestCase):
             self.assertEqual(rr.grade_one(text, os.path.join(work, "root"), scratch), (True, ""))
             with self.assertRaisesRegex(ValueError, "layout gives ppc32 at 0xc0000000"):
                 rr.grade_one(bad, os.path.join(work, "root"), scratch)
-
-
-class CurrentSegmentRoundTests(SegmentRoundTests):
-    INVENTORY = "evidence/inventory"
-    READINGS = "evidence"
-    CONFIG = "tools/config"
 
 
 if __name__ == "__main__":

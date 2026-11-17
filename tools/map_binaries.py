@@ -10,7 +10,7 @@ every ELF file, its sections, function symbols and DWARF compilation units.
 Non-ELF files (microcode, tables) are listed by size.
 
 Outputs:
-  - tools/config/binaries_manifest.json (old layout: binaries_manifest.json)
+  - tools/config/binaries_manifest.json
   - Detailed terminal report
 """
 

@@ -1,38 +1,23 @@
-"""Where a workspace keeps its files: the current layout, and the old one while repositories move.
+"""Where a workspace keeps its files.
 
-Every tool that names a workspace path asks this module, so the fallback to the old layout lives in
-one place and goes when the last repository has moved.
+Every tool that names a workspace path asks this module. Only the hardware definitions still have
+an old shape (defs/<unit>*.toml, gen/...), for a repository that has not adopted devices/ and
+formats/: `defs_mode` decides it once for the whole repository, so one run never mixes the two trees.
 
-    current                              old
-    devices/<unit>/registers*.toml       defs/<unit>*.toml
+    devices/<unit>/registers*.toml       old: defs/<unit>*.toml
     formats/<name>/format.toml           (none)
-    generated/{c,rust,python,json,xml}   gen/{c,rust,py,json,genxml}
-    devices/<unit>/registers.md          gen/docs/<unit>.md
-    tools/config/inventory-config.json   scripts/inventory-config.json
-    tools/config/inventory-root.sha256   scripts/inventory-root.sha256
-    tools/config/inventory-siblings.json scripts/inventory-siblings.json
-    tools/config/binaries_manifest.json  binaries_manifest.json
-    tools/config/defs-check.toml         defs/check.toml
-    generated/inventory/                 evidence/inventory/, then docs/inventory/
-    generated/version-diffs/             evidence/version-diffs/, then docs/version-diffs/
-    generated/personality-diffs/         evidence/personality-diffs/, then docs/personality-diffs/
-    generated/userland-symbols/          evidence/userland-symbols/
-    COVERAGE.md                          evidence/coverage.md, then docs/coverage.md
-    references/<list>.md                 evidence/<list>.md, then docs/<list>.md
-    <subject>/readings/<binary>.md       evidence/routines/, evidence/instruction-readings-*.md,
-                                         evidence/hw-explanations-*.md (docs/ before that)
-    software/ucode/                      ucode/
-    software/kernel/                     kona_kernel/ (kona), mgras_kernel/ (gr4)
-    software/opengl/                     libglcore/
-    software/xsgi/                       ddx/
-    software/irisgl/, software/diags/    irisgl/, diags/
-    software/<component>/<page>          docs/<page>
-    tools/ghidra/                        ghidra/
-
-Reading takes the current path when it exists and the old one otherwise. A path that does not exist
-yet (an output a tool is about to create) is the current one, unless the workspace is plainly on the
-old layout. The hardware definitions are decided once for the whole repository by `defs_mode`, so one
-run never mixes the two trees.
+    generated/{c,rust,python,json,xml}   old: gen/{c,rust,py,json,genxml}
+    devices/<unit>/registers.md          old: gen/docs/<unit>.md
+    tools/config/                        inventory-config.json, inventory-root.sha256, inventory-siblings.json,
+                                         binaries_manifest.json, defs-check.toml (old: defs/check.toml)
+    generated/inventory/, generated/version-diffs/, generated/personality-diffs/, generated/userland-symbols/
+    COVERAGE.md
+    references/<list>.md
+    <subject>/readings/<binary>.md
+    software/<component>/                the component directories callers still name by their old top-level
+                                         names (ucode/, kona_kernel/, mgras_kernel/, libglcore/, ddx/, irisgl/,
+                                         diags/); `software()` maps them
+    tools/ghidra/
 
 A tool's own data and sibling scripts stay relative to its __file__; only workspace paths come here.
 """
@@ -41,11 +26,9 @@ import os
 import re
 
 CONFIG_DIR = 'tools/config'
-OLD_CONFIG_DIR = 'scripts'
 
-# Directories that exist only in a workspace that has moved.
-NEW_MARKERS = ('tools/config', 'evidence', 'devices', 'formats', 'generated', 'platforms', 'software', 'COVERAGE.md')
-OLD_MARKERS = ('defs', 'gen', 'docs', 'scripts')
+# Directories that exist only in a workspace that has moved to subject filing.
+NEW_MARKERS = ('tools/config', 'devices', 'formats', 'generated', 'platforms', 'software', 'COVERAGE.md')
 
 # <stem>[-extra | .<rev>].toml inside devices/<unit>/ (stem registers) or formats/<name>/ (stem format)
 SOURCE_RE = re.compile(r'^(?P<stem>registers|format)(?:(?P<extra>-extra)|\.(?P<rev>[a-z][a-z0-9_]*))?\.toml$')
@@ -59,7 +42,7 @@ GEN_DIRS = {
 }
 GEN_ROOT = {'new': 'generated', 'old': 'gen'}
 
-# Old top-level component directory -> the software/ component that took its files.
+# Old top-level component name -> the software/ component that took its files.
 SOFTWARE_OLD = {'ucode': 'ucode', 'kona_kernel': 'kernel', 'mgras_kernel': 'kernel', 'libglcore': 'opengl',
                 'ddx': 'xsgi', 'irisgl': 'irisgl', 'diags': 'diags'}
 
@@ -98,43 +81,9 @@ class Layout:
         """True when some directory of the current layout already exists."""
         return any(self.exists(d) for d in NEW_MARKERS)
 
-    @property
-    def moved(self):
-        """True when the workspace shows the current layout, False when it shows only the old one.
-        A workspace with neither (a new one) counts as moved: new files go where they belong."""
-        if self.on_current_layout:
-            return True
-        return not any(self.exists(d) for d in OLD_MARKERS)
-
-    def first(self, *candidates):
-        """The first candidate that exists, else the path a new file belongs at: the first candidate when the
-        workspace is on the current layout, the last one otherwise."""
-        for c in candidates:
-            if self.exists(c):
-                return c
-        if not self.moved:
-            return candidates[-1]
-        # a workspace part-way through the move to subject filing keeps writing where its files are
-        if self.exists('evidence') and not self.exists('COVERAGE.md') and not self.exists('generated/inventory'):
-            for c in candidates:
-                if c.startswith('evidence/'):
-                    return c
-        return candidates[0]
-
-    def pick(self, new, old):
-        """The path to read: the current one if it exists, else the old one if that does, else the path
-        a new file belongs at (current, unless the workspace is on the old layout)."""
-        if self.exists(new):
-            return new
-        if self.exists(old):
-            return old
-        return new if self.moved else old
-
     # ------------------------------------------------------------ tool configuration
-    def config(self, name, old=None):
-        """tools/config/NAME, else scripts/NAME (else NAME at the top, for `old`='' )."""
-        old_rel = '%s/%s' % (OLD_CONFIG_DIR, name) if old is None else (old or name)
-        return self.pick('%s/%s' % (CONFIG_DIR, name), old_rel)
+    def config(self, name):
+        return '%s/%s' % (CONFIG_DIR, name)
 
     @property
     def inventory_config(self):
@@ -150,7 +99,7 @@ class Layout:
 
     @property
     def binaries_manifest(self):
-        return self.config('binaries_manifest.json', old='binaries_manifest.json')
+        return self.config('binaries_manifest.json')
 
     @property
     def scope_file(self):
@@ -158,32 +107,31 @@ class Layout:
 
     @property
     def defs_check_file(self):
-        return self.pick('%s/defs-check.toml' % CONFIG_DIR, 'defs/check.toml')
+        return 'defs/check.toml' if self.defs_mode == 'old' else '%s/defs-check.toml' % CONFIG_DIR
 
     @property
     def legacy_dropped_file(self):
-        return self.pick('%s/defs-legacy-dropped.txt' % CONFIG_DIR, 'defs/legacy-dropped.txt')
+        return 'defs/legacy-dropped.txt' if self.defs_mode == 'old' else '%s/defs-legacy-dropped.txt' % CONFIG_DIR
 
     # ------------------------------------------------------------ software components
     def software(self, rel):
-        """A path written for the old layout (ucode/KONA/arm1.u, kona_kernel/disasm, libglcore/asm/...)
-        as it is in this workspace: under software/<component>/ when that exists, else as written."""
+        """A path written with an old top-level component name (ucode/KONA/arm1.u, kona_kernel/disasm,
+        libglcore/asm/...) as it is under software/<component>/."""
         head, sep, rest = rel.partition('/')
         comp = SOFTWARE_OLD.get(head)
         if comp is None:
             return rel
-        base = self.pick('software/' + comp, head)
-        return base + sep + rest
+        return 'software/' + comp + sep + rest
 
     def page(self, name, component):
-        """A documentation page or data file that lived in docs/ and now sits with its component."""
-        return self.pick('software/%s/%s' % (component, name), 'docs/' + name)
+        """A documentation page or data file that sits with its component."""
+        return 'software/%s/%s' % (component, name)
 
     def header(self, name):
-        """A hand-written header: devices/<unit>/NAME in the current layout, NAME at the top of the old one."""
+        """A hand-written header: devices/<unit>/NAME."""
         for p in sorted(glob.glob(self.path('devices/*/' + name))):
             return os.path.relpath(p, self.root)
-        return name if self.exists(name) or not self.moved else 'devices/%s/%s' % (name.split('.')[0].lower(), name)
+        return 'devices/%s/%s' % (name.split('.')[0].lower(), name)
 
     @property
     def ge_header(self):
@@ -191,47 +139,44 @@ class Layout:
         return self.header('GE.h')
 
     def ghidra(self, rel):
-        """A path inside the Ghidra tree: tools/ghidra/ in the current layout, ghidra/ in the old one."""
-        return self.pick('tools/ghidra/' + rel, 'ghidra/' + rel)
+        """A path inside the Ghidra tree."""
+        return 'tools/ghidra/' + rel
 
     def doc_pages(self):
-        """Every prose page of the workspace: the component and device pages of the current layout,
-        else docs/*.md."""
+        """Every prose page of the workspace: the component and device pages and the readings."""
         pages = []
-        for pat in ('software/*/*.md', 'devices/*/*.md', 'formats/*/*.md', 'evidence/*.md', 'questions/*.md',
+        for pat in ('software/*/*.md', 'devices/*/*.md', 'formats/*/*.md', 'questions/*.md',
                     'references/*.md', 'COVERAGE.md'):
             pages.extend(glob.glob(self.path(pat)))
-        pages.extend(self.path(p) for p in self.reading_pages() if p.split('/')[0] != 'evidence')
+        pages.extend(self.path(p) for p in self.reading_pages())
         # registers.md, registers.<rev>.md, registers-extra.md and format.md are generated from the
         # register maps, as gen/docs/ was; they were never among docs/*.md
-        pages = [p for p in pages if not GENERATED_PAGE.match(os.path.basename(p))]
-        return sorted(pages) or sorted(glob.glob(self.path('docs/*.md')))
+        return sorted(p for p in pages if not GENERATED_PAGE.match(os.path.basename(p)))
 
     # ------------------------------------------------------------------ evidence
     @property
     def inventory_dir(self):
-        return self.first('generated/inventory', 'evidence/inventory', 'docs/inventory')
+        return 'generated/inventory'
 
     @property
     def coverage_file(self):
-        return self.first('COVERAGE.md', 'evidence/coverage.md', 'docs/coverage.md')
+        return 'COVERAGE.md'
 
     @property
     def version_diffs_dir(self):
-        return self.first('generated/version-diffs', 'evidence/version-diffs', 'docs/version-diffs')
+        return 'generated/version-diffs'
 
     @property
     def personality_diffs_dir(self):
-        return self.first('generated/personality-diffs', 'evidence/personality-diffs', 'docs/personality-diffs')
+        return 'generated/personality-diffs'
 
     @property
     def userland_symbols_dir(self):
-        return self.first('generated/userland-symbols', 'evidence/userland-symbols', 'docs/userland-symbols')
+        return 'generated/userland-symbols'
 
     def reference(self, name):
-        """A list of what the repository holds and cites (irix-files.md, binaries.md, hinv-codes.tsv): under
-        references/ in the current layout, evidence/ before that, docs/ before that."""
-        return self.first('references/' + name, 'evidence/' + name, 'docs/' + name)
+        """A list of what the repository holds and cites (irix-files.md, binaries.md, hinv-codes.tsv)."""
+        return 'references/' + name
 
     @property
     def audits_file(self):
@@ -242,41 +187,20 @@ class Layout:
         return self.inventory_dir + '/functions.tsv'
 
     def reading_pages(self):
-        """Repository-relative paths of every page of per-routine readings: <subject>/readings/<binary>.md,
-        and the batch files of the layout before it (evidence/routines/, evidence/instruction-readings-*.md,
-        evidence/hw-explanations-*.md, the same under docs/)."""
+        """Repository-relative paths of every page of per-routine readings: <subject>/readings/<binary>.md."""
         found = []
         for top in ('devices', 'platforms', 'formats', 'software'):
             for dirpath, dirs, files in os.walk(self.path(top)):
                 if os.path.basename(dirpath) == 'readings':
                     found += [os.path.relpath(os.path.join(dirpath, f), self.root) for f in files if f.endswith('.md')]
-        for d in ('evidence', 'docs'):
-            for pat in ('routines/*.md', 'instruction-readings-*.md', 'hw-explanations-*.md'):
-                found += [os.path.relpath(p, self.root) for p in glob.glob(self.path(d + '/' + pat))]
         return sorted(found)
 
-    @property
-    def batch_layout(self):
-        """True while readings are still filed by agent batch (evidence/ or docs/), not by binary."""
-        pages = self.reading_pages()
-        return bool(pages) and all(p.split('/')[0] in ('evidence', 'docs') for p in pages)
-
-    @property
-    def routines_dir(self):
-        return self.pick('evidence/routines', 'docs/routines')
-
-    @property
-    def readings_dir(self):
-        """The directory that holds the batch instruction-reading pages, in a workspace that still files
-        readings by batch (evidence/ or docs/)."""
-        for d in ('evidence', 'docs'):
-            if glob.glob(self.path(d + '/instruction-readings-*.md')):
-                return d
-        return 'evidence' if self.moved else 'docs'
-
     def census_dir(self, name):
-        """Where a chip's census tables live: devices/<name>/census, else chips/<name>/census."""
-        return self.pick('devices/%s/census' % name, 'chips/%s/census' % name)
+        """Where a chip's census tables live: devices/<name>/census, else chips/<name>/census (a repository
+        that still has the old register-map shape)."""
+        new = 'devices/%s/census' % name
+        old = 'chips/%s/census' % name
+        return old if not self.exists(new) and self.exists(old) else new
 
     # ------------------------------------------------------- hardware definitions
     def register_sources(self):

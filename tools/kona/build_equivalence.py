@@ -58,10 +58,9 @@ FIFO = re.compile(r'^(?:.*,)?16384\(zero\)$')
 IMM_OPS = {'li', 'ori', 'andi', 'xori', 'slti', 'sltiu', 'addiu', 'daddiu'}
 
 
-# The functions table names a page by its path, which depends on the layout it was written under.
-DRIVER_DOCS = tuple(prefix + name for prefix in ('software/opengl/', 'docs/')
-                    for name in ('libglcore-driver-functions.md', 'libglcore-functions.md',
-                                 'libglcore-get-functions.md'))
+# The functions table names a page by its path.
+DRIVER_DOCS = tuple('software/opengl/' + name for name in ('libglcore-driver-functions.md', 'libglcore-functions.md',
+                                                           'libglcore-get-functions.md'))
 
 
 def n32_scope():

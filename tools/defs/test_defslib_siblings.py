@@ -116,13 +116,6 @@ class SiblingTest(CurrentRepoTest):
         self.assertEqual(fails, [])
         self.assertIn("does not load", notes[0])
 
-    def test_pins_in_the_old_place_are_read(self):
-        shutil.move(self.pins, self.path("tools/config/old-pins"))
-        os.makedirs(self.path("scripts"))
-        shutil.move(self.path("tools/config/old-pins"), self.path("scripts/inventory-siblings.json"))
-        fails, _ = self.run_siblings({"other": self.sib})
-        self.assertTrue(fails)
-
     def test_the_check_runs_inside_defs_check(self):
         subprocess.run([sys.executable, GEN, "--root", self.root], check=True, capture_output=True)
         r = tool(CHECK, self.root, "--sibling", "other=%s" % self.sib)

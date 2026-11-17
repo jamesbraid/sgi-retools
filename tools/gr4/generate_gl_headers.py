@@ -14,8 +14,7 @@ from _layout import Layout  # noqa: E402
 from _workspace import find_workspace  # noqa: E402
 REPO_ROOT = Path(find_workspace())
 _LAYOUT = Layout(str(REPO_ROOT))
-# The Khronos registry sits in references/code/ now, and at the top of the old layout.
-GL_XML = REPO_ROOT / _LAYOUT.pick("references/code/opengl-registry", "OpenGL-Registry") / "xml" / "gl.xml"
+GL_XML = REPO_ROOT / "references/code/opengl-registry" / "xml" / "gl.xml"
 OUTPUT_DIR = REPO_ROOT / _LAYOUT.software("libglcore") / "include"
 
 # SGI IRIX 6.5.0 libGLcore.so exported extensions

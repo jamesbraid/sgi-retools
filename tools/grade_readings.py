@@ -767,13 +767,8 @@ def needs_review(doc, workspace):
 
 
 def is_routines_file(doc, workspace):
-    """Whether DOC is a routines file of the workspace: one the inventory config lists in review_required,
-    or one under evidence/routines/ (docs/routines/ on the old layout)."""
-    from _layout import Layout
-    rel = os.path.relpath(os.path.abspath(doc), workspace)
-    routines = Layout(workspace).routines_dir
-    return needs_review(doc, workspace) or rel.startswith(routines.replace("/", os.sep) + os.sep) \
-        or rel.startswith("docs" + os.sep + "routines" + os.sep)
+    """Whether DOC is a routines file of the workspace: one the inventory config lists in review_required."""
+    return needs_review(doc, workspace)
 
 
 ENTRY_LIKE = re.compile(r"(?:[-*+]|\d+\.|#{1,6})\s")
@@ -1169,7 +1164,7 @@ def main(argv=None):
     parser.add_argument("--batch", metavar="K/M",
                         help="with --review-pack, the Kth of M equal slices of the chosen entries (K from 1)")
     parser.add_argument("--inventory", metavar="FUNCTIONS_TSV",
-                        help="functions table for --check-doc (default: the workspace's generated/inventory/functions.tsv, else evidence/ or docs/inventory/)")
+                        help="functions table for --check-doc (default: the workspace's generated/inventory/functions.tsv)")
     parser.add_argument("--root", help="directory containing the cited binaries")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--seed", type=int, default=0)

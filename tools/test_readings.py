@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Readings are filed by subject and binary, and refile.py moves a workspace there without losing an entry."""
+"""Readings are filed by subject and binary."""
 import json
 import os
 import shutil
@@ -46,11 +46,6 @@ class Repo(unittest.TestCase):
         self.git("config", "user.email", "t@example.org")
         self.git("config", "user.name", "t")
         self.write("tools/config/readings-subjects.json", json.dumps(RULES))
-        self.write("evidence/routines/t1-x-b000.md", BATCH)
-        self.write("devices/x/README.md", "# X\n\nSee [batch](../../evidence/routines/t1-x-b000.md).\n"
-                   "And [cov](../../evidence/coverage.md).\n")
-        self.write("evidence/coverage.md", "# Coverage map\n\nTallies.\n")
-        self.write("evidence/other.md", "# Other\n\nMore.\n\n## Part\n")
         self.git("add", "-A")
         self.git("commit", "-qm", "start")
 
@@ -93,41 +88,6 @@ class FileEntriesTests(Repo):
         text = self.read("devices/bridge/readings/IP27-pcibr.o.md")
         self.assertEqual(text.count("\n- `"), 3)
         self.assertTrue(text.startswith("# Readings: `IP27/usr/cpu/sysgen/IP27boot/pcibr.o`"))
-
-
-class RefileTests(Repo):
-    def test_apply_moves_splits_and_relinks(self):
-        plan = os.path.join(self.ws, "..", os.path.basename(self.ws) + ".plan")
-        self.addCleanup(lambda: os.path.exists(plan) and os.remove(plan))
-        with open(plan, "w") as f:
-            f.write("split\tevidence/routines/t1-x-b000.md\ncov\tevidence/coverage.md\tevidence/other.md\n")
-        r = subprocess.run([sys.executable, os.path.join(HERE, "refile.py"), "apply", plan, "--repo", self.ws],
-                           capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("entry check ok: 4 entries", r.stdout)
-        self.assertFalse(os.path.exists(os.path.join(self.ws, "evidence/routines/t1-x-b000.md")))
-        page = self.read("devices/bridge/readings/IP27-pcibr.o.md")
-        self.assertLess(page.index("`b`"), page.index("`a`"))       # address order
-        cov = self.read("COVERAGE.md")
-        self.assertTrue(cov.startswith("# Coverage map"))
-        self.assertIn("## Other", cov)
-        self.assertIn("### Part", cov)
-        self.assertIn("(../../COVERAGE.md)", self.read("devices/x/README.md"))
-
-    def test_a_lost_entry_fails_the_check(self):
-        old = ["evidence/routines/t1-x-b000.md"]
-        _readings.file_entries(self.ws, BATCH.replace("- `c` in", "- `z` in"))
-        import refile
-        with self.assertRaises(SystemExit):
-            refile.check(self.ws, old, _readings_pages(self.ws))
-
-
-def _readings_pages(ws):
-    out = []
-    for d, _, files in os.walk(ws):
-        if os.path.basename(d) == "readings":
-            out += [os.path.relpath(os.path.join(d, f), ws) for f in files]
-    return out
 
 
 if __name__ == "__main__":

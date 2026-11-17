@@ -1,7 +1,7 @@
 """One register, one repository: find registers that two sibling repositories both define.
 
 The sibling repositories are the ones named in the inventory-siblings pin file
-(tools/config/inventory-siblings.json, old layout scripts/inventory-siblings.json). Two of
+(tools/config/inventory-siblings.json). Two of
 them describe the same chip when each has a unit of that name, and then each register
 should live in one of them. A register is the same register when the unit name, the address
 space and the offset agree; the names given to it may differ, which is the usual way a

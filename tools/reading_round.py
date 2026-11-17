@@ -4,8 +4,7 @@
 Selects the uncovered routines of generated/inventory/functions.tsv, renders each with
 render_reading.py, grades each entry alone with grade_readings.py, and files the entries by subject and
 binary (<subject>/readings/<binary>.md, subjects from tools/config/readings-subjects.json), committing
-every 25 entries. A workspace that still files readings by batch gets
-evidence/instruction-readings-REPO-gN.md instead. Never pushes.
+every 25 entries. Never pushes.
 
 Run from the workspace root (it needs `root/`, the binary root, and the retools submodule):
 
@@ -23,7 +22,7 @@ payload that starts inside its file, `--elf` for a mapped ARM ELF, `--binary PAT
 image's rows). Those entries carry an `Architecture:` line so grade_readings can reload them.
 A row keyed by a segment of a firmware container (`l1.bin(l1#2)`, `l2.bin(kernel)`, which the inventory
 writes for a binaries group with a `layout`) needs none of those options: the arch, the bytes and the load
-address come from the workspace's tools/config/inventory-config.json (old layout: scripts/), the same layout code the inventory used.
+address come from the workspace's tools/config/inventory-config.json, the same layout code the inventory used.
 
 The entry it writes is the canonical routine role entry of README-analysis.md, which
 `grade_readings.py DOC --check-doc` lints.
@@ -200,28 +199,6 @@ DEFAULT_INTRO = ("# Instruction readings from hostfacts\n\nThese entries record 
                  "behavior, and each locator names an address in the identified binary.\n")
 
 
-def intro_text(docs_dir, own):
-    """Header of the newest existing instruction-readings doc, up to its first entry."""
-    def key(name):
-        m = re.search(r"-g(\d+)\.md$", name)
-        return int(m.group(1)) if m else -1
-    names = sorted((n for n in os.listdir(docs_dir)
-                    if n.startswith("instruction-readings") and n.endswith(".md") and n != own),
-                   key=key)
-    if names:
-        out = []
-        for line in open(os.path.join(docs_dir, names[-1]), encoding="utf-8").read().splitlines():
-            if line.startswith("- `"):
-                break
-            out.append(line)
-        text = "\n".join(out).rstrip()
-        if text:
-            return text + "\n"
-    return ("# Instruction readings from hostfacts\n\nThese entries record instruction facts "
-            "rendered from the routines below. They describe software behavior, not hardware "
-            "behavior, and each locator names an address in the identified binary.\n")
-
-
 def render_one(row, root, firmware=None, config=None):
     """Render one routine; returns entry text. firmware is the non-MIPS image layout, if any. config is
     the workspace's inventory config: a binary that names a segment of a firmware container
@@ -326,7 +303,7 @@ def one_line(text):
     return re.sub(r"\s+", " ", str(text)).strip()
 
 
-def commit(docs, subject, repo_dir, amend=False):
+def commit(docs, subject, repo_dir):
     docs = [docs] if isinstance(docs, str) else docs
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     env = dict(os.environ, GIT_AUTHOR_NAME="James Braid", GIT_COMMITTER_NAME="James Braid",
@@ -334,9 +311,7 @@ def commit(docs, subject, repo_dir, amend=False):
     email = git("config", "user.email", cwd=repo_dir, check=False).strip() or "jamesb@loreland.org"
     env.update(GIT_AUTHOR_EMAIL=email, GIT_COMMITTER_EMAIL=email)
     subprocess.run(["git", "add", "--"] + docs, cwd=repo_dir, check=True, env=env)
-    cmd = ["git", "commit", "-q", "--amend", "--no-edit", "--date", stamp] if amend else \
-        ["git", "commit", "-q", "-m", subject]
-    subprocess.run(cmd + ["--"] + docs, cwd=repo_dir, check=True, env=env, stdout=subprocess.PIPE)
+    subprocess.run(["git", "commit", "-q", "-m", subject, "--"] + docs, cwd=repo_dir, check=True, env=env, stdout=subprocess.PIPE)
 
 
 def closing_sentence(skips):
@@ -389,13 +364,8 @@ def main(argv=None):
     config = firmware_layout.read_config(repo)
     tag = "%s-%s" % (args.repo_name, args.round)
     lay = Layout(repo)
-    by_subject = not lay.batch_layout
-    readings_dir = lay.readings_dir
-    if by_subject:
-        # a working copy for the full-document checks; the committed entries go to <subject>/readings/
-        doc_rel = os.path.join(args.out_dir, "instruction-readings-%s.md" % tag)
-    else:
-        doc_rel = "%s/instruction-readings-%s.md" % (readings_dir, tag)
+    # a working copy for the full-document checks; the committed entries go to <subject>/readings/
+    doc_rel = os.path.join(args.out_dir, "instruction-readings-%s.md" % tag)
     started = time.time()
 
     rows = read_tsv(head_file(lay.functions_table))
@@ -425,7 +395,7 @@ def main(argv=None):
     scratch = os.path.join(args.out_dir, "entry-%s.tmp.md" % tag)
 
     with open(doc_rel, "w", encoding="utf-8") as handle:
-        handle.write((DEFAULT_INTRO if by_subject else intro_text(readings_dir, os.path.basename(doc_rel))) + "\n")
+        handle.write(DEFAULT_INTRO + "\n")
 
     skips = {"renderer": 0, "grader": 0}
     done = pending = last_committed = 0
@@ -438,21 +408,13 @@ def main(argv=None):
                 handle.write("\n" + closing_sentence(skips) + "\n")
         if pending or final:
             first, last = last_committed + 1, done
-            if by_subject and buffer:
+            if buffer:
                 import _readings
                 pages = _readings.file_entries(repo, "".join(buffer))
                 buffer.clear()
                 if last >= first:
                     commit(pages, "readings: add %s %s readings %d to %d" % (
                         args.repo_name, args.round, first, last), repo)
-            elif by_subject:
-                pass
-            elif last >= first:
-                commit(doc_rel, "%s: add %s %s readings %d to %d" % (
-                    readings_dir, args.repo_name, args.round, first, last), repo)
-            elif final and done:
-                # the last batch was already committed; fold the closing sentence into it
-                commit(doc_rel, "", repo, amend=True)
             last_committed, pending = done, 0
 
     for i, row in enumerate(targets[:args.count], 1):

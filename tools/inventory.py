@@ -14,11 +14,10 @@ pointer, or a command-packet header stored into a buffer: `packets`), where
 command tokens come from, which kernel tables dispatch ioctls, the microcode images, any register
 tables from a specification and the small-data sections (`gp_literals`) in which
 a linked kernel with no GOT keeps its address constants -- is in
-tools/config/inventory-config.json (old layout: scripts/).
+tools/config/inventory-config.json.
 
 It writes eight tables to generated/inventory/ and rewrites the block between the
-inventory markers in COVERAGE.md (earlier layouts: evidence/inventory/ and evidence/coverage.md, then
-docs/inventory/ and docs/coverage.md):
+inventory markers in COVERAGE.md:
 
   binaries.tsv        every file in scope, one row per distinct content
   functions.tsv       one row per (binary, function symbol)
@@ -1000,7 +999,7 @@ def load_siblings(cfg, given, tmp, problems, new_pins, skip=False, update=False)
                             'or run with --update-pins to record the checkout\'s HEAD instead)' %
                             (name, found, commit[:12], pins_rel, found))
             continue
-        # the sibling may be on either layout at its pinned commit
+        # a sibling's pinned commit may predate the move to tools/config/
         cpaths = [CONFIG_DIR + '/inventory-config.json', OLD_CONFIG_DIR + '/inventory-config.json']
         for cpath in cpaths:
             shown = git(src, 'show', '%s:%s' % (commit, cpath))
@@ -1550,7 +1549,9 @@ def strip_generated(lines):
 
 # ===================================================================== inputs
 
-from _layout import CONFIG_DIR, OLD_CONFIG_DIR  # noqa: E402
+from _layout import CONFIG_DIR  # noqa: E402
+
+OLD_CONFIG_DIR = 'scripts'  # sibling pins in use still name commits from before the move to tools/config/
 
 
 def root_manifest(base=None):
@@ -3739,9 +3740,9 @@ def main():
                          'work tree around the current directory, else the current directory)')
     lay = Layout(REPO)
     ap.add_argument('--config', default=os.path.join(REPO, lay.inventory_config),
-                    help='default: tools/config/inventory-config.json, else scripts/inventory-config.json')
+                    help='default: tools/config/inventory-config.json')
     ap.add_argument('--out', default=os.path.join(REPO, lay.inventory_dir),
-                    help='default: generated/inventory, else evidence/inventory, else docs/inventory')
+                    help='default: generated/inventory')
     ap.add_argument('--no-coverage', action='store_true')
     ap.add_argument('--sibling', action='append', default=[], metavar='NAME=PATH',
                     help='read the sibling workspace NAME from PATH instead of the config\'s path (the default is '

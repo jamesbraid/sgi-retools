@@ -193,9 +193,8 @@ class InventoryAddressZero(unittest.TestCase):
 
     def test_zero_address_with_a_section_is_named_and_unresolved_row_is_not(self):
         with tempfile.TemporaryDirectory() as td:
-            os.makedirs(os.path.join(td, 'scripts'))
-            os.makedirs(os.path.join(td, 'docs', 'inventory'))
-            with open(os.path.join(td, 'docs', 'inventory', 'functions.tsv'), 'w') as f:
+            os.makedirs(os.path.join(td, 'generated', 'inventory'))
+            with open(os.path.join(td, 'generated', 'inventory', 'functions.tsv'), 'w') as f:
                 f.write(self.ROWS)
             img = image([])
             img.path, img.member, img.kind = 'root/usr/cpu/sysgen/IP35boot/pcibr.o', None, 'object'

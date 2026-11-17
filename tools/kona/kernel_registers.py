@@ -145,7 +145,7 @@ for (member, func, off, d), n in sorted(rows.items()):
         v = int(off, 16)
         nm = ','.join(sorted(set(names.get(v & 0xfff, []))) if v >= 0x800000 else [])
         win = ('host-interface window' if v >= 0x800000 and v < 0xc00000 else
-               'host-interface alias 0xc00000' if v >= 0xc00000 else 'pipe base offset (XG widget registers, %s)' % of().pick('devices/xg/README.md', 'docs/xg.md'))
+               'host-interface alias 0xc00000' if v >= 0xc00000 else 'pipe base offset (XG widget registers, %s)' % 'devices/xg/README.md')
     else:
         win = 'address from a data structure or reached by a branch (see %s)' % of().page('kernel.md', 'kernel')
     print('\t'.join([member, func, off, d, str(n), win, nm]))

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Write the binaries and scope sections of tools/config/inventory-config.json from tools/config/scope.json
-(scripts/ on the old layout).
+"""Write the binaries and scope sections of tools/config/inventory-config.json from tools/config/scope.json.
 
 Usage: retools/tools/kudzu/gen-scope.py [--check]
 

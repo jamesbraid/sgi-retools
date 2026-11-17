@@ -178,22 +178,20 @@ value are not listed. Tests for the walker and the list parsers: `tools/test_sys
 
 ## Where the tools look
 
-Every tool that names a workspace path asks `tools/_layout.py`, which knows the current layout and the
-old one. A path is the current one when it exists, else the old one when that exists, else the current one
-(the old one when the workspace shows only the old layout).
+Every tool that names a workspace path asks `tools/_layout.py`.
 
-| Item | Current | Old |
-|---|---|---|
-| inventory config, root manifest, sibling pins, scope list | `tools/config/inventory-config.json`, `inventory-root.sha256`, `inventory-siblings.json`, `scope.json` | `scripts/` |
-| binaries manifest (`map_binaries.py`) | `tools/config/binaries_manifest.json` | `binaries_manifest.json` |
-| inventory tables, `functions.tsv`, `audits.tsv` | `generated/inventory/` | `evidence/inventory/`, then `docs/inventory/` |
-| coverage page | `COVERAGE.md` | `evidence/coverage.md`, then `docs/coverage.md` |
-| lists of what the repository holds (`irix-files.md`, binaries, firmware versions) | `references/` | `evidence/`, then `docs/` |
-| version and personality diffs, userland symbol tables | `generated/version-diffs/`, `generated/personality-diffs/`, `generated/userland-symbols/` | `evidence/`, then `docs/` |
-| routine role and reading pages (`reading_round.py`, `rerender_mismatches.py`) | `<subject>/readings/<binary>.md` | `evidence/routines/`, `evidence/instruction-readings-*.md`, `evidence/hw-explanations-*.md`, then `docs/` |
-| census tables (`chips/`) | `devices/<chip>/census/` | `chips/<chip>/census/` |
-| register maps, their output and settings (`defs/`) | see [defs/README.md](defs/README.md) | `defs/`, `gen/` |
-| submodules `setup-clone.sh` initialises | `references/code/<name>` | `<name>` |
+| Item | Path |
+|---|---|
+| inventory config, root manifest, sibling pins, scope list | `tools/config/inventory-config.json`, `inventory-root.sha256`, `inventory-siblings.json`, `scope.json` |
+| binaries manifest (`map_binaries.py`) | `tools/config/binaries_manifest.json` |
+| inventory tables, `functions.tsv`, `audits.tsv` | `generated/inventory/` |
+| coverage page | `COVERAGE.md` |
+| lists of what the repository holds (`irix-files.md`, binaries, firmware versions) | `references/` |
+| version and personality diffs, userland symbol tables | `generated/version-diffs/`, `generated/personality-diffs/`, `generated/userland-symbols/` |
+| routine role and reading pages (`reading_round.py`, `rerender_mismatches.py`) | `<subject>/readings/<binary>.md` |
+| census tables (`chips/`) | `devices/<chip>/census/` (`chips/<chip>/census/` in a repository with the old register-map shape) |
+| register maps, their output and settings (`defs/`) | see [defs/README.md](defs/README.md); a repository with only `defs/` keeps the old `defs/`, `gen/` shape |
+| submodules `setup-clone.sh` initialises | `references/code/<name>` |
 
 A sibling workspace is read at its pinned commit on whichever layout it had then, so a repository that
 has moved can still be compared with one that has not. The workspace itself is `--repo DIR`, else

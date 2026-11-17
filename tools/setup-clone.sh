@@ -5,19 +5,17 @@
 #
 # Run it from inside the clone. It
 #   - clones the sibling repositories named in tools/config/inventory-siblings.json
-#     (scripts/inventory-siblings.json on the old layout) into .cache/siblings/, each
-#     at the commit pinned there;
+#     into .cache/siblings/, each at the commit pinned there;
 #   - initialises the retools submodule (the shared tooling) at the pinned commit;
 #   - initialises the public-source submodules the tools read (m2c, spimdisasm
-#     and ogl-sample, under references/code/ or at the top of an old layout, where
-#     this repository has them; --submodules picks others by name, `all` takes
-#     every one, which is several gigabytes);
+#     and ogl-sample, under references/code/, where this repository has them;
+#     --submodules picks others by name, `all` takes every one, which is several
+#     gigabytes);
 #   - checks that root/ exists, linking it to DIR when --root is given.
 #
 # The IRIX files themselves are not in the repository and not downloadable
 # from here. Copy the paths in the `files` block of references/irix-files.md
-# (evidence/irix-files.md or IRIX_FILES.md on the older layouts) from your own
-# IRIX 6.5.30 install or media into root/, keeping the directory layout.
+# from your own IRIX 6.5.30 install or media into root/, keeping the directory layout.
 #
 # Siblings are cloned from the same place as this repository: the URL of the
 # `origin` remote with its last component swapped for the sibling's name.
@@ -45,7 +43,6 @@ if [ -f .gitmodules ] && git ls-files --stage -- retools | grep -q '^160000'; th
 fi
 
 pins=tools/config/inventory-siblings.json
-[ -f "$pins" ] || pins=scripts/inventory-siblings.json
 if [ -f "$pins" ]; then
     list=$(python3 -c '
 import json, sys
@@ -81,12 +78,10 @@ if [ -f .gitmodules ]; then
                 # only paths that are recorded as submodules in the tree
                 if git ls-files --stage -- "references/code/$n" | grep -q '^160000'; then
                     subs="$subs references/code/$n"
-                elif git ls-files --stage -- "$n" | grep -q '^160000'; then
-                    subs="$subs $n"
                 fi
             done
         fi
-        # a name given on the command line means references/code/NAME once the repository has moved
+        # a name given on the command line means references/code/NAME
         mapped=
         # shellcheck disable=SC2086
         for n in $subs; do
@@ -113,6 +108,6 @@ if [ -d root ]; then
     printf 'root/ present: %s\n' "$(cd root && pwd -P)"
 else
     mkdir root
-    printf 'root/ is empty. Fill it from your own IRIX 6.5.30 install as references/irix-files.md (evidence/irix-files.md or IRIX_FILES.md on the older layouts) describes.\n'
+    printf 'root/ is empty. Fill it from your own IRIX 6.5.30 install as references/irix-files.md describes.\n'
 fi
 printf 'Run a tool with: retools/tools/re-run python3 retools/tools/inventory.py\n'

@@ -439,9 +439,9 @@ class CheckDoc(unittest.TestCase):
     def test_review_is_read_from_the_workspace_config(self):
         directory = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, directory)
-        os.makedirs(os.path.join(directory, "scripts"))
+        os.makedirs(os.path.join(directory, "tools", "config"))
         os.makedirs(os.path.join(directory, "docs", "routines"))
-        with open(os.path.join(directory, "scripts", "inventory-config.json"), "w") as handle:
+        with open(os.path.join(directory, "tools", "config", "inventory-config.json"), "w") as handle:
             handle.write('{"review_required": ["docs/routines/t2-*.md"]}')
         self.assertTrue(grade.needs_review(os.path.join(directory, "docs", "routines", "t2-a.md"), directory))
         self.assertFalse(grade.needs_review(os.path.join(directory, "docs", "routines", "r3.md"), directory))
@@ -505,13 +505,13 @@ class CheckDoc(unittest.TestCase):
         problems, out = self.lint(text, table=False, routines=True)
         self.assertEqual(problems, 0, out)
 
-    def test_routines_file_is_read_from_the_config_or_the_directory(self):
+    def test_routines_file_is_read_from_the_config(self):
         directory = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, directory)
-        os.makedirs(os.path.join(directory, "scripts"))
-        with open(os.path.join(directory, "scripts", "inventory-config.json"), "w") as handle:
+        os.makedirs(os.path.join(directory, "tools", "config"))
+        with open(os.path.join(directory, "tools", "config", "inventory-config.json"), "w") as handle:
             handle.write('{"review_required": ["notes/t2-*.md"]}')
-        for rel, expect in (("docs/routines/r3.md", True), ("notes/t2-a.md", True), ("notes/other.md", False)):
+        for rel, expect in (("docs/routines/r3.md", False), ("notes/t2-a.md", True), ("notes/other.md", False)):
             self.assertEqual(grade.is_routines_file(os.path.join(directory, rel), directory), expect, rel)
 
     def test_a_heading_with_a_paragraph_has_no_problem(self):
@@ -830,8 +830,8 @@ class FirmwareFacts(unittest.TestCase):
         self.root = os.path.join(self.directory, "root")
         fl.write_root(self.root, {"fw/l1.bin": fl.l1_container(bytes.fromhex(self.CF)),
                                   "fw/l2.bin": fl.l2_container(bytes.fromhex(self.PPC), b"")})
-        os.mkdir(os.path.join(self.directory, "scripts"))
-        with open(os.path.join(self.directory, "scripts", "inventory-config.json"), "w") as handle:
+        os.makedirs(os.path.join(self.directory, "tools", "config"))
+        with open(os.path.join(self.directory, "tools", "config", "inventory-config.json"), "w") as handle:
             json.dump(fl.CONFIG, handle)
         self.doc = os.path.join(self.directory, "b.md")
         self.table = os.path.join(self.directory, "functions.tsv")

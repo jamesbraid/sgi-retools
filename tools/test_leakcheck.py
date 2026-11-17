@@ -181,12 +181,6 @@ class AllowTest(LeakTest):
         self.assertNotIn("a.md", r.stdout)
         self.assertIn("b.md:1", r.stdout)
 
-    def test_old_layout_allow_file(self):
-        self.write("scripts/leak-allow.txt", "/storage/old\treason\n")
-        self.write("a.md", "/storage/old\n")
-        self.commit()
-        self.assertEqual(self.leak().returncode, 0)
-
     def test_allow_line_needs_a_reason(self):
         self.write("tools/config/leak-allow.txt", "/storage/x\n")
         self.write("a.md", "ok\n")

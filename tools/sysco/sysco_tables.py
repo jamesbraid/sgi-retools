@@ -39,17 +39,16 @@ from _layout import Layout  # noqa: E402
 REPO = find_workspace()
 LAY = Layout(REPO)
 ROOT = os.path.join(REPO, 'root')
-# Notes and tables of the L1 firmware: software/firmware/l1 on the current layout, docs/l1 on the old one.
-L1_DIR = LAY.pick('software/firmware/l1', 'docs/l1')
-MOVED = L1_DIR != 'docs/l1'
+# Notes and tables of the L1 firmware.
+L1_DIR = 'software/firmware/l1'
 INVENTORY_DIR = LAY.inventory_dir
 COVERAGE_FILE = LAY.coverage_file
-VERSIONS_PAGE = LAY.reference('firmware-versions.md') if MOVED else 'docs/firmware-versions.md'
+VERSIONS_PAGE = LAY.reference('firmware-versions.md')
 VERSION_DIFFS_DIR = LAY.version_diffs_dir
 PERSONALITY_DIFFS_DIR = LAY.personality_diffs_dir
 # Directories whose .md and .tsv files a hex string may be cited in.
-DOC_ROOTS = ('devices', 'platforms', 'formats', 'software', 'questions', 'evidence', 'references/documents',
-             VERSION_DIFFS_DIR, PERSONALITY_DIFFS_DIR) if MOVED else ('docs',)
+DOC_ROOTS = ('devices', 'platforms', 'formats', 'software', 'questions', 'references/documents',
+             VERSION_DIFFS_DIR, PERSONALITY_DIFFS_DIR)
 GENERATED_PAGE = re.compile(r'^(registers|format)(-extra|\.[a-z][a-z0-9_]*)?\.md$')
 OUT = os.path.join(REPO, INVENTORY_DIR)
 if '--out' in sys.argv:
@@ -101,8 +100,7 @@ def doc_text():
     paths = []
     for d in DOC_ROOTS:
         paths += glob.glob(os.path.join(REPO, d, '**', '*'), recursive=True)
-    if MOVED:
-        paths += glob.glob(os.path.join(REPO, 'references', '*'))     # the lists of what the repository holds
+    paths += glob.glob(os.path.join(REPO, 'references', '*'))     # the lists of what the repository holds
     for p in sorted(paths):
         rel = os.path.relpath(p, REPO)
         # the generated register tables are not notes

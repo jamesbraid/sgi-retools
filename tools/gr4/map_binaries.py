@@ -118,8 +118,7 @@ def main():
         'libglcore': sorted(glob.glob(sw('libglcore/*.so'))),
         'ddx': sorted(glob.glob(sw('ddx/*.so'))),
         'irisgl': sorted(glob.glob(sw('irisgl/*.so'))),
-        # tools/ge11dump is the file itself; the old layout kept it in a directory of that name.
-        'ge11dump': sorted(glob.glob('tools/ge11dump' if of().exists('tools/ge11dump') else 'ge11dump/*')),
+        'ge11dump': sorted(glob.glob('tools/ge11dump')),
         'ucode': sorted(glob.glob(sw('ucode/*')))
     }
     
