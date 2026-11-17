@@ -51,7 +51,7 @@ def do_split(repo, old, subj, done, stray_log):
 
 
 def address(lines):
-    m = re.search(r' at (0x[0-9a-fA-F]+)', lines[0])
+    m = re.search(r' at `?(0x[0-9a-fA-F]+)', lines[0])
     return int(m.group(1), 16) if m else 0
 
 
