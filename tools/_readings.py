@@ -13,7 +13,7 @@ import os
 import re
 
 BULLET = re.compile(r'^- `[^`]*` in `([^`]+)`')
-HEADING = re.compile(r'^#{3,6} (?:`(?:[^`]*` in `)?([^`]+)`(?: at 0x[0-9a-fA-F]+)?|([^\s`]+/[^\s`]+) at 0x[0-9a-fA-F]+)')
+HEADING = re.compile(r'^#{3,6} (?:`(?:[^`]*` in `)?([^`]+)`(?: at 0x[0-9a-fA-F]+)?|([^\s`]+/[^\s`]+)(?: at)? 0x[0-9a-fA-F]+)')
 AT_HEADING = re.compile(r'^#{2,6} `(?:[^`]*` in `)?([^`]+)` at `0x[0-9a-fA-F]+`')
 EXACT_BINARY = re.compile(r'^\s*Exact binary: `([^`]+)`')
 ANY_HEADING = re.compile(r'^#{1,6}\s')
