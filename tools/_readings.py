@@ -1,7 +1,8 @@
 """Per-routine readings are filed by subject and binary: <subject>/readings/<binary>.md.
 
 An entry is a list item "- `name` in `binary` ..." with its indented lines, or a heading
-"### `name` in `binary` at 0x..." with the text below it. Which subject directory a binary belongs to is
+"### `name` in `binary` at 0x..." (or "### binary at 0x..." when the name is in the text) with the
+text below it. Which subject directory a binary belongs to is
 configuration: tools/config/readings-subjects.json holds ordered rules (a regular expression on the binary
 path and the directory), and a default. `{1}` in a directory is the first group of the rule, lower-cased;
 the default may use it for the platform prefix (IP27/... files under software/kernel/ip27).
@@ -11,7 +12,7 @@ import os
 import re
 
 BULLET = re.compile(r'^- `[^`]*` in `([^`]+)`')
-HEADING = re.compile(r'^#{3,6} `(?:[^`]*` in `)?([^`]+)`(?: at 0x[0-9a-fA-F]+)?')
+HEADING = re.compile(r'^#{3,6} (?:`(?:[^`]*` in `)?([^`]+)`(?: at 0x[0-9a-fA-F]+)?|([^\s`]+/[^\s`]+) at 0x[0-9a-fA-F]+)')
 ANY_HEADING = re.compile(r'^#{1,6}\s')
 LINK_TARGET = re.compile(r'(\]\()([^)\s]*)((?:\s+"[^"]*")?\))')
 REF_DEF = re.compile(r'^(\s*\[[^\]]+\]:\s*)(\S+)(.*)$')
@@ -29,7 +30,7 @@ def parse(text):
         m = BULLET.match(line)
         h = None if m else HEADING.match(line)
         if m or h:
-            cur = (m or h).group(1), [line]
+            cur = (m or h).group(1) or h.group(2), [line]
             kind = 'bullet' if m else 'heading'
             entries.append(cur)
             continue
