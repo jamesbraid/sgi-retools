@@ -3,7 +3,8 @@
 
     retools/tools/re-run python3 retools/tools/docs-index [--repo DIR] [--check]
 
-Covers devices/, platforms/, formats/, software/, questions/ and evidence/. In each, README.md gets a
+Covers devices/, platforms/, formats/, software/, questions/ and, until a workspace has moved to subject
+filing, evidence/. In each, README.md gets a
 table with one row per Markdown page and one per unit subdirectory: a link, the page's own title (its
 first heading) and a one-line summary (the first sentence of its first paragraph, cut to about 120
 characters). A subdirectory with a page of its own (README.md, registers.md or format.md) is one unit

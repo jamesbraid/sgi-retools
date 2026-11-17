@@ -13,10 +13,14 @@ one place and goes when the last repository has moved.
     tools/config/inventory-siblings.json scripts/inventory-siblings.json
     tools/config/binaries_manifest.json  binaries_manifest.json
     tools/config/defs-check.toml         defs/check.toml
-    evidence/inventory/                  docs/inventory/
-    evidence/coverage.md                 docs/coverage.md
-    evidence/routines/                   docs/routines/
-    evidence/instruction-readings-*.md   docs/instruction-readings-*.md
+    generated/inventory/                 evidence/inventory/, then docs/inventory/
+    generated/version-diffs/             evidence/version-diffs/, then docs/version-diffs/
+    generated/personality-diffs/         evidence/personality-diffs/, then docs/personality-diffs/
+    generated/userland-symbols/          evidence/userland-symbols/
+    COVERAGE.md                          evidence/coverage.md, then docs/coverage.md
+    references/<list>.md                 evidence/<list>.md, then docs/<list>.md
+    <subject>/readings/<binary>.md       evidence/routines/, evidence/instruction-readings-*.md,
+                                         evidence/hw-explanations-*.md (docs/ before that)
     software/ucode/                      ucode/
     software/kernel/                     kona_kernel/ (kona), mgras_kernel/ (gr4)
     software/opengl/                     libglcore/
@@ -40,7 +44,7 @@ CONFIG_DIR = 'tools/config'
 OLD_CONFIG_DIR = 'scripts'
 
 # Directories that exist only in a workspace that has moved.
-NEW_MARKERS = ('tools/config', 'evidence', 'devices', 'formats', 'generated', 'platforms', 'software')
+NEW_MARKERS = ('tools/config', 'evidence', 'devices', 'formats', 'generated', 'platforms', 'software', 'COVERAGE.md')
 OLD_MARKERS = ('defs', 'gen', 'docs', 'scripts')
 
 # <stem>[-extra | .<rev>].toml inside devices/<unit>/ (stem registers) or formats/<name>/ (stem format)
@@ -101,6 +105,21 @@ class Layout:
         if self.on_current_layout:
             return True
         return not any(self.exists(d) for d in OLD_MARKERS)
+
+    def first(self, *candidates):
+        """The first candidate that exists, else the path a new file belongs at: the first candidate when the
+        workspace is on the current layout, the last one otherwise."""
+        for c in candidates:
+            if self.exists(c):
+                return c
+        if not self.moved:
+            return candidates[-1]
+        # a workspace part-way through the move to subject filing keeps writing where its files are
+        if self.exists('evidence') and not self.exists('COVERAGE.md') and not self.exists('generated/inventory'):
+            for c in candidates:
+                if c.startswith('evidence/'):
+                    return c
+        return candidates[0]
 
     def pick(self, new, old):
         """The path to read: the current one if it exists, else the old one if that does, else the path
@@ -179,8 +198,10 @@ class Layout:
         """Every prose page of the workspace: the component and device pages of the current layout,
         else docs/*.md."""
         pages = []
-        for pat in ('software/*/*.md', 'devices/*/*.md', 'formats/*/*.md', 'evidence/*.md', 'questions/*.md'):
+        for pat in ('software/*/*.md', 'devices/*/*.md', 'formats/*/*.md', 'evidence/*.md', 'questions/*.md',
+                    'references/*.md', 'COVERAGE.md'):
             pages.extend(glob.glob(self.path(pat)))
+        pages.extend(self.path(p) for p in self.reading_pages() if p.split('/')[0] != 'evidence')
         # registers.md, registers.<rev>.md, registers-extra.md and format.md are generated from the
         # register maps, as gen/docs/ was; they were never among docs/*.md
         pages = [p for p in pages if not GENERATED_PAGE.match(os.path.basename(p))]
@@ -189,15 +210,28 @@ class Layout:
     # ------------------------------------------------------------------ evidence
     @property
     def inventory_dir(self):
-        return self.pick('evidence/inventory', 'docs/inventory')
+        return self.first('generated/inventory', 'evidence/inventory', 'docs/inventory')
 
     @property
     def coverage_file(self):
-        return self.pick('evidence/coverage.md', 'docs/coverage.md')
+        return self.first('COVERAGE.md', 'evidence/coverage.md', 'docs/coverage.md')
 
     @property
-    def routines_dir(self):
-        return self.pick('evidence/routines', 'docs/routines')
+    def version_diffs_dir(self):
+        return self.first('generated/version-diffs', 'evidence/version-diffs', 'docs/version-diffs')
+
+    @property
+    def personality_diffs_dir(self):
+        return self.first('generated/personality-diffs', 'evidence/personality-diffs', 'docs/personality-diffs')
+
+    @property
+    def userland_symbols_dir(self):
+        return self.first('generated/userland-symbols', 'evidence/userland-symbols', 'docs/userland-symbols')
+
+    def reference(self, name):
+        """A list of what the repository holds and cites (irix-files.md, binaries.md, hinv-codes.tsv): under
+        references/ in the current layout, evidence/ before that, docs/ before that."""
+        return self.first('references/' + name, 'evidence/' + name, 'docs/' + name)
 
     @property
     def audits_file(self):
@@ -207,10 +241,34 @@ class Layout:
     def functions_table(self):
         return self.inventory_dir + '/functions.tsv'
 
+    def reading_pages(self):
+        """Repository-relative paths of every page of per-routine readings: <subject>/readings/<binary>.md,
+        and the batch files of the layout before it (evidence/routines/, evidence/instruction-readings-*.md,
+        evidence/hw-explanations-*.md, the same under docs/)."""
+        found = []
+        for top in ('devices', 'platforms', 'formats', 'software'):
+            for dirpath, dirs, files in os.walk(self.path(top)):
+                if os.path.basename(dirpath) == 'readings':
+                    found += [os.path.relpath(os.path.join(dirpath, f), self.root) for f in files if f.endswith('.md')]
+        for d in ('evidence', 'docs'):
+            for pat in ('routines/*.md', 'instruction-readings-*.md', 'hw-explanations-*.md'):
+                found += [os.path.relpath(p, self.root) for p in glob.glob(self.path(d + '/' + pat))]
+        return sorted(found)
+
+    @property
+    def batch_layout(self):
+        """True while readings are still filed by agent batch (evidence/ or docs/), not by binary."""
+        pages = self.reading_pages()
+        return bool(pages) and all(p.split('/')[0] in ('evidence', 'docs') for p in pages)
+
+    @property
+    def routines_dir(self):
+        return self.pick('evidence/routines', 'docs/routines')
+
     @property
     def readings_dir(self):
-        """The directory that holds the instruction-reading pages. Where pages already exist that is
-        decided by them (the current directory wins); otherwise by the layout."""
+        """The directory that holds the batch instruction-reading pages, in a workspace that still files
+        readings by batch (evidence/ or docs/)."""
         for d in ('evidence', 'docs'):
             if glob.glob(self.path(d + '/instruction-readings-*.md')):
                 return d

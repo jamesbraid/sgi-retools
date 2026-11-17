@@ -15,8 +15,8 @@
 #   - checks that root/ exists, linking it to DIR when --root is given.
 #
 # The IRIX files themselves are not in the repository and not downloadable
-# from here. Copy the paths in the `files` block of evidence/irix-files.md
-# (IRIX_FILES.md on the old layout) from your own
+# from here. Copy the paths in the `files` block of references/irix-files.md
+# (evidence/irix-files.md or IRIX_FILES.md on the older layouts) from your own
 # IRIX 6.5.30 install or media into root/, keeping the directory layout.
 #
 # Siblings are cloned from the same place as this repository: the URL of the
@@ -113,6 +113,6 @@ if [ -d root ]; then
     printf 'root/ present: %s\n' "$(cd root && pwd -P)"
 else
     mkdir root
-    printf 'root/ is empty. Fill it from your own IRIX 6.5.30 install as evidence/irix-files.md (IRIX_FILES.md on the old layout) describes.\n'
+    printf 'root/ is empty. Fill it from your own IRIX 6.5.30 install as references/irix-files.md (evidence/irix-files.md or IRIX_FILES.md on the older layouts) describes.\n'
 fi
 printf 'Run a tool with: retools/tools/re-run python3 retools/tools/inventory.py\n'

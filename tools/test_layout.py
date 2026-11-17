@@ -71,7 +71,8 @@ class ConfigTest(LayoutTest):
     def test_an_empty_workspace_gets_the_current_layout(self):
         lay = self.lay()
         self.assertEqual(lay.inventory_config, "tools/config/inventory-config.json")
-        self.assertEqual(lay.inventory_dir, "evidence/inventory")
+        self.assertEqual(lay.inventory_dir, "generated/inventory")
+        self.assertEqual(lay.coverage_file, "COVERAGE.md")
         self.assertEqual(lay.readings_dir, "evidence")
 
 
@@ -85,6 +86,35 @@ class EvidenceTest(LayoutTest):
         self.assertEqual(lay.audits_file, "evidence/inventory/audits.tsv")
         self.assertEqual(lay.coverage_file, "evidence/coverage.md")
         self.assertEqual(lay.routines_dir, "evidence/routines")
+
+    def test_subject_layout(self):
+        for n in ("generated/inventory/functions.tsv", "COVERAGE.md", "software/kernel/ip27/readings/IP27-unix.md",
+                  "devices/bridge/readings/IP27-pcibr.o.md", "evidence/inventory/functions.tsv"):
+            self.touch(n)
+        lay = self.lay()
+        self.assertEqual(lay.inventory_dir, "generated/inventory")
+        self.assertEqual(lay.functions_table, "generated/inventory/functions.tsv")
+        self.assertEqual(lay.audits_file, "generated/inventory/audits.tsv")
+        self.assertEqual(lay.coverage_file, "COVERAGE.md")
+        self.assertEqual(lay.reference("irix-files.md"), "references/irix-files.md")
+        self.assertEqual(lay.reading_pages(), ["devices/bridge/readings/IP27-pcibr.o.md",
+                                               "software/kernel/ip27/readings/IP27-unix.md"])
+        self.assertFalse(lay.batch_layout)
+
+    def test_batch_layout_is_a_workspace_with_only_batch_pages(self):
+        self.assertFalse(self.lay().batch_layout)          # nothing filed yet: file by subject
+        self.touch("evidence/instruction-readings-x-g1.md")
+        self.assertTrue(self.lay().batch_layout)
+        self.touch("devices/bridge/readings/IP27-pcibr.o.md")
+        self.assertFalse(self.lay().batch_layout)
+
+    def test_half_moved_workspace_keeps_writing_to_evidence(self):
+        self.touch("evidence/coverage.md")
+        self.touch("devices/x/README.md")
+        lay = self.lay()
+        self.assertEqual(lay.inventory_dir, "evidence/inventory")
+        self.assertEqual(lay.coverage_file, "evidence/coverage.md")
+        self.assertEqual(lay.reference("irix-files.md"), "evidence/irix-files.md")
 
     def test_old_evidence(self):
         for n in ("docs/inventory/functions.tsv", "docs/coverage.md", "docs/routines/a.md"):
