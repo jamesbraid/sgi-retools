@@ -83,7 +83,11 @@ def existing(root):
     lay = Layout(root)
     found = []
     base = os.path.join(root, lay.gen_root())
-    for d, _dirs, names in os.walk(base):
+    # generated/ also holds tool output (inventory/, version-diffs/, ...) that no unit writes
+    mine = set(lay.gen_dir(k).split("/", 1)[1] for k in ("c", "rust", "py", "json", "xml"))
+    for d, dirs, names in os.walk(base):
+        if d == base:
+            dirs[:] = [x for x in dirs if x in mine]
         for n in names:
             found.append(os.path.relpath(os.path.join(d, n), root))
     if lay.defs_mode == "new":

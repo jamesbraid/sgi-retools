@@ -169,6 +169,15 @@ class ToolsTest(CurrentRepoTest):
         self.assertFalse(os.path.exists(self.path("devices/uart/registers.old.md")))
         self.assertTrue(os.path.isfile(self.path("devices/uart/README.md")))
 
+    def test_tool_output_beside_the_generated_trees_is_not_orphaned(self):
+        self.gen_all()
+        self.write("generated/inventory/functions.tsv", "x\n")
+        self.write("generated/version-diffs/a.tsv", "x\n")
+        r = tool(GEN, self.root, "--check")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        tool(GEN, self.root)
+        self.assertTrue(os.path.isfile(self.path("generated/inventory/functions.tsv")))
+
     def test_hand_written_helpers_are_included_and_scanned(self):
         self.write("devices/uart/helpers.h", "/* hand-written */\n#define UART_CTL_DIV(v) (((v) >> 16) & 0xffff)\n")
         self.gen_all()
