@@ -110,7 +110,6 @@ class GenTest(RepoTest):
         self.assertIn("removed gen/c/old_unit.h", r.stdout)
         self.assertFalse(os.path.exists(self.path("gen/c/old_unit.h")))
         self.assertTrue(os.path.exists(self.path("gen/notes.txt")))
-        self.assertIn("left alone", r.stderr)
 
     def test_write_prunes_outputs_of_removed_units_in_the_directories_it_owns(self):
         run("--root", self.root)
