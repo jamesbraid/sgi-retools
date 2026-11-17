@@ -2,7 +2,7 @@
 
 An entry is a list item "- `name` in `binary` ..." with its indented lines, or a heading
 "### `name` in `binary` at 0x..." (or "### binary at 0x..." when the name is in the text) with the
-text below it, or "## `binary` at `0x...`" (binary path in the heading) or "## `name` at `0x...`" with an
+text below it, or "## `[name` in `]binary` at `0x...`" (binary path in the heading) or "## `name` at `0x...`" with an
 "Exact binary: `binary`" line in the text. Which subject directory a binary belongs to is
 configuration: tools/config/readings-subjects.json holds ordered rules (a regular expression on the binary
 path and the directory), and a default. `{1}` in a directory is the first group of the rule, lower-cased;
@@ -14,7 +14,7 @@ import re
 
 BULLET = re.compile(r'^- `[^`]*` in `([^`]+)`')
 HEADING = re.compile(r'^#{3,6} (?:`(?:[^`]*` in `)?([^`]+)`(?: at 0x[0-9a-fA-F]+)?|([^\s`]+/[^\s`]+) at 0x[0-9a-fA-F]+)')
-AT_HEADING = re.compile(r'^#{2,6} `([^`]+)` at `0x[0-9a-fA-F]+`')
+AT_HEADING = re.compile(r'^#{2,6} `(?:[^`]*` in `)?([^`]+)` at `0x[0-9a-fA-F]+`')
 EXACT_BINARY = re.compile(r'^\s*Exact binary: `([^`]+)`')
 ANY_HEADING = re.compile(r'^#{1,6}\s')
 LINK_TARGET = re.compile(r'(\]\()([^)\s]*)((?:\s+"[^"]*")?\))')
