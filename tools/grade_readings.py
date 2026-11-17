@@ -2,7 +2,7 @@
 """Compare facts-only instruction readings with hostfacts output, or lint a routine-role document.
 
     grade_readings.py DOC --root ROOT [--count N | --routine NAME...]    grade instruction readings
-    grade_readings.py DOC --check-doc [--inventory functions.tsv]         lint evidence/routines/*.md
+    grade_readings.py DOC --check-doc [--inventory functions.tsv]         lint a readings page
     grade_readings.py DOC --check-doc --check-facts [--root ROOT]         also test each entry's claims against its facts
     grade_readings.py DOC --check-doc --check-facts --strict-citations    require and test a citation for every claim
     grade_readings.py DOC --review-pack OUT [--root ROOT]                 entries beside their facts, for a reviewer
@@ -11,7 +11,7 @@
 --check-doc reads DOC the way tools/inventory.py does and reports every routine entry that will not
 reach located or understood, with the reason, plus every heading that looks like a routine header and
 is not one. It exits 1 when it reports anything. It needs no root/. With the workspace's functions
-table (default evidence/inventory/functions.tsv when it exists) it also checks that the header's binary
+table (default: the workspace's functions.tsv when it exists) it also checks that the header's binary
 and address are a row of the table and that a bare file name several builds share can say which build.
 The canonical entry is in README-analysis.md, "Routine role entries".
 
@@ -1169,7 +1169,7 @@ def main(argv=None):
     parser.add_argument("--batch", metavar="K/M",
                         help="with --review-pack, the Kth of M equal slices of the chosen entries (K from 1)")
     parser.add_argument("--inventory", metavar="FUNCTIONS_TSV",
-                        help="functions table for --check-doc (default: the workspace's evidence/inventory/functions.tsv, else docs/inventory/)")
+                        help="functions table for --check-doc (default: the workspace's generated/inventory/functions.tsv, else evidence/ or docs/inventory/)")
     parser.add_argument("--root", help="directory containing the cited binaries")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--seed", type=int, default=0)

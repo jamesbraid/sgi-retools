@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Run one instruction-reading round in a workspace, with no LLM involved.
 
-Selects the uncovered routines of evidence/inventory/functions.tsv, renders each with
-render_reading.py, grades each entry alone with grade_readings.py, and writes
-evidence/instruction-readings-REPO-gN.md, committing every 25 entries. Never pushes.
+Selects the uncovered routines of generated/inventory/functions.tsv, renders each with
+render_reading.py, grades each entry alone with grade_readings.py, and files the entries by subject and
+binary (<subject>/readings/<binary>.md, subjects from tools/config/readings-subjects.json), committing
+every 25 entries. A workspace that still files readings by batch gets
+evidence/instruction-readings-REPO-gN.md instead. Never pushes.
 
 Run from the workspace root (it needs `root/`, the binary root, and the retools submodule):
 
@@ -27,11 +29,11 @@ The entry it writes is the canonical routine role entry of README-analysis.md, w
 `grade_readings.py DOC --check-doc` lints.
 
 Target selection, in order:
-  1. Rows of evidence/inventory/functions.tsv on HEAD with a status at or below --from-grade
+  1. Rows of the inventory's functions.tsv on HEAD with a status at or below --from-grade
      (default named-only: named-only or undocumented; located adds located rows) and scope
      `in` (out:N rows are excluded from coverage on purpose). --hardware-only then keeps only
      the rows rule 5 ranks 1, routines a hardware table names, whatever their role.
-  2. Drop rows that already have an entry header in evidence/*.md, matched on binary + routine
+  2. Drop rows that already have an entry header in a readings page, matched on binary + routine
      (an archive member is part of the binary: lib.a(member.o)) or on binary + address.
   3. Drop rows at address 0x0 with an empty size: the renderer cannot resolve them.
   4. Keep the first row per binary + address (glFoo and glFooEXT share one).
@@ -193,6 +195,11 @@ def head_file(path):
         return open(path, encoding="utf-8").read() if os.path.exists(path) else ""
 
 
+DEFAULT_INTRO = ("# Instruction readings from hostfacts\n\nThese entries record instruction facts "
+                 "rendered from the routines below. They describe software behavior, not hardware "
+                 "behavior, and each locator names an address in the identified binary.\n")
+
+
 def intro_text(docs_dir, own):
     """Header of the newest existing instruction-readings doc, up to its first entry."""
     def key(name):
@@ -319,16 +326,17 @@ def one_line(text):
     return re.sub(r"\s+", " ", str(text)).strip()
 
 
-def commit(doc, subject, repo_dir, amend=False):
+def commit(docs, subject, repo_dir, amend=False):
+    docs = [docs] if isinstance(docs, str) else docs
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     env = dict(os.environ, GIT_AUTHOR_NAME="James Braid", GIT_COMMITTER_NAME="James Braid",
                GIT_AUTHOR_DATE=stamp, GIT_COMMITTER_DATE=stamp)
     email = git("config", "user.email", cwd=repo_dir, check=False).strip() or "jamesb@loreland.org"
     env.update(GIT_AUTHOR_EMAIL=email, GIT_COMMITTER_EMAIL=email)
-    subprocess.run(["git", "add", "--", doc], cwd=repo_dir, check=True, env=env)
+    subprocess.run(["git", "add", "--"] + docs, cwd=repo_dir, check=True, env=env)
     cmd = ["git", "commit", "-q", "--amend", "--no-edit", "--date", stamp] if amend else \
         ["git", "commit", "-q", "-m", subject]
-    subprocess.run(cmd + ["--", doc], cwd=repo_dir, check=True, env=env, stdout=subprocess.PIPE)
+    subprocess.run(cmd + ["--"] + docs, cwd=repo_dir, check=True, env=env, stdout=subprocess.PIPE)
 
 
 def closing_sentence(skips):
@@ -381,17 +389,22 @@ def main(argv=None):
     config = firmware_layout.read_config(repo)
     tag = "%s-%s" % (args.repo_name, args.round)
     lay = Layout(repo)
+    by_subject = not lay.batch_layout
     readings_dir = lay.readings_dir
-    doc_rel = "%s/instruction-readings-%s.md" % (readings_dir, tag)
+    if by_subject:
+        # a working copy for the full-document checks; the committed entries go to <subject>/readings/
+        doc_rel = os.path.join(args.out_dir, "instruction-readings-%s.md" % tag)
+    else:
+        doc_rel = "%s/instruction-readings-%s.md" % (readings_dir, tag)
     started = time.time()
 
     rows = read_tsv(head_file(lay.functions_table))
     link_names, link_addrs = hardware_links(
         *(read_tsv(head_file("%s/%s.tsv" % (lay.inventory_dir, n))) for n in ("mmio", "ioctls", "tokens")))
     lines = []
-    for name in sorted(os.listdir(readings_dir)):
-        if name.endswith(".md") and name != os.path.basename(doc_rel):
-            with open(os.path.join(readings_dir, name), encoding="utf-8") as handle:
+    for page in lay.reading_pages():
+        if os.path.basename(page) != os.path.basename(doc_rel):
+            with open(os.path.join(repo, page), encoding="utf-8") as handle:
                 lines.extend(handle.read().splitlines())
     doc_names, doc_addrs = header_keys(lines)
     targets = select_targets(rows, doc_names, doc_addrs, link_names, link_addrs, args.from_grade,
@@ -412,7 +425,7 @@ def main(argv=None):
     scratch = os.path.join(args.out_dir, "entry-%s.tmp.md" % tag)
 
     with open(doc_rel, "w", encoding="utf-8") as handle:
-        handle.write(intro_text(readings_dir, os.path.basename(doc_rel)) + "\n")
+        handle.write((DEFAULT_INTRO if by_subject else intro_text(readings_dir, os.path.basename(doc_rel))) + "\n")
 
     skips = {"renderer": 0, "grader": 0}
     done = pending = last_committed = 0
@@ -425,7 +438,16 @@ def main(argv=None):
                 handle.write("\n" + closing_sentence(skips) + "\n")
         if pending or final:
             first, last = last_committed + 1, done
-            if last >= first:
+            if by_subject and buffer:
+                import _readings
+                pages = _readings.file_entries(repo, "".join(buffer))
+                buffer.clear()
+                if last >= first:
+                    commit(pages, "readings: add %s %s readings %d to %d" % (
+                        args.repo_name, args.round, first, last), repo)
+            elif by_subject:
+                pass
+            elif last >= first:
                 commit(doc_rel, "%s: add %s %s readings %d to %d" % (
                     readings_dir, args.repo_name, args.round, first, last), repo)
             elif final and done:
@@ -455,6 +477,7 @@ def main(argv=None):
             continue
         with open(doc_rel, "a", encoding="utf-8") as handle:
             handle.write(text)
+        buffer.append(text if text.endswith("\n") else text + "\n")
         done += 1
         pending += 1
         if i % 50 == 0:
