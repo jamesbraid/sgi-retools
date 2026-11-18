@@ -171,6 +171,7 @@ What `defs.toml` held, minus the header list. Everything is optional but `[proje
 [project]
 name = "odsy"
 plugin = "scripts/odsy_checks.py"   # repo-specific checks, see Plugins
+license = "BSD-3-Clause"            # SPDX id stamped on every generated file
 
 [gen]
 profile = "public"                  # or "internal": see Profiles
@@ -292,6 +293,15 @@ The genxml export is proved by `tools/defs/vendor/genxml/gen_pack.py`, an unmodi
 copy of Mesa's Asahi pack generator (MIT; see `vendor/genxml/SOURCE` and `LICENSE`).
 It is never edited: if the dialect needs the export to change, the export changes.
 `genxml_prelude.h` stands in for Mesa's own prelude header.
+
+### The stamp
+
+Every generated file carries, after its first banner line, the licence (`SPDX-License-Identifier`, from
+`[project] license` in `defs-check.toml`; no line when unset), the generator version and the sha256 of the
+unit's source TOML (a base then its overlay, concatenated; for a one-file unit it equals `sha256sum`).
+A file generated before its commit cannot name that commit, so it names its input instead. JSON files
+carry the same as `license`, `generator` and `input_sha256` keys. The crate's `Cargo.toml` and `lib.rs`
+hash every unit. The version (`GENERATOR_VERSION` in `genutil.py`) changes when the form of any output does.
 
 ### Export profiles
 

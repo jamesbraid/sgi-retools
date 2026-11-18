@@ -4,6 +4,10 @@ import re
 from .model import block_of
 
 
+# Bump when the form of any generated file changes; every output carries it (see stamp.py).
+GENERATOR_VERSION = "2"
+
+
 class GenError(Exception):
     """A unit cannot be rendered (a name collision, say)."""
 

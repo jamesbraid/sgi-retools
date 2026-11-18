@@ -198,7 +198,8 @@ EXPORT_PROFILES = ("rust-regs", "c-regfields", "c-clean")
 
 # defs/check.toml
 CHECK = Obj({
-    "project": Obj({"name": Str(minlen=1), "plugin": Str(minlen=1), "regenerate": TEXT}, required=("name",)),
+    "project": Obj({"name": Str(minlen=1), "plugin": Str(minlen=1), "regenerate": TEXT, "license": Str(r"^[A-Za-z0-9.+-]+$")},
+                   required=("name",)),
     "gen": Obj({"profile": Choice("public", "internal"), "forwarding": Choice("on", "off"),
                 "rust_crate": Str(r"^[a-z][a-z0-9_-]*$"),
                 "export": Obj({

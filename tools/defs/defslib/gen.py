@@ -12,7 +12,7 @@ staleness is a byte comparison.
 import os
 import re
 
-from . import gen_c, gen_docs, gen_export, gen_genxml, gen_json, gen_py, gen_rust
+from . import gen_c, gen_docs, gen_export, gen_genxml, gen_json, gen_py, gen_rust, stamp
 from .genutil import GenError
 from .model import publish_profile
 
@@ -44,10 +44,12 @@ def render(repo, profile=None):
     files, errors = {}, []
     forwarding = repo.settings.get("gen", {}).get("forwarding", "on") == "on"
     models = {}
+    st = stamp.Stamper(repo)
     for name, unit in sorted(repo.units.items()):
         m = unit.model if profile == "internal" else publish_profile(unit.model)
         models[name] = m
         src = unit.path
+        before = set(files)
         try:
             c_rel = lay.gen_file("c", name)
             helpers = None
@@ -64,14 +66,17 @@ def render(repo, profile=None):
                 if legacy in files:
                     raise GenError("%s: legacy header %s is also another unit's" % (name, legacy))
                 files[legacy] = gen_c.gen_forwarding(m, src, gen_c.rel_include(legacy, c_rel))
+            for rel in set(files) - before:
+                files[rel] = st.apply(rel, files[rel], name)
         except GenError as e:
             errors.append(str(e))
     if repo.units:
         label = "devices/ and formats/" if new_layout else "defs/"
-        files["%s/Cargo.toml" % lay.gen_dir("rust")] = gen_rust.gen_cargo(repo.settings.get("gen", {}).get("rust_crate"), label)
-        files["%s/src/lib.rs" % lay.gen_dir("rust")] = gen_rust.gen_lib(list(repo.units), label)
+        cargo, lib = "%s/Cargo.toml" % lay.gen_dir("rust"), "%s/src/lib.rs" % lay.gen_dir("rust")
+        files[cargo] = st.apply(cargo, gen_rust.gen_cargo(repo.settings.get("gen", {}).get("rust_crate"), label))
+        files[lib] = st.apply(lib, gen_rust.gen_lib(list(repo.units), label))
     exported, errs = gen_export.render_export(repo, models, gen_export.source_commit(repo.root))
-    files.update(exported)
+    files.update({rel: st.apply(rel, text) for rel, text in exported.items()})
     errors += errs
     return files, errors
 
