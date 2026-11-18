@@ -36,6 +36,11 @@ def check_unit(u, settings=None):
         req(node.get("grade") in GRADES, at, "%s needs a grade (%s)" % (kind, "/".join(GRADES)))
         req(eff_from(u, node, parent) is not None, at, "no `from` on the item, its block or the file")
 
+    for at, node in [(w0, u)] + [("%s.%s" % (w0, n), x) for sect in ("registers", "words") for n, x in u[sect].items()]:
+        req("name_cite" not in node or "name_source" in node, at, "name_cite needs a name_source beside it")
+        req(node.get("name_source") != "public" or node.get("name_cite"), at,
+            "a public name needs name_cite naming the document it comes from")
+
     for n, r in u["registers"].items():
         at = "%s.%s" % (w0, n)
         req(r["access"] in ACCESS, at, "access must be r/w/rw")

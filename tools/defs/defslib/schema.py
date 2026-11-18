@@ -6,7 +6,7 @@ reported with the path of the offending key.
 """
 import re
 
-from .model import ACCESS, GRADES, RE_CONST, RE_LABEL, RE_PREFIX, RE_REG, RE_UNIT, RE_WORD
+from .model import ACCESS, GRADES, NAME_SOURCES, RE_CONST, RE_LABEL, RE_PREFIX, RE_REG, RE_UNIT, RE_WORD
 
 
 class Rule:
@@ -126,6 +126,7 @@ GRADE = Choice(*GRADES)
 UINT = Int(0)
 TEXT = Str()
 SOURCE = Str(minlen=1)
+NAME_SOURCE = Choice(*NAME_SOURCES)
 
 ENUM_VALUE = Obj({"value": UINT, "grade": GRADE, "from": SOURCE, "doc": TEXT}, required=("value", "grade"))
 ENUM_VALUES = Map(RE_LABEL.pattern, ENUM_VALUE, "enum label")
@@ -145,10 +146,11 @@ REGISTER = Obj({
     "reset": Any(UINT, Choice("unknown")), "reset_grade": GRADE, "reset_from": SOURCE,
     "ro": UINT, "w1c": UINT, "cor": UINT, "rsvd": UINT,
     "grade": GRADE, "from": SOURCE, "doc": TEXT, "notes": TEXT, "fields": FIELDS, "tests": TESTS,
+    "name_source": NAME_SOURCE, "name_cite": SOURCE,
 }, required=("offset", "access", "width", "grade"))
 WORD = Obj({
     "width": Int(0, (8, 16, 32, 64)), "grade": GRADE, "from": SOURCE, "doc": TEXT, "notes": TEXT,
-    "type_name": TEXT, "fields": FIELDS, "tests": TESTS,
+    "type_name": TEXT, "fields": FIELDS, "tests": TESTS, "name_source": NAME_SOURCE, "name_cite": SOURCE,
 }, required=("width", "grade"))
 CONSTANT = Obj({
     "value": UINT, "grade": GRADE, "from": SOURCE, "doc": TEXT, "count": Int(2), "stride": Int(1),
@@ -164,6 +166,7 @@ SPACE = Obj({"unit": Choice("byte", "reg"), "doc": TEXT})
 UNIT = Obj({
     "unit": Str(RE_UNIT.pattern), "prefix": Str(RE_PREFIX.pattern), "block": Str(RE_PREFIX.pattern),
     "title": TEXT, "doc": TEXT, "from": SOURCE, "public_from": Arr(Str(minlen=1)),
+    "name_source": NAME_SOURCE, "name_cite": SOURCE,
     "c": C_OPTIONS,
     "spaces": Map(RE_REG.pattern, SPACE, "space name"),
     "enums": Map(RE_LABEL.pattern, Obj({"doc": TEXT, "values": ENUM_VALUES}, required=("values",)), "enum name"),

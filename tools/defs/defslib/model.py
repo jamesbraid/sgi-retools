@@ -21,6 +21,7 @@ import copy
 import re
 
 GRADES = ("established", "inferred", "unknown")
+NAME_SOURCES = ("public", "ours", "imported-unchecked")
 ACCESS = ("r", "w", "rw")
 
 RE_UNIT = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -120,6 +121,15 @@ def eff_from(unit, node, parent=None):
         if n and n.get("from"):
             return n["from"]
     return None
+
+
+def name_source(u, node=None):
+    """(source, citation) of an item's name: the item's own `name_source`, else the unit's, else
+    imported-unchecked. The citation is the one set beside the level that set the source."""
+    for n in (node, u):
+        if n and n.get("name_source"):
+            return n["name_source"], n.get("name_cite", "")
+    return "imported-unchecked", ""
 
 
 def is_public(unit, text):

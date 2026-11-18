@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Checks over the names the generated headers carry.
+
+    defs-names unchecked [--root R] [--count]    list every register, word and field whose name is still imported-unchecked
+
+This is the list the identifier audit before a public release works from. A name is imported-unchecked unless
+its unit or register says `name_source = "public"` (with `name_cite`) or `"ours"`. Exit 0, or 2 when a source
+file does not load.
+"""
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from defslib import loader  # noqa: E402
+from defslib.model import name_source  # noqa: E402
+
+
+def unchecked(root):
+    repo = loader.load_repo(root)
+    rows = []
+    for uname, unit in sorted(repo.units.items()):
+        m = unit.model
+        for sect in ("registers", "words"):
+            for n, x in m[sect].items():
+                if name_source(m, x)[0] != "imported-unchecked":
+                    continue
+                rows.append((uname, n))
+                rows += [(uname, "%s.%s" % (n, f)) for f in x["fields"]]
+    return repo.errors, rows
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    u = sub.add_parser("unchecked")
+    u.add_argument("--root", default=".")
+    u.add_argument("--count", action="store_true", help="print the count per unit only")
+    args = ap.parse_args(argv)
+    errors, rows = unchecked(args.root)
+    for e in errors:
+        print("error: %s" % e, file=sys.stderr)
+    if errors:
+        return 2
+    if args.count:
+        for uname in sorted({r[0] for r in rows}):
+            mine = [r[1] for r in rows if r[0] == uname]
+            print("%s\t%d names (%d registers or words)" % (uname, len(mine), len([x for x in mine if "." not in x])))
+    else:
+        for uname, n in rows:
+            print("%s\t%s" % (uname, n))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

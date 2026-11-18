@@ -10,6 +10,7 @@ sources, check them, write the outputs and prove the outputs build.
 | `defs-check [--build]` | loads the register maps, runs every check, confirms the generated tree is fresh and that no register is defined in two sibling repositories; `--build` also compiles and runs the outputs |
 | `defs-gen [--check] [--profile NAME]` | writes the generated tree and the register tables; `--check` writes nothing and fails on a stale tree; `--profile` limits either to one export profile |
 | `defs-import` | converts a repo's annotated headers (`*_DECODE.h`, census headers) to register-map sources |
+| `defs-names unchecked [--count]` | lists every register, word and field whose name is still `imported-unchecked`, for the identifier audit before a public release |
 | `defs-compare` | compares an old header with its replacement macro by macro with the C compiler |
 | `ci-check` | the one command CI runs: `defs-check --build` when the repo has register maps, the older decode-header path otherwise |
 | `forgejo-workflow.yml` | template for `.forgejo/workflows/re-check.yml` |
@@ -137,6 +138,20 @@ the same-named members of QEMU's `RegisterAccessInfo`: read-only bits, write-1-t
 bits and reserved bits. Omitted means no bit, and a mask is written only where a source states it. The
 `access` letter is a different thing and is not used for them: it records what a driver table says, not
 what the bits do. Only the rust-regs export carries the masks.
+
+### Name provenance
+
+A unit, register or word may say where its name came from, which the identifier audit before a public
+release needs:
+
+```toml
+name_source = "public"                        # public, ours or imported-unchecked
+name_cite = "OpenBSD impact(4) register header"   # required for public: the document that uses the name
+```
+
+A register or word without its own `name_source` takes the unit's; a unit without one is `imported-unchecked`,
+so the default is the cautious answer. `ours` is our own coinage. `defs-names unchecked` lists what is still
+`imported-unchecked`. The field does not change any name.
 
 ### Revision overlays
 
