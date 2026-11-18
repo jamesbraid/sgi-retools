@@ -2,7 +2,7 @@
 """Measure the blend test's frames against the raster rules, and fit the
 colour-interpolation residue of the first panel.
 
-Usage: retools/tools/odsy/odydiags_blend_fit.py [panels|amplify|dither|fit|frame|all]
+Usage: retools/tools/odsy/odydiags_blend_fit.py [panels|amplify|dither|fit|frame|iris|all]
                                      [--image IMAGE]
 
 Needs numpy for fit and frame (for example `uv run --with numpy python
@@ -28,6 +28,9 @@ test are that script's rules (docs/raster.md).
            logic operation: the pixels each candidate leaves different
   frame    the same candidates as one change to the packing of the whole
            frame, counting all nine panels
+  iris     the first panel under the f64, f32 and iris colour models, and
+           the iris model on every panel and on the frames that reproduce
+           exactly (needs numpy; about two minutes)
 
 The results are in docs/blend-residue-fit.md and ucode/runs/odydiags-blend-fit-candidates.txt.
 """
@@ -378,6 +381,153 @@ def cmd_frame(image):
         m.pack = orig
 
 
+# The iris VPro colour path, as written in iris (techomancer/iris main 9bc81b0,
+# src/dev/odyssey/pipe), in its own operation order. f32 steps use numpy
+# scalars so each operation rounds to single as the Rust does.
+IRIS_ONE = 1 << 24          # fixed.rs:16, colour 1.0 in 12.12
+IRIS_W_ONE = 1 << 15        # fixed.rs:20
+
+
+def iris_from_f64(c):
+    """fixed.rs:31-39: a colour in [0, 1] to 12.12 by truncation, 1.0 to MAX."""
+    if not c > 0.0:
+        return 0
+    if c >= 1.0:
+        return IRIS_ONE - 1
+    return min(int(c * IRIS_ONE), IRIS_ONE - 1)
+
+
+def iris_smooth(v, q, cols, px, py, shift=None):
+    """Colour of pixel (PX, PY) of triangle V as iris computes it: integer edge
+    values at the pixel centre in 1/256 pixel units (raster.rs:330-343,
+    357-359), area and its swap to a positive winding (raster.rs:303-316),
+    f32 reciprocal of the area (raster.rs:352) and f32 barycentrics
+    (raster.rs:511-512), 0.15 perspective weights in f32 (interp.rs:54-64),
+    12.4 vertex colours times the weights, shifted back to 12.12
+    (fixed.rs:119-125; vertex colours by fixed.rs:31, setup.rs:443). Returns
+    the 12.12 value as a double, exact, for the packer."""
+    import numpy as np
+    f = np.float32
+    P = [(round(x * 256), round(y * 256)) for x, y in v]
+
+    def edge(a, b, x, y):
+        return (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0])
+
+    area = edge(P[0], P[1], P[2][0], P[2][1])
+    order = [0, 1, 2]
+    if area < 0:
+        order, area = [0, 2, 1], -area
+    Pv = [P[i] for i in order]
+    iw = [f(q[i]) for i in order]                       # setup.rs:507
+    cv = [[iris_from_f64(cols[i][k]) for k in range(4)] for i in order]
+    X, Y = px * 256 + 128, py * 256 + 128
+    inv = f(1.0 / area)                                  # (1/area as f64) as f32
+    l1 = f(edge(Pv[2], Pv[0], X, Y)) * inv
+    l2 = f(edge(Pv[0], Pv[1], X, Y)) * inv
+    w1 = l1 * iw[1]
+    w2 = l2 * iw[2]
+    one = f(1.0)
+    total = ((one - l1) - l2) * iw[0] + w1 + w2
+    if total == 0 or not np.isfinite(total):
+        return [0.0] * 4
+    r = f(IRIS_W_ONE) / total
+
+    def rnd(w):
+        return int(w * r + f(0.5))                       # truncation, as `as i32`
+
+    p1 = min(max(rnd(w1), 0), IRIS_W_ONE)
+    rest = IRIS_W_ONE - p1
+    p2 = min(max(rnd(w2), 0), rest)
+    pw = [rest - p2, p1, p2]
+    out = []
+    for k in range(4):
+        sm = sum((cv[i][k] >> 8) * pw[i] for i in range(3))
+        out.append((sm >> 7) / IRIS_ONE)
+    return out
+
+
+def iris_pack(c, rule):
+    """A colour as iris stores it without a blend: 12.12, clamped, to 12 bits
+    (backend.rs:213-215, setup.rs:570), then to 8 bits by >> 4
+    (backend.rs:424); the same as the top eight bits of the 12.12 value."""
+    out = 0
+    for x in c:
+        out = out << 8 | (min(max(iris_from_f64(x), 0), IRIS_ONE - 1) >> 12) >> 4
+    return out
+
+
+def cmd_iris(image):
+    """The iris model on blend (every panel), then on the frames that
+    reproduce exactly."""
+    import numpy as np
+    px, py, V, Q, C, stored, tri = samples(image)
+    n = len(px)
+
+    def score(out):
+        return int((out != stored).any(1).sum())
+
+    def lim(a):
+        return np.minimum(255, a).astype(int)
+
+    L64, B64 = weights(px, py, V, Q)
+    print(f'panel 0, {n} pixels')
+    print(f'{"f64 exact, floor(256 c)":50s} {score(lim(np.floor(np.einsum("ni,nic->nc", B64, C) * 256))):6d}')
+    f = np.float32
+    V32, Q32, C32 = V.astype(f), Q.astype(f), C.astype(f)
+    x, y = (px + 0.5).astype(f), (py + 0.5).astype(f)
+    x0, y0, x1, y1, x2, y2 = V32[:, 0, 0], V32[:, 0, 1], V32[:, 1, 0], V32[:, 1, 1], V32[:, 2, 0], V32[:, 2, 1]
+    d = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+    a1 = ((x - x0) * (y2 - y0) - (x2 - x0) * (y - y0)) / d
+    a2 = ((x1 - x0) * (y - y0) - (x - x0) * (y1 - y0)) / d
+    w = np.stack([f(1) - a1 - a2, a1, a2], 1) * Q32
+    Bp = w / w.sum(1, keepdims=True)
+    col = np.einsum('ni,nic->nc', Bp, C32).astype(np.float64)
+    print(f'{"f32 plane form, floor(256 c)":50s} {score(lim(np.floor(col * 256))):6d}')
+    A = d
+    e0 = (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1)
+    e1 = (x0 - x2) * (y - y2) - (y0 - y2) * (x - x2)
+    b0, b1 = e0 / A, e1 / A
+    bb = np.stack([b0, b1, f(1) - b0 - b1], 1)
+    qi = (bb * Q32).sum(1)
+    cb = bb * Q32 / qi[:, None]
+    print(f'{"f32 edge distances, area reciprocal (patent)":50s} '
+          f'{score(lim(np.floor(np.einsum("ni,nic->nc", cb, C32).astype(np.float64) * 256))):6d}')
+    out = np.zeros_like(stored)
+    for i in range(n):
+        c12 = iris_smooth(V[i], Q[i], C[i], int(px[i]), int(py[i]))
+        out[i] = [min(max(iris_from_f64(c), 0), IRIS_ONE - 1) >> 16 for c in c12]
+    print(f'{"iris VPro (f32 weights, 12.12 colour, >> 16)":50s} {score(out):6d}  '
+          f'per channel {(out != stored).sum(0).tolist()}')
+    off = max(abs(V * 256 - np.round(V * 256)).max(), 0)
+    print(f'largest distance of a vertex from the 1/256 grid: {off}')
+
+    orig = (m.pack, m.smooth)
+    log = lambda *a: None
+    print('\nwhole frames, iris colour model (pixels differing from the stored frame; baseline in brackets):')
+    try:
+        for name, small, prog in (('points', False, None), ('points', True, (214, 224, 234)),
+                                  ('lines', False, None), ('lines', True, (214, 224, 234)),
+                                  ('triangle', False, None), ('triangle', True, (214, 224, 234)),
+                                  ('alpha', False, None), ('alpha', True, (214, 224, 234)),
+                                  ('checkr3d', True, None), ('blend', False, None), ('blend', True, (214, 224, 234))):
+            m.pack, m.smooth = orig
+            _, _, fr0, st0, _, _, _ = m.build(name, small, image, prog=prog, log=log)
+            base = sum(a != b for a, b in zip(fr0, st0))
+            m.pack, m.smooth = iris_pack, iris_smooth
+            _, _, fr, st, _, _, _ = m.build(name, small, image, prog=prog, log=log)
+            per = per_panel(fr, st) if name == 'blend' and not small else None
+            tot = sum(a != b for a, b in zip(fr, st))
+            line = f'{name:9s} {"small" if small else "large":6s} {tot:7d}  ({base})'
+            if per:
+                line += '  per panel ' + str([per[p][0] for p in range(9)])
+                m.pack, m.smooth = orig
+                _, _, fr0, st0, _, _, _ = m.build(name, small, image, prog=prog, log=log)
+                line += '\n' + ' ' * 40 + 'baseline per panel ' + str([per_panel(fr0, st0)[p][0] for p in range(9)])
+            print(line)
+    finally:
+        m.pack, m.smooth = orig
+
+
 def main():
     args = sys.argv[1:]
     image = os.path.join(m.ROOT, 'ucode', 'diagxform.bin')
@@ -386,7 +536,7 @@ def main():
         image = args[i + 1]
         del args[i:i + 2]
     cmds = {'panels': cmd_panels, 'amplify': cmd_amplify, 'dither': cmd_dither,
-            'fit': cmd_fit, 'frame': cmd_frame}
+            'fit': cmd_fit, 'frame': cmd_frame, 'iris': cmd_iris}
     which = args[0] if args else 'all'
     if which == 'all':
         for name, fn in cmds.items():
