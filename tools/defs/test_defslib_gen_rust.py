@@ -57,6 +57,7 @@ class GenRustTest(RepoTest):
         self.assertIn('name = "regs"', gen_rust.gen_cargo("regs", "defs/"))
         lib = gen_rust.gen_lib(["b", "a"], "defs/")
         self.assertIn("pub mod a;\npub mod b;\n", lib)
+        self.assertIn("\n#![no_std]\n", lib)
 
     @unittest.skipUnless(RUSTC, "no rustc on this host; run in the rust container")
     def test_crate_compiles_and_its_tests_pass(self):

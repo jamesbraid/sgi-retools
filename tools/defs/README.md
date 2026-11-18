@@ -283,7 +283,7 @@ check always runs on the public rendering, so switching profiles needs no new fi
 | Output | Contents |
 |---|---|
 | `generated/c/<unit>.h` | `<BLOCK>_<REG>_OFFSET`, `_COUNT`, `_STRIDE`; `<BLOCK>_<REG>_<FIELD>_SHIFT`, `_MASK`, `_INPLACE`; `<PREFIX>_<WORD>_WIDTH` and word fields the same way; `<field macro>_<LABEL>` for a field's own enum values and `<PREFIX>_<ENUM>_<LABEL>` for shared ones; `<PREFIX>_<NAME>` for constants. Every macro carries its grade. `[c] offset_macro = "bare"` drops `_OFFSET`. |
-| `generated/rust/` | a crate (`Cargo.toml`, `src/lib.rs`, a module per unit): typed field accessors, an enum with an `Other` variant per field that has values, constants, a test per vector |
+| `generated/rust/` | a `#![no_std]` crate with no dependencies (`Cargo.toml`, `src/lib.rs`, a module per unit): typed field accessors, an enum with an `Other` variant per field that has values, constants, a test per vector |
 | `generated/python/<unit>.py` | the layout as tables plus `decode`, `encode`, `describe` and `selftest`, no imports |
 | `generated/json/<unit>.json` | one flat row per register, word, field, enum value and constant |
 | `generated/xml/<unit>.xml` | the genxml dialect Asahi and Panfrost use: `<struct>` per word and register, `<field start size type>`, top-level `<enum>`; grade, source, offset, access, test vectors and constants ride in extra attributes and elements |

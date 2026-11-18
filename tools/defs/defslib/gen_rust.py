@@ -1,4 +1,4 @@
-"""One Rust crate (gen/rust) with a module per unit.
+"""One Rust crate (gen/rust) with a module per unit. It is `#![no_std]` and has no dependencies.
 
 Per register or word: a module with OFFSET, WIDTH, COUNT and STRIDE constants,
 and per field a module with SHIFT, MASK, get and set, plus an enum type with an
@@ -160,4 +160,4 @@ def gen_cargo(name, label):
 
 
 def gen_lib(unit_names, label):
-    return "// %s\n%s" % (banner(label, "", "").strip(), "".join("pub mod %s;\n" % n for n in sorted(unit_names)))
+    return "// %s\n#![no_std]\n%s" % (banner(label, "", "").strip(), "".join("pub mod %s;\n" % n for n in sorted(unit_names)))
