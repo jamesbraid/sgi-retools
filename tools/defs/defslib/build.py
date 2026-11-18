@@ -9,6 +9,7 @@
   export      each file of the export profiles (gen_export.py) compiles: the Rust constants as a library
               with warnings denied, the C macros against a small stand-in for the REG and FIELD macros,
               with a static assertion per register offset and array stride
+  qemu        each QEMU header (gen_qemu.py) compiles against the same stand-in
 
 The paths are the repository's own: generated/{c,python,xml,rust} in the current layout,
 gen/{c,py,genxml,rust} in the old one.
@@ -19,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 
-from . import gen_c, gen_export, gen_genxml
+from . import gen_c, gen_export, gen_genxml, gen_qemu
 from .model import publish_profile
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -106,6 +107,29 @@ def verify_export(repo, models, td, cc, rustc, notes):
     return fails
 
 
+def verify_qemu(repo, models, td, cc):
+    """Each QEMU header compiles against the stand-in registerfields.h."""
+    fails = []
+    cfg = repo.settings.get("gen", {}).get("qemu")
+    if not cfg or not cc:
+        return fails
+    os.makedirs(os.path.join(td, "hw", "core"), exist_ok=True)
+    with open(os.path.join(td, gen_qemu.DEFAULT_INCLUDE), "w", encoding="utf-8") as f:
+        f.write(C_SHIM)
+    for name in sorted(cfg["units"]):
+        m = models.get(name)
+        if m is None:
+            continue
+        rel = "%s/%s/%s.h" % (repo.layout.gen_root(), gen_qemu.QEMU_DIR, name)
+        src = os.path.join(td, "qemu_%s.c" % name)
+        with open(src, "w", encoding="utf-8") as f:
+            f.write('#include "%s"\n' % os.path.join(repo.root, rel))
+        r = _run([cc, "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-std=gnu11", "-I", td, "-x", "c", src])
+        if r.returncode:
+            fails.append("%s: C compile failed: %s" % (rel, " | ".join(_tail(r))))
+    return fails
+
+
 def verify(repo, notes=None):
     """Return a list of failure strings; `notes` collects skipped steps."""
     notes = notes if notes is not None else []
@@ -188,6 +212,7 @@ def verify(repo, notes=None):
                 if r.returncode:
                     fails.append("%s: tests failed: %s" % (lay.gen_dir("rust"), " | ".join(_tail(r))))
         fails += verify_export(repo, models, td, cc, rustc, notes)
+        fails += verify_qemu(repo, models, td, cc)
     return fails
 
 

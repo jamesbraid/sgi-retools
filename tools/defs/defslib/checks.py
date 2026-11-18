@@ -18,7 +18,7 @@ sys.path.insert(0, HERE)
 import publish_check as pc  # noqa: E402
 from defs_common import Report  # noqa: E402
 
-from . import gen, gen_export, loader, modelcheck, siblings as siblings_mod  # noqa: E402
+from . import gen, gen_export, gen_qemu, loader, modelcheck, siblings as siblings_mod  # noqa: E402
 from .genutil import GenError  # noqa: E402
 from .model import block_of, decode, enum_values, fwidth, mask  # noqa: E402
 
@@ -159,6 +159,8 @@ def synth_config(repo, files, extra_headers):
     cfg["project"] = s.get("project", {})
     own = {os.path.basename(rel) for rel in files if rel.endswith(".h")}
     own |= {os.path.basename(h) for h in extra_headers}
+    if s.get("gen", {}).get("qemu"):        # the QEMU headers include QEMU's registerfields.h
+        own.add(os.path.basename(s["gen"]["qemu"].get("include", gen_qemu.DEFAULT_INCLUDE)))
     cfg["headers"] = [{"file": n} for n in sorted(own)]
     return cfg
 

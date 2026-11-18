@@ -1,19 +1,38 @@
 #!/usr/bin/env python3
 """Checks over the names the generated headers carry.
 
-    defs-names unchecked [--root R] [--count]    list every register, word and field whose name is still imported-unchecked
+    defs-names dups REPO...          fail when two QEMU headers, in one repository or in several, define one name
+    defs-names unchecked [--root R]  list every register, word and field whose name is still imported-unchecked
 
-This is the list the identifier audit before a public release works from. A name is imported-unchecked unless
-its unit or register says `name_source = "public"` (with `name_cite`) or `"ours"`. Exit 0, or 2 when a source
-file does not load.
+dups reads each REPO's generated QEMU headers (generated/qemu/*.h, gen/qemu/*.h in the old layout), so it
+proves the headers of all repositories can share one translation unit. unchecked is the list the identifier
+audit before a public release works from: a name is imported-unchecked unless its unit or register says
+`name_source = "public"` (with `name_cite`) or `"ours"`. Exit 1 on a duplicate; unchecked exits 0 and lists.
 """
 import argparse
+import glob
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from defslib import loader  # noqa: E402
+from defslib import gen_qemu, loader  # noqa: E402
 from defslib.model import name_source  # noqa: E402
+
+
+def dups(roots):
+    seen, bad, n = {}, [], 0
+    for root in roots:
+        for gen in ("generated", "gen"):
+            for path in sorted(glob.glob(os.path.join(root, gen, gen_qemu.QEMU_DIR, "*.h"))):
+                n += 1
+                with open(path, encoding="utf-8") as f:
+                    text = f.read()
+                for ident in gen_qemu.identifiers(text):
+                    where = os.path.relpath(path, os.path.dirname(os.path.abspath(root)))
+                    if ident in seen and seen[ident] != where:
+                        bad.append("%s: defined by %s and %s" % (ident, seen[ident], where))
+                    seen.setdefault(ident, where)
+    return n, bad
 
 
 def unchecked(root):
@@ -33,10 +52,18 @@ def unchecked(root):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
+    d = sub.add_parser("dups")
+    d.add_argument("repos", nargs="+")
     u = sub.add_parser("unchecked")
     u.add_argument("--root", default=".")
     u.add_argument("--count", action="store_true", help="print the count per unit only")
     args = ap.parse_args(argv)
+    if args.cmd == "dups":
+        n, bad = dups(args.repos)
+        for b in bad:
+            print("FAIL %s" % b)
+        print("%d QEMU headers, %d duplicate name(s)" % (n, len(bad)))
+        return 1 if bad else 0
     errors, rows = unchecked(args.root)
     for e in errors:
         print("error: %s" % e, file=sys.stderr)

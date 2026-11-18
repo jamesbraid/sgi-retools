@@ -10,6 +10,7 @@ sources, check them, write the outputs and prove the outputs build.
 | `defs-check [--build]` | loads the register maps, runs every check, confirms the generated tree is fresh and that no register is defined in two sibling repositories; `--build` also compiles and runs the outputs |
 | `defs-gen [--check] [--profile NAME]` | writes the generated tree and the register tables; `--check` writes nothing and fails on a stale tree; `--profile` limits either to one export profile |
 | `defs-import` | converts a repo's annotated headers (`*_DECODE.h`, census headers) to register-map sources |
+| `defs-names dups REPO...` | fails when two QEMU headers, in one repository or several, define the same name |
 | `defs-names unchecked [--count]` | lists every register, word and field whose name is still `imported-unchecked`, for the identifier audit before a public release |
 | `defs-compare` | compares an old header with its replacement macro by macro with the C compiler |
 | `ci-check` | the one command CI runs: `defs-check --build` when the repo has register maps, the older decode-header path otherwise |
@@ -299,6 +300,7 @@ check always runs on the public rendering, so switching profiles needs no new fi
 |---|---|
 | `generated/c/<unit>.h` | `<BLOCK>_<REG>_OFFSET`, `_COUNT`, `_STRIDE`; `<BLOCK>_<REG>_<FIELD>_SHIFT`, `_MASK`, `_INPLACE`; `<PREFIX>_<WORD>_WIDTH` and word fields the same way; `<field macro>_<LABEL>` for a field's own enum values and `<PREFIX>_<ENUM>_<LABEL>` for shared ones; `<PREFIX>_<NAME>` for constants. Every macro carries its grade. `[c] offset_macro = "bare"` drops `_OFFSET`. |
 | `generated/rust/` | a `#![no_std]` crate with no dependencies (`Cargo.toml`, `src/lib.rs`, a module per unit): typed field accessors, an enum with an `Other` variant per field that has values, constants, a test per vector |
+| `generated/qemu/<unit>.h` | the QEMU form, see below: `REG` and `FIELD` macros with every name prefixed by board and unit |
 | `generated/python/<unit>.py` | the layout as tables plus `decode`, `encode`, `describe` and `selftest`, no imports |
 | `generated/json/<unit>.json` | one flat row per register, word, field, enum value and constant |
 | `generated/xml/<unit>.xml` | the genxml dialect Asahi and Panfrost use: `<struct>` per word and register, `<field start size type>`, top-level `<enum>`; grade, source, offset, access, test vectors and constants ride in extra attributes and elements |
@@ -404,6 +406,32 @@ project name may appear nowhere else in the Rust. `defs-check --build` compiles 
 the two macros, with a static assertion for each register offset and array stride, and, when `rustc` is
 present, parses each rust-regs file against a stand-in `regs!` that takes any tokens, which proves the file
 lexes and is one macro call.
+
+### QEMU headers
+
+`[gen.qemu]` in `defs-check.toml` turns on `generated/qemu/<unit>.h` for the units it names, headers
+that QEMU takes with a plain copy:
+
+```toml
+[gen.qemu]
+board = "MGRAS"                  # prefix of every name; the unit name follows
+# include = "hw/core/registerfields.h"   # what the header includes (this is the default)
+[gen.qemu.units.re4]
+name = "RE"                      # optional: the unit part of the prefix, else the unit name upper-cased
+```
+
+Names are `<BOARD>_<UNIT>_<NAME>`, so the headers of several repositories share one translation unit.
+Each register is `REG8/16/32/64(<P>_<REG>, byte offset)`, each field `FIELD(<P>_<REG>, <FIELD>, shift,
+length)` and each constant a `#define`; a register array adds `_COUNT` and `_STRIDE`, and a word (a command
+or descriptor, which has no offset) is its fields alone plus `_WIDTH`. The grade is a trailing comment, and
+so is a name source that differs from the unit's. A register in a register-indexed space is written in
+bytes (index * register size). Enum values are not carried.
+
+The generator refuses a name defined twice in one header (`FIELD` expands to `R_<reg>_<field>_SHIFT`, so
+register `a` with field `b_c` collides with register `a_b` with field `c`). `defs-names dups REPO...` makes
+the same check across the generated headers of several repositories. `defs-check --build` compiles each
+header against a stand-in for `registerfields.h`; the stand-in has the same meaning as QEMU's, and a
+build against QEMU's own header and `FIELD_EX32`/`FIELD_DP32` is the check to repeat after changing the form.
 
 ### Forwarding headers and helpers
 

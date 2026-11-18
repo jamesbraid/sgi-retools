@@ -210,7 +210,11 @@ CHECK = Obj({
                     "source": Str(minlen=1),
                     "units": Map(RE_UNIT.pattern, Obj({"base": UINT, "constants": Arr(Str(r"^[A-Za-z_][A-Za-z0-9_]*$")), "rust_file": Str(RE_UNIT.pattern),
                                                 "profiles": Arr(Choice(*EXPORT_PROFILES))}), "unit name"),
-                })}),
+                }),
+                "qemu": Obj({
+                    "board": Str(RE_PREFIX.pattern), "include": Str(minlen=1),
+                    "units": Map(RE_UNIT.pattern, Obj({"name": Str(RE_PREFIX.pattern)}), "unit name"),
+                }, required=("board", "units"))}),
     "checks": Obj({"address_bits": Int(1), "max_reg_offset": UINT}),
     "banned": Obj({
         "skip": Arr(Str()), "allow_includes": Arr(Str()),

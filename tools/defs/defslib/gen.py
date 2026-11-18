@@ -12,7 +12,7 @@ staleness is a byte comparison.
 import os
 import re
 
-from . import gen_c, gen_docs, gen_export, gen_genxml, gen_json, gen_py, gen_rust, stamp
+from . import gen_c, gen_docs, gen_export, gen_genxml, gen_json, gen_py, gen_qemu, gen_rust, stamp
 from .genutil import GenError
 from .model import publish_profile
 
@@ -30,6 +30,8 @@ def owned(lay, rel):
     for kind, ext in (("c", ".h"), ("py", ".py"), ("json", ".json"), ("xml", ".xml")):
         if os.path.dirname(rel) == lay.gen_dir(kind) and rel.endswith(ext):
             return True
+    if os.path.dirname(rel) == "%s/%s" % (lay.gen_root(), gen_qemu.QEMU_DIR) and rel.endswith(".h"):
+        return True
     rust = lay.gen_dir("rust")
     return rel == rust + "/Cargo.toml" or (os.path.dirname(rel) == rust + "/src" and rel.endswith(".rs"))
 
@@ -78,6 +80,9 @@ def render(repo, profile=None):
     exported, errs = gen_export.render_export(repo, models, gen_export.source_commit(repo.root))
     files.update({rel: st.apply(rel, text) for rel, text in exported.items()})
     errors += errs
+    qemu, errs = gen_qemu.render_qemu(repo, models)
+    files.update({rel: st.apply(rel, text, os.path.basename(rel)[:-2]) for rel, text in qemu.items()})
+    errors += errs
     return files, errors
 
 
@@ -90,6 +95,7 @@ def existing(root, export_dirs=()):
     base = os.path.join(root, lay.gen_root())
     # generated/ also holds tool output (inventory/, version-diffs/, ...) that no unit writes
     mine = set(lay.gen_dir(k).split("/", 1)[1] for k in ("c", "rust", "py", "json", "xml"))
+    mine.add(gen_qemu.QEMU_DIR)
     mine.update(os.path.basename(d) for d in export_dirs)
     for d, dirs, names in os.walk(base):
         if d == base:
