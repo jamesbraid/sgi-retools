@@ -2,7 +2,7 @@
 """Checks over the names the generated headers carry.
 
     defs-names dups REPO...          fail when two QEMU headers, in one repository or in several, define one name
-    defs-names unchecked [--root R]  list every register, word and field whose name is still imported-unchecked
+    defs-names unchecked [--root R]  list every register, word, field and constant whose name is still imported-unchecked
 
 dups reads each REPO's generated QEMU headers (generated/qemu/*.h, gen/qemu/*.h in the old layout), so it
 proves the headers of all repositories can share one translation unit. unchecked is the list the identifier
@@ -46,6 +46,8 @@ def unchecked(root):
                     continue
                 rows.append((uname, n))
                 rows += [(uname, "%s.%s" % (n, f)) for f in x["fields"]]
+        if name_source(m)[0] == "imported-unchecked":       # constants take the unit's source
+            rows += [(uname, n) for n in m["constants"]]
     return repo.errors, rows
 
 
@@ -72,7 +74,7 @@ def main(argv=None):
     if args.count:
         for uname in sorted({r[0] for r in rows}):
             mine = [r[1] for r in rows if r[0] == uname]
-            print("%s\t%d names (%d registers or words)" % (uname, len(mine), len([x for x in mine if "." not in x])))
+            print("%s\t%d names (%d registers, words or constants)" % (uname, len(mine), len([x for x in mine if "." not in x])))
     else:
         for uname, n in rows:
             print("%s\t%s" % (uname, n))

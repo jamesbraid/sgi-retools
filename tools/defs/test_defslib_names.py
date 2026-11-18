@@ -22,6 +22,7 @@ class ProvenanceTest(RepoTest):
         self.assertIn("uart\tctl\n", r.stdout)
         self.assertIn("uart\tctl.divisor\n", r.stdout)
         self.assertIn("uart\tFRAME.payload\n", r.stdout)
+        self.assertIn("uart\tFIFO_DEPTH\n", r.stdout)      # a constant takes its unit's source
 
     def test_a_unit_or_register_can_claim_a_source(self):
         self.edit("defs/uart.toml", 'public_from = ["fixture notes"]', 'public_from = ["fixture notes"]\nname_source = "ours"')

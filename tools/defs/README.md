@@ -11,7 +11,7 @@ sources, check them, write the outputs and prove the outputs build.
 | `defs-gen [--check] [--profile NAME]` | writes the generated tree and the register tables; `--check` writes nothing and fails on a stale tree; `--profile` limits either to one export profile |
 | `defs-import` | converts a repo's annotated headers (`*_DECODE.h`, census headers) to register-map sources |
 | `defs-names dups REPO...` | fails when two QEMU headers, in one repository or several, define the same name |
-| `defs-names unchecked [--count]` | lists every register, word and field whose name is still `imported-unchecked`, for the identifier audit before a public release |
+| `defs-names unchecked [--count]` | lists every register, word, field and constant whose name is still `imported-unchecked`, for the identifier audit before a public release |
 | `defs-compare` | compares an old header with its replacement macro by macro with the C compiler |
 | `ci-check` | the one command CI runs: `defs-check --build` when the repo has register maps, the older decode-header path otherwise |
 | `forgejo-workflow.yml` | template for `.forgejo/workflows/re-check.yml` |
@@ -150,7 +150,7 @@ name_source = "public"                        # public, ours or imported-uncheck
 name_cite = "OpenBSD impact(4) register header"   # required for public: the document that uses the name
 ```
 
-A register or word without its own `name_source` takes the unit's; a unit without one is `imported-unchecked`,
+A register or word without its own `name_source` takes the unit's, and a constant always does; a unit without one is `imported-unchecked`,
 so the default is the cautious answer. `ours` is our own coinage. `defs-names unchecked` lists what is still
 `imported-unchecked`. The field does not change any name.
 
