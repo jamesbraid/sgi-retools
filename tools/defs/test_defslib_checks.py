@@ -83,6 +83,15 @@ class ChecksTest(RepoTest):
         self.assertIn("gen/rust/src/uart.rs", r.stdout)
         self.assertNotIn("gen/c/uart.h", r.stdout)       # C and docs may name the project
 
+    def test_crate_named_after_the_project_is_allowed_but_nothing_else(self):
+        self.edit("defs/check.toml", "[project]", '[gen]\nrust_crate = "mini-defs"\n\n[project]')
+        self.generate()
+        self.assertIn('name = "mini-defs"', self.read("gen/rust/Cargo.toml"))
+        self.assertEqual(self.check().returncode, 0)
+        self.edit("defs/uart.toml", 'doc = "Control register."', 'doc = "See the mini-defsx board."')
+        r = self.assert_fails("project name in generated Rust")
+        self.assertIn("gen/rust/src/uart.rs", r.stdout)
+
     def test_crate_name_is_chosen_not_derived_from_the_project(self):
         self.assertIn('name = "hwdefs"', self.read("gen/rust/Cargo.toml"))
 
