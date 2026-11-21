@@ -83,7 +83,7 @@ uv run --with capstone --with pyelftools python -I tools/test_hostfacts.py
 uv run --with capstone --with pyelftools python -I tools/test_hostfacts_firmware.py
 ```
 
-The [real-image validation table](tools/hostfacts-firmware-validation.tsv)
+The [real-image validation table](hostfacts-firmware-validation.tsv)
 records five routines per extracted image: 60 ColdFire bodies, 20 executable
 ARM segments and 11 MMSC carriers. It preserves the input hashes and mappings.
 These checks compare decoded bytes, emitted locators and required fact-sheet
