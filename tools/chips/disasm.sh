@@ -27,8 +27,14 @@ for i in c['images']:
         print("mips64-linux-gnuabi64-objdump -D -b binary -m %s -EB --adjust-vma=%s -w -M no-aliases,gpr-names=numeric --no-show-raw-insn work/prom/%s.%s.bin > %s"
               % (i.get('arch', 'mips:isa64'), i['vma'], i['label'], i['segment'], out))
     elif i['kind'] == 'raw':
-        print("mips64-linux-gnuabi64-objdump -D -b binary -m %s -EB --adjust-vma=%s -w -M no-aliases,gpr-names=numeric --no-show-raw-insn %s > %s"
-              % (i.get('arch', 'mips:isa64'), i['vma'], i['path'], out))
+        adj, win = i['vma'], ''
+        if 'offset' in i or 'length' in i:
+            # A segment of a larger file: file offset 'offset' sits at 'vma'; stop 'length' bytes in.
+            start = int(str(i['vma']), 0)
+            adj = '0x%x' % ((start - int(str(i.get('offset', 0)), 0)) & (2**64 - 1))
+            win = ' --start-address=0x%x --stop-address=0x%x' % (start, start + int(str(i['length']), 0))
+        print("mips64-linux-gnuabi64-objdump -D -b binary -m %s -EB --adjust-vma=%s%s -w -M no-aliases,gpr-names=numeric --no-show-raw-insn %s > %s"
+              % (i.get('arch', 'mips:isa64'), adj, win, i['path'], out))
 PY
 if [ -n "$RR" ]; then "$RR" sh work/dis/.commands.sh; else "$RE_RUN" --workspace "$PWD" -- sh work/dis/.commands.sh; fi
 wc -l work/dis/*.s
