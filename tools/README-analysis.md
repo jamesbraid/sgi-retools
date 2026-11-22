@@ -93,7 +93,9 @@ Windows NT drivers and DLLs from the 1990s ship stripped, with the symbols in a 
 
        tools/re-run --ghidra-export path/driver.dll --dbg path/driver.dbg --decompile-symbol @0xADDR
 
-`ghidra/scripts/ReDbgImport.java` runs before analysis. Symbol values are RVAs from the image base. A
+`ghidra/scripts/ReDbgImport.java` runs before analysis. Symbol values are RVAs from the image base (a COFF
+file whose values fit their sections only as virtual addresses is rebased as a whole, never value by value:
+an NT4 display driver's ImageBase is 0x10000, below many of its own RVAs). A
 `.dbg` that has no COFF table but a CodeView NB09 record (a 1999 driver's symbols, publics only) is read
 from its sstGlobalPub subsection instead: each S_PUB32 or S_PUB16 offset is in segment N, taken as the
 N-th section of the `.dbg`. A public has no type, so one in a code section is called a function, except a

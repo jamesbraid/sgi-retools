@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """A synthetic x86 PE image, its separate .dbg files, and what ReDbgImport.java must make of them.
 
-  dbg_synthetic.py write DIR             write DIR/synthetic.dll, synthetic.dbg (COFF) and
-                                         synthetic-nb09.dbg (CodeView publics)
+  dbg_synthetic.py write DIR             write DIR/synthetic.dll, synthetic.dbg (COFF),
+                                         synthetic-va.dbg (COFF, values are virtual addresses),
+                                         synthetic-nb09.dbg (CodeView publics), and the same image
+                                         at a low base as synthetic-low.dll and synthetic-low.dbg
   dbg_synthetic.py check CASE SYMS LOG   check DumpDbgSymbols.java's output and the headless log;
-                                         CASE is coff or nb09
+                                         CASE is coff, coff-va, coff-low or nb09
   dbg_synthetic.py                       build all and check them against a plain Python reading
                                          (no Ghidra)
 
@@ -12,7 +14,9 @@ No vendor bytes. The COFF symbols cover each case of the counting rule in ReDbgI
 auxiliary record, an alias of one address, a long (string table) name, a label in .text and in
 .data, a ".text" section record and a label ahead of a function at that function's address (neither
 may take the function's name), an undefined and an absolute symbol, a name Ghidra rejects, and an
-address past the image. The NB09 file holds the same kinds of public.
+address past the image. The NB09 file holds the same kinds of public. The low-base image puts
+its RVAs above its ImageBase (0x10000, as an NT4 display driver does), where reading a value at or
+above the ImageBase as a virtual address would move every function by the base.
 """
 import os
 import struct
@@ -21,28 +25,30 @@ import sys
 BASE = 0x10000000
 TEXT, DATA = 0x1000, 0x2000
 SIZE_OF_IMAGE = 0x3000
-# (name, value, section, type, aux records). Section 1 is .text, 2 is .data.
+LOW = dict(base=0x10000, text=0x11000, data=0x12000, size=0x13000)
+# (name, value, section, type, aux records). Section 1 is .text, 2 is .data. A value is an RVA, as an
+# offset from the start of .text or .data (section 1 or 2) unless it has no section.
 SYMBOLS = [
-    ('func_a', TEXT, 1, 0x20, 1),
-    ('.text', TEXT + 0x10, 1, 0, 1),
-    ('func_b', TEXT + 0x10, 1, 0x20, 0),
-    ('alias_of_b', TEXT + 0x10, 1, 0x20, 0),
-    ('early_label', TEXT + 0x20, 1, 0, 0),
-    ('a_function_with_a_long_name', TEXT + 0x20, 1, 0x20, 0),
-    ('text_label', TEXT + 0x30, 1, 0, 0),
-    ('table', DATA + 8, 2, 0, 0),
-    ('\x7fBAD_NULL_THUNK_DATA', DATA + 0x10, 2, 0, 0),
+    ('func_a', 0, 1, 0x20, 1),
+    ('.text', 0x10, 1, 0, 1),
+    ('func_b', 0x10, 1, 0x20, 0),
+    ('alias_of_b', 0x10, 1, 0x20, 0),
+    ('early_label', 0x20, 1, 0, 0),
+    ('a_function_with_a_long_name', 0x20, 1, 0x20, 0),
+    ('text_label', 0x30, 1, 0, 0),
+    ('table', 8, 2, 0, 0),
+    ('\x7fBAD_NULL_THUNK_DATA', 0x10, 2, 0, 0),
     ('_undefined', 0, 0, 0, 0),
     ('_absolute', 0x1234, -1, 0, 0),
-    ('past_the_image', TEXT + 0x5000, 1, 0x20, 0),
+    ('past_the_image', 0x5000, 1, 0x20, 0),
 ]
 # What the summary line must say, and the symbols that must exist.
 COUNTS = dict(records=len(SYMBOLS), auxiliary=2, functions=3, labels=4, sections=1, ignored=2, outside=1,
               rejected=1, uncreated=0)
 # The loader names the entry point, at func_a's address, before the script runs and that name is kept.
-EXPECT = [('function', TEXT, 'entry'), ('function', TEXT + 0x10, 'func_b'),
-          ('function', TEXT + 0x20, 'a_function_with_a_long_name'),
-          ('label', TEXT + 0x30, 'text_label'), ('label', DATA + 8, 'table')]
+EXPECT = [('function', 'T', 0, 'entry'), ('function', 'T', 0x10, 'func_b'),
+          ('function', 'T', 0x20, 'a_function_with_a_long_name'),
+          ('label', 'T', 0x30, 'text_label'), ('label', 'D', 8, 'table')]
 
 
 # CodeView publics: (name, offset in the segment, segment, is a function). Segment 1 is .text, 2 .data.
@@ -58,19 +64,23 @@ PUBLICS = [
 ]
 NB09_COUNTS = dict(records=len(PUBLICS), auxiliary=0, functions=2, labels=2, sections=1, ignored=1,
                    outside=1, rejected=0, uncreated=0)
-NB09_EXPECT = [('function', TEXT, 'entry'), ('function', TEXT + 0x10, '_pub_second@8'),
-               ('label', DATA + 8, '_pub_table'),
-               ('label', TEXT + 0x40, '??_C@_0M@EKBA@user?5buffer?$AA@')]
-KINDS = {'coff': ('COFF', COUNTS, EXPECT), 'nb09': ('CodeView NB09 publics', NB09_COUNTS, NB09_EXPECT)}
+NB09_EXPECT = [('function', 'T', 0, 'entry'), ('function', 'T', 0x10, '_pub_second@8'),
+               ('label', 'D', 8, '_pub_table'),
+               ('label', 'T', 0x40, '??_C@_0M@EKBA@user?5buffer?$AA@')]
+KINDS = {'coff': ('COFF', COUNTS, EXPECT, {}), 'nb09': ('CodeView NB09 publics', NB09_COUNTS, NB09_EXPECT, {}),
+         'coff-va': ('COFF', COUNTS, EXPECT, {}), 'coff-low': ('COFF', COUNTS, EXPECT, LOW)}
+
+
+STD = dict(base=BASE, text=TEXT, data=DATA, size=SIZE_OF_IMAGE)
 
 
 def pad(b, n):
     return b + bytes(-len(b) % n)
 
 
-def sections():
+def sections(lay=STD):
     text = pad(b'\x55\x89\xe5\x5d\xc3' + b'\xc3' * 0x1f + b'\xc3' * 0x40, 0x200)
-    return [(b'.text', TEXT, text, 0x60000020), (b'.data', DATA, bytes(0x200), 0xc0000040)]
+    return [(b'.text', lay['text'], text, 0x60000020), (b'.data', lay['data'], bytes(0x200), 0xc0000040)]
 
 
 def header_table(secs, file_off):
@@ -81,10 +91,11 @@ def header_table(secs, file_off):
     return out
 
 
-def image():
-    secs = sections()
-    opt = struct.pack('<HBBIIIIIIIIIHHHHHHIIIIHHIIIIII', 0x10b, 6, 0, 0x200, 0x200, 0, TEXT, TEXT, DATA,
-                      BASE, 0x1000, 0x200, 4, 0, 0, 0, 4, 0, 0, SIZE_OF_IMAGE, 0x200, 0, 2, 0,
+def image(lay=STD):
+    secs = sections(lay)
+    opt = struct.pack('<HBBIIIIIIIIIHHHHHHIIIIHHIIIIII', 0x10b, 6, 0, 0x200, 0x200, 0, lay['text'],
+                      lay['text'], lay['data'], lay['base'], 0x1000, 0x200, 4, 0, 0, 0, 4, 0, 0,
+                      lay['size'], 0x200, 0, 2, 0,
                       0x100000, 0x1000, 0x100000, 0x1000, 0, 16)
     assert len(opt) == 96, len(opt)
     opt += bytes(16 * 8)
@@ -94,9 +105,11 @@ def image():
     return pad(head, 0x200) + b''.join(d for _, _, d, _ in secs)
 
 
-def coff_symbols():
+def coff_symbols(lay=STD, va=False):
     table, strings = b'', b''
     for name, value, section, typ, aux in SYMBOLS:
+        if section > 0:
+            value += lay['text' if section == 1 else 'data'] + (lay['base'] if va else 0)
         raw = name.encode('latin-1')
         if len(raw) <= 8:
             field = raw.ljust(8, b'\0')
@@ -107,20 +120,21 @@ def coff_symbols():
     return table + struct.pack('<I', 4 + len(strings)) + strings, len(table) // 18
 
 
-def separate(debug_type, raw):
-    secs = sections()
+def separate(debug_type, raw, lay=STD):
+    secs = sections(lay)
     first = 48 + 40 * len(secs) + 0 + 28
     entry = struct.pack('<IIHHIIII', 0, 0, 0, 0, debug_type, len(raw), 0, first)
-    head = struct.pack('<HHHHIIIIIIII8s', 0x4944, 0, 0x14c, 0x230e, 0, 0, BASE, SIZE_OF_IMAGE,
+    head = struct.pack('<HHHHIIIIIIII8s', 0x4944, 0, 0x14c, 0x230e, 0, 0, lay['base'], lay['size'],
                        len(secs), 0, 28, 0x1000, bytes(8))
     sec_table = header_table(secs, 0)
     return head + sec_table + entry + raw
 
 
-def dbg():
-    table, count = coff_symbols()
-    coff_header = struct.pack('<8I', count, 32, 0, 0, TEXT, TEXT + 0x100, DATA, DATA + 0x200)
-    return separate(1, coff_header + table)
+def dbg(lay=STD, va=False):
+    table, count = coff_symbols(lay, va)
+    coff_header = struct.pack('<8I', count, 32, 0, 0, lay['text'], lay['text'] + 0x100, lay['data'],
+                              lay['data'] + 0x200)
+    return separate(1, coff_header + table, lay)
 
 
 def publics():
@@ -191,7 +205,9 @@ def reference_nb09():
 
 
 def check(case, syms, log):
-    kind, counts, expect = KINDS[case]
+    kind, counts, expect, override = KINDS[case]
+    lay = dict(STD, **override)
+    expect = [(k, lay['text' if r == 'T' else 'data'] + off, n) for k, r, off, n in expect]
     seen = set()
     for line in open(syms):
         f = line.rstrip('\n').split('\t')
@@ -234,7 +250,8 @@ def main():
     if sys.argv[1] == 'write':
         os.makedirs(sys.argv[2], exist_ok=True)
         for name, data in (('synthetic.dll', image()), ('synthetic.dbg', dbg()),
-                           ('synthetic-nb09.dbg', dbg_nb09())):
+                           ('synthetic-va.dbg', dbg(va=True)), ('synthetic-nb09.dbg', dbg_nb09()),
+                           ('synthetic-low.dll', image(LOW)), ('synthetic-low.dbg', dbg(LOW))):
             with open(os.path.join(sys.argv[2], name), 'wb') as f:
                 f.write(data)
         return 0

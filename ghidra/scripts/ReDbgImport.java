@@ -8,9 +8,10 @@
  *     subsection: S_PUB32 and S_PUB16 records). NB10 and NB11 records point at a .pdb, which is
  *     --pdb's job, and are refused with that message.
  *
- * Symbol values are RVAs from the image base (a COFF value at or above the header's ImageBase is
- * taken as a virtual address and rebased). A CodeView public is an offset in segment N, read as the
- * N-th section of the .dbg's own table.
+ * Symbol values are RVAs from the image base, unless the file's symbols fit their sections only
+ * as virtual addresses (ImageBase taken off). The file is judged as a whole, never value by value:
+ * with a low ImageBase (0x10000 for an NT4 display driver) most RVAs are also above it. A CodeView
+ * public is an offset in segment N, read as the N-th section of the .dbg's own table.
  *
  * Runs as a headless -preScript, so the names exist before analysis:
  *
@@ -99,6 +100,7 @@ public class ReDbgImport extends GhidraScript {
 		boolean[] text = new boolean[sections + 1];
 		boolean[] code = new boolean[sections + 1];
 		long[] rva = new long[sections + 1];
+		long[] size = new long[sections + 1];
 		for (int i = 0; i < sections; i++) {
 			int at = HEADER_SIZE + i * SECTION_SIZE;
 			int end = at;
@@ -109,6 +111,7 @@ public class ReDbgImport extends GhidraScript {
 			b.get(at, raw);
 			text[i + 1] = new String(raw, StandardCharsets.US_ASCII).equals(".text");
 			rva[i + 1] = b.getInt(at + 12) & 0xffffffffL;
+			size[i + 1] = Math.max(b.getInt(at + 8), b.getInt(at + 16)) & 0xffffffffL;
 			int flags = b.getInt(at + 36);
 			code[i + 1] = (flags & (SCN_CODE | SCN_EXECUTE)) != 0;
 		}
@@ -128,7 +131,7 @@ public class ReDbgImport extends GhidraScript {
 		String kind;
 		if (coffRaw >= 0) {
 			kind = "COFF";
-			readCoff(b, coffRaw, sections, text, imageBase);
+			readCoff(b, coffRaw, sections, text, imageBase, rva, size);
 		}
 		else if (codeviewRaw >= 0) {
 			kind = "CodeView NB09 publics";
@@ -184,7 +187,10 @@ public class ReDbgImport extends GhidraScript {
 			outside, badName, notCreated));
 	}
 
-	private void readCoff(ByteBuffer b, int raw, int sections, boolean[] text, long imageBase) {
+	private void readCoff(ByteBuffer b, int raw, int sections, boolean[] text, long imageBase,
+			long[] rva, long[] size) {
+		List<Sym> found = new ArrayList<>();
+		List<Integer> where = new ArrayList<>();
 		int count = b.getInt(raw);
 		int symbolsAt = raw + b.getInt(raw + 4);
 		int strings = symbolsAt + count * SYMBOL_SIZE;
@@ -205,12 +211,29 @@ public class ReDbgImport extends GhidraScript {
 				skippedSections++;
 			}
 			else {
-				if (value >= imageBase) {
-					value -= imageBase;
-				}
 				boolean function = text[section] && ((type >> 4) & 0xf) == DTYPE_FUNCTION;
-				symbols.add(new Sym(name, value, function));
+				found.add(new Sym(name, value, function));
+				where.add(section);
 			}
+		}
+		int asRva = 0, asVa = 0;
+		for (int i = 0; i < found.size(); i++) {
+			long v = found.get(i).rva, start = rva[where.get(i)], end = start + size[where.get(i)];
+			boolean rvaFits = v >= start && v < end;
+			boolean vaFits = v >= imageBase && v - imageBase >= start && v - imageBase < end;
+			if (rvaFits != vaFits) {
+				if (rvaFits) {
+					asRva++;
+				}
+				else {
+					asVa++;
+				}
+			}
+		}
+		boolean virtual = asVa > asRva;
+		for (Sym sym : found) {
+			boolean rebase = virtual && sym.rva >= imageBase;
+			symbols.add(rebase ? new Sym(sym.name, sym.rva - imageBase, sym.function) : sym);
 		}
 	}
 
