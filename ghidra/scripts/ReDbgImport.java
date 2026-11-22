@@ -1,18 +1,28 @@
 /* Apply the symbols of a Windows NT .dbg file to the PE image it was split from.
  *
  * A separate .dbg is an IMAGE_SEPARATE_DEBUG_HEADER, the section headers, the exported
- * names and a debug directory whose COFF entry points at the symbol table. Ghidra's PE loader
- * reads none of it. Symbol values are RVAs from the image base (a value at or above the
- * header's ImageBase is taken as a virtual address and rebased).
+ * names and a debug directory. Ghidra's PE loader reads none of it. Two kinds of symbol are read:
+ *
+ *   - a COFF symbol table (debug type 1), used when the file has one;
+ *   - otherwise the public symbols of a CodeView NB09 record (debug type 2, the sstGlobalPub
+ *     subsection: S_PUB32 and S_PUB16 records). NB10 and NB11 records point at a .pdb, which is
+ *     --pdb's job, and are refused with that message.
+ *
+ * Symbol values are RVAs from the image base (a COFF value at or above the header's ImageBase is
+ * taken as a virtual address and rebased). A CodeView public is an offset in segment N, read as the
+ * N-th section of the .dbg's own table.
  *
  * Runs as a headless -preScript, so the names exist before analysis:
  *
  *   -preScript ReDbgImport.java FILE.dbg
  *
  * Counting rule, printed as "ReDbgImport: ..." at the end:
- *   - an auxiliary record is skipped, never counted;
- *   - a symbol whose type is a function (derived type 2) in the section named .text is a
- *     function; "functions" counts distinct addresses, so aliases of one address add none;
+ *   - a COFF auxiliary record is skipped, never counted;
+ *   - a COFF symbol whose type is a function (derived type 2) in the section named .text is a
+ *     function. A CodeView public carries no type, so one in a code section (the section has
+ *     the code flag) is taken as a function, except a string literal (??_C@_...): an
+ *     approximation, a data-in-code public of another kind would be misread. "functions" counts
+ *     distinct addresses, so aliases of one address add none;
  *   - a name beginning with "." is a section name (the per-object ".text" and ".data" records)
  *     and is skipped, counted apart: it must never become the name of a function or label;
  *   - any other named symbol in a section is a label (also counted by distinct address);
@@ -49,8 +59,11 @@ public class ReDbgImport extends GhidraScript {
 
 	static final int SEPARATE_SIGNATURE = 0x4944;
 	static final int HEADER_SIZE = 48, SECTION_SIZE = 40, DEBUG_ENTRY_SIZE = 28, SYMBOL_SIZE = 18;
-	static final int DEBUG_TYPE_COFF = 1;
+	static final int DEBUG_TYPE_COFF = 1, DEBUG_TYPE_CODEVIEW = 2;
 	static final int DTYPE_FUNCTION = 2;
+	static final int SCN_CODE = 0x20, SCN_EXECUTE = 0x20000000;
+	static final int SST_GLOBAL_PUB = 0x12a;
+	static final int S_PUB16 = 0x103, S_PUB32 = 0x203;
 
 	private static class Sym {
 		final String name;
@@ -84,6 +97,8 @@ public class ReDbgImport extends GhidraScript {
 		int debugSize = b.getInt(0x20);
 
 		boolean[] text = new boolean[sections + 1];
+		boolean[] code = new boolean[sections + 1];
+		long[] rva = new long[sections + 1];
 		for (int i = 0; i < sections; i++) {
 			int at = HEADER_SIZE + i * SECTION_SIZE;
 			int end = at;
@@ -93,22 +108,36 @@ public class ReDbgImport extends GhidraScript {
 			byte[] raw = new byte[end - at];
 			b.get(at, raw);
 			text[i + 1] = new String(raw, StandardCharsets.US_ASCII).equals(".text");
+			rva[i + 1] = b.getInt(at + 12) & 0xffffffffL;
+			int flags = b.getInt(at + 36);
+			code[i + 1] = (flags & (SCN_CODE | SCN_EXECUTE)) != 0;
 		}
 
 		int debugAt = HEADER_SIZE + sections * SECTION_SIZE + namesSize;
-		int coffRaw = -1;
+		int coffRaw = -1, codeviewRaw = -1;
 		for (int i = 0; i < debugSize / DEBUG_ENTRY_SIZE; i++) {
 			int e = debugAt + i * DEBUG_ENTRY_SIZE;
 			int type = b.getInt(e + 12);
-			if (type == DEBUG_TYPE_COFF) {
+			if (type == DEBUG_TYPE_COFF && coffRaw < 0) {
 				coffRaw = b.getInt(e + 24);
-				break;
+			}
+			else if (type == DEBUG_TYPE_CODEVIEW && codeviewRaw < 0) {
+				codeviewRaw = b.getInt(e + 24);
 			}
 		}
-		if (coffRaw < 0) {
-			throw new IllegalArgumentException(args[0] + " has no COFF symbol table");
+		String kind;
+		if (coffRaw >= 0) {
+			kind = "COFF";
+			readCoff(b, coffRaw, sections, text, imageBase);
 		}
-		readCoff(b, coffRaw, sections, text, imageBase);
+		else if (codeviewRaw >= 0) {
+			kind = "CodeView NB09 publics";
+			readCodeView(b, codeviewRaw, args[0], sections, code, rva);
+		}
+		else {
+			throw new IllegalArgumentException(args[0] +
+				" has no COFF symbol table and no CodeView debug record");
+		}
 
 		Address base = currentProgram.getImageBase();
 		Set<Address> functionAt = new HashSet<>();
@@ -148,10 +177,10 @@ public class ReDbgImport extends GhidraScript {
 			}
 		}
 		println(String.format(
-			"ReDbgImport: COFF: %d symbol records, %d auxiliary skipped, %d functions, "
+			"ReDbgImport: %s: %d symbol records, %d auxiliary skipped, %d functions, "
 				+ "%d other labels, %d section names skipped, %d without a section, "
 				+ "%d outside the image, %d names Ghidra rejects, %d functions not created",
-			records, aux, functionAt.size(), labelAt.size(), skippedSections, ignored,
+			kind, records, aux, functionAt.size(), labelAt.size(), skippedSections, ignored,
 			outside, badName, notCreated));
 	}
 
@@ -183,6 +212,62 @@ public class ReDbgImport extends GhidraScript {
 				symbols.add(new Sym(name, value, function));
 			}
 		}
+	}
+
+	// NB09: "NB09", the offset of a directory of subsections; sstGlobalPub holds a header
+	// (symbol hash, address hash, symbol size, two hash sizes) then S_PUB records.
+	private void readCodeView(ByteBuffer b, int raw, String file, int sections, boolean[] code,
+			long[] rva) {
+		String sig = new String(new byte[] { b.get(raw), b.get(raw + 1), b.get(raw + 2),
+			b.get(raw + 3) }, StandardCharsets.US_ASCII);
+		if (!sig.equals("NB09")) {
+			throw new IllegalArgumentException(file + " has no COFF symbol table; its CodeView " +
+				"record is " + sig + ", which points at a .pdb (use --pdb) or is not supported " +
+				"(only NB09 publics are read)");
+		}
+		int dir = raw + b.getInt(raw + 4);
+		int headerSize = b.getShort(dir) & 0xffff, entrySize = b.getShort(dir + 2) & 0xffff;
+		int entries = b.getInt(dir + 4);
+		for (int i = 0; i < entries; i++) {
+			int e = dir + headerSize + i * entrySize;
+			if ((b.getShort(e) & 0xffff) != SST_GLOBAL_PUB) {
+				continue;
+			}
+			int at = raw + b.getInt(e + 4);
+			int size = b.getInt(at + 4);
+			int p = at + 16, end = p + size;
+			while (p + 4 <= end) {
+				int length = b.getShort(p) & 0xffff;
+				int type = b.getShort(p + 2) & 0xffff;
+				if (type == S_PUB32 || type == S_PUB16) {
+					int offSize = type == S_PUB32 ? 4 : 2;
+					long off = type == S_PUB32 ? b.getInt(p + 4) & 0xffffffffL
+						: b.getShort(p + 4) & 0xffffL;
+					int section = b.getShort(p + 4 + offSize) & 0xffff;
+					int nameAt = p + 4 + offSize + 2 + 2;
+					int nameLen = b.get(nameAt) & 0xff;
+					byte[] nameRaw = new byte[nameLen];
+					b.get(nameAt + 1, nameRaw);
+					String name = new String(nameRaw, StandardCharsets.ISO_8859_1);
+					records++;
+					if (section < 1 || section > sections || name.isEmpty()) {
+						ignored++;
+					}
+					else if (name.startsWith(".")) {
+						skippedSections++;
+					}
+					else {
+						// String literals sit in the code segment of some builds; they are data.
+						symbols.add(new Sym(name, rva[section] + off,
+							code[section] && !name.startsWith("??_C@_")));
+					}
+				}
+				p += 2 + length;
+			}
+			return;
+		}
+		throw new IllegalArgumentException(file + " has a CodeView NB09 record with no " +
+			"sstGlobalPub subsection, so it holds no public symbols");
 	}
 
 	// createFunction keeps whatever primary symbol holds the address, so set the name outright.

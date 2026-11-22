@@ -23,9 +23,9 @@ Options (after OBJECT, a path inside the workspace):
   --mdebug                                import the object's .mdebug symbol table
                                           (names, line numbers, types, procedure
                                           signatures); a 32-bit MIPSpro object only
-  --dbg FILE.dbg                          apply the COFF symbols of a Windows NT separate debug
-                                          file to an x86 PE image (ghidra/scripts/ReDbgImport.java
-                                          states the counting rule)
+  --dbg FILE.dbg                          apply the COFF symbols, or the CodeView NB09 publics, of a
+                                          Windows NT separate debug file to an x86 PE image
+                                          (ghidra/scripts/ReDbgImport.java states the counting rule)
   --pdb FILE.pdb                          apply a .pdb (PDB 2.0 or 7.0) to an x86 PE image: its
                                           types, function names and parameters
   --bsim-db NAME --bsim-label LABEL       match the object against BSim database

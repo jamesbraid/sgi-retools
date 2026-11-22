@@ -93,10 +93,15 @@ Windows NT drivers and DLLs from the 1990s ship stripped, with the symbols in a 
 
        tools/re-run --ghidra-export path/driver.dll --dbg path/driver.dbg --decompile-symbol @0xADDR
 
-`ghidra/scripts/ReDbgImport.java` runs before analysis. Symbol values are RVAs from the image base. The
-counting rule, which the script prints as its last line:
+`ghidra/scripts/ReDbgImport.java` runs before analysis. Symbol values are RVAs from the image base. A
+`.dbg` that has no COFF table but a CodeView NB09 record (a 1999 driver's symbols, publics only) is read
+from its sstGlobalPub subsection instead: each S_PUB32 or S_PUB16 offset is in segment N, taken as the
+N-th section of the `.dbg`. A public has no type, so one in a code section is called a function, except a
+`??_C@_` string literal. That is an approximation; check names against the disassembly. An NB10 or NB11
+record points at a `.pdb` (use `--pdb`) and is refused with that message. The counting rule, which the
+script prints as its last line:
 
-- an auxiliary record is skipped and never counted;
+- a COFF auxiliary record is skipped and never counted;
 - a function-typed symbol in the section named `.text` is a function, counted by distinct address, so an
   alias of the same address adds none;
 - any other named symbol in a section is a label, also counted by distinct address;
@@ -135,7 +140,7 @@ lists the options, and the top of `tools/ghidra-export.py` explains each.
 | `--decompile-timeout SECONDS` | per function (60) |
 | `--types SPEC.json` | structure types to apply first (`ghidra/README.md`) |
 | `--mdebug` | import the `.mdebug` table of a 32-bit MIPSpro object (next section) |
-| `--dbg FILE.dbg` | apply the COFF symbols of a Windows NT separate debug file to an x86 PE image (next section) |
+| `--dbg FILE.dbg` | apply the COFF symbols, or the CodeView NB09 publics, of a Windows NT separate debug file to an x86 PE image (next section) |
 | `--pdb FILE.pdb` | apply a PDB 2.0 or 7.0 file to an x86 PE image: types, function names, parameters. Needs analysis, so not with `--no-analysis` |
 | `--bsim-db NAME --bsim-label LABEL`, `--bsim-dir DIR`, `--bsim-min S` | match against a BSim database, then add under the label (default directory `.cache/ghidra-bsim`, lowest similarity 0.7) |
 | `--flat`, `--load ADDR`, `--header N`, `--processor LANG`, `--window ADDR` | read OBJECT as raw bytes: the address of the first byte after N header bytes, the Ghidra language (default MIPS 64-bit) and, for a 64-bit MIPS language, the upper address bits of the window it runs in |

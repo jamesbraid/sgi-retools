@@ -1,5 +1,6 @@
 #!/bin/sh
-# Check ReDbgImport.java on a synthetic x86 PE and its .dbg: Python writes and checks, the Ghidra image imports.
+# Check ReDbgImport.java on a synthetic x86 PE and its .dbg files (COFF symbols, CodeView NB09
+# publics): Python writes and checks, the Ghidra image imports.
 #
 #   ghidra/scripts/tests/dbg-check.sh [OUTDIR]
 #
@@ -19,13 +20,20 @@ python3 ghidra/scripts/tests/dbg_synthetic.py
 python3 ghidra/scripts/tests/dbg_synthetic.py write "$out"
 cid=$($engine create -w /work -e HOME=/tmp "$tag" sh -c '
     proj=$(mktemp -d); cd /work
-    analyzeHeadless "$proj" p -import in/synthetic.dll -loader PeLoader -noanalysis \
-        -scriptPath "/opt/re-scripts;/work/tests" -preScript ReDbgImport.java in/synthetic.dbg \
-        -postScript DumpDbgSymbols.java /work/symbols.tsv -deleteProject > /work/headless.txt 2>&1')
+    for case in coff nb09; do
+        if [ $case = coff ]; then dbg=synthetic.dbg; else dbg=synthetic-nb09.dbg; fi
+        analyzeHeadless "$proj" p$case -import in/synthetic.dll -loader PeLoader -noanalysis \
+            -scriptPath "/opt/re-scripts;/work/tests" -preScript ReDbgImport.java in/$dbg \
+            -postScript DumpDbgSymbols.java /work/symbols-$case.tsv -deleteProject > /work/headless-$case.txt 2>&1
+    done')
 trap '$engine rm -f "$cid" >/dev/null 2>&1' EXIT
 $engine cp "$out" "$cid:/work/in"
 $engine cp ghidra/scripts/tests "$cid:/work/tests"
 $engine start -a "$cid" >/dev/null 2>&1 || true
-$engine cp "$cid:/work/symbols.tsv" "$out/symbols.tsv" || { echo "FAIL: Ghidra wrote no symbols"; exit 1; }
-$engine cp "$cid:/work/headless.txt" "$out/headless.txt"
-python3 ghidra/scripts/tests/dbg_synthetic.py check "$out/symbols.tsv" "$out/headless.txt"
+status=0
+for case in coff nb09; do
+    $engine cp "$cid:/work/symbols-$case.tsv" "$out/symbols-$case.tsv" || { echo "FAIL: Ghidra wrote no $case symbols"; exit 1; }
+    $engine cp "$cid:/work/headless-$case.txt" "$out/headless-$case.txt"
+    python3 ghidra/scripts/tests/dbg_synthetic.py check $case "$out/symbols-$case.tsv" "$out/headless-$case.txt" || status=1
+done
+exit $status

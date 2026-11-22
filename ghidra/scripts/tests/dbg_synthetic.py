@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""A synthetic x86 PE image, its separate .dbg file, and what ReDbgImport.java must make of them.
+"""A synthetic x86 PE image, its separate .dbg files, and what ReDbgImport.java must make of them.
 
-  dbg_synthetic.py write DIR      write DIR/synthetic.dll and DIR/synthetic.dbg
-  dbg_synthetic.py check SYMS LOG check DumpDbgSymbols.java's output and the headless log
-  dbg_synthetic.py                build both and check them against a plain Python reading (no Ghidra)
+  dbg_synthetic.py write DIR             write DIR/synthetic.dll, synthetic.dbg (COFF) and
+                                         synthetic-nb09.dbg (CodeView publics)
+  dbg_synthetic.py check CASE SYMS LOG   check DumpDbgSymbols.java's output and the headless log;
+                                         CASE is coff or nb09
+  dbg_synthetic.py                       build all and check them against a plain Python reading
+                                         (no Ghidra)
 
 No vendor bytes. The COFF symbols cover each case of the counting rule in ReDbgImport.java: an
 auxiliary record, an alias of one address, a long (string table) name, a label in .text and in
@@ -40,6 +43,25 @@ COUNTS = dict(records=len(SYMBOLS), auxiliary=2, functions=3, labels=4, sections
 EXPECT = [('function', TEXT, 'entry'), ('function', TEXT + 0x10, 'func_b'),
           ('function', TEXT + 0x20, 'a_function_with_a_long_name'),
           ('label', TEXT + 0x30, 'text_label'), ('label', DATA + 8, 'table')]
+
+
+# CodeView publics: (name, offset in the segment, segment, is a function). Segment 1 is .text, 2 .data.
+PUBLICS = [
+    ('_pub_func', 0, 1, True),
+    ('_pub_alias', 0, 1, True),
+    ('_pub_second@8', 0x10, 1, True),
+    ('_pub_table', 8, 2, False),
+    ('??_C@_0M@EKBA@user?5buffer?$AA@', 0x40, 1, False),
+    ('_pub_nosection', 0, 0, False),
+    ('_pub_past_the_image', 0x5000, 1, True),
+    ('.text', 0x30, 1, False),
+]
+NB09_COUNTS = dict(records=len(PUBLICS), auxiliary=0, functions=2, labels=2, sections=1, ignored=1,
+                   outside=1, rejected=0, uncreated=0)
+NB09_EXPECT = [('function', TEXT, 'entry'), ('function', TEXT + 0x10, '_pub_second@8'),
+               ('label', DATA + 8, '_pub_table'),
+               ('label', TEXT + 0x40, '??_C@_0M@EKBA@user?5buffer?$AA@')]
+KINDS = {'coff': ('COFF', COUNTS, EXPECT), 'nb09': ('CodeView NB09 publics', NB09_COUNTS, NB09_EXPECT)}
 
 
 def pad(b, n):
@@ -101,8 +123,33 @@ def dbg():
     return separate(1, coff_header + table)
 
 
+def publics():
+    """An sstGlobalPub subsection: its 16-byte header, then S_PUB32 records (4-byte offset, segment,
+    2-byte type index, length-prefixed name) and one record of another kind that must be skipped."""
+    records = b''
+    for name, off, seg, _ in PUBLICS:
+        body = struct.pack('<HIHH', 0x203, off, seg, 0) + bytes([len(name)]) + name.encode()
+        records += struct.pack('<H', len(body)) + body
+    records += struct.pack('<HHII', 10, 0x402, 1, 2)
+    return struct.pack('<HHIII', 0, 0, len(records), 0, 0) + records
+
+
+def dbg_nb09():
+    """NB09: the signature and the offset of a directory of three subsections, one of them sstGlobalPub."""
+    pub = publics()
+    dir_at = 8
+    entries = [(0x120, 1, 0, 0), (0x12a, 0xffff, 0, len(pub)), (0x12d, 0xffff, 0, 4)]
+    body_at = dir_at + 16 + 12 * len(entries)
+    out, at = b'', body_at
+    for sst, mod, _, size in entries:
+        out += struct.pack('<HHII', sst, mod, at, size)
+        at += size
+    header = struct.pack('<HHIII', 16, 12, len(entries), 0, 0)
+    return separate(2, b'NB09' + struct.pack('<I', dir_at) + header + out + pub + bytes(4))
+
+
 def reference():
-    """The counting rule read again from the bytes, without Ghidra."""
+    """The counting rule read again from the bytes, without Ghidra: (COFF, NB09) counts."""
     d = dbg()
     nsec, = struct.unpack_from('<I', d, 24)
     entry = 48 + 40 * nsec
@@ -125,8 +172,26 @@ def reference():
     return seen
 
 
-def check(syms, log):
-    counts, expect = COUNTS, EXPECT
+def reference_nb09():
+    d = dbg_nb09()
+    nsec, = struct.unpack_from('<I', d, 24)
+    raw, = struct.unpack_from('<I', d, 48 + 40 * nsec + 24)
+    assert d[raw:raw + 4] == b'NB09'
+    seen = dict(records=0, functions=set(), ignored=0, sections=0)
+    for name, off, seg, function in PUBLICS:
+        seen['records'] += 1
+        if seg == 0:
+            seen['ignored'] += 1
+        elif name.startswith('.'):
+            seen['sections'] += 1
+        elif function and TEXT + off < SIZE_OF_IMAGE:
+            seen['functions'].add(TEXT + off)
+    seen['functions'] = len(seen['functions'])
+    return seen
+
+
+def check(case, syms, log):
+    kind, counts, expect = KINDS[case]
     seen = set()
     for line in open(syms):
         f = line.rstrip('\n').split('\t')
@@ -139,17 +204,17 @@ def check(syms, log):
     functions = sorted(a for k, a, _ in seen if k == 'function')
     if len(functions) != counts['functions']:
         bad.append('%d functions, want %d: %s' % (len(functions), counts['functions'], functions))
-    want = ('ReDbgImport: COFF: %d symbol records, %d auxiliary skipped, %d functions, '
+    want = ('ReDbgImport: %s: %d symbol records, %d auxiliary skipped, %d functions, '
             '%d other labels, %d section names skipped, %d without a section, %d outside the image, '
             '%d names Ghidra rejects, %d functions not created'
-            % (tuple(counts[k] for k in ('records', 'auxiliary', 'functions', 'labels', 'sections',
+            % ((kind,) + tuple(counts[k] for k in ('records', 'auxiliary', 'functions', 'labels', 'sections',
                                                    'ignored', 'outside', 'rejected', 'uncreated'))))
     if want not in open(log).read():
         bad.append('summary line is not: ' + want)
     for b in bad:
-        print('FAIL dbg: ' + b)
-    print('%s: .dbg symbols applied, %d functions at distinct addresses' %
-          ('ok' if not bad else 'FAIL', len(functions)))
+        print('FAIL dbg %s: %s' % (case, b))
+    print('%s: %s symbols applied (%s), %d functions at distinct addresses' %
+          ('ok' if not bad else 'FAIL', case, kind, len(functions)))
     return 1 if bad else 0
 
 
@@ -158,18 +223,23 @@ def main():
         ref = reference()
         for key in ('records', 'auxiliary', 'functions', 'ignored', 'sections'):
             assert ref[key] == COUNTS[key], (key, ref[key], COUNTS[key])
+        pub = reference_nb09()
+        for key in ('records', 'functions', 'ignored', 'sections'):
+            assert pub[key] == NB09_COUNTS[key], (key, pub[key], NB09_COUNTS[key])
         assert image()[:2] == b'MZ'
-        print('ok: dbg and pe build, %d records, %d auxiliary, %d functions by the counting rule'
-              % (ref['records'], ref['auxiliary'], ref['functions']))
+        print('ok: dbg and pe build, %d COFF records, %d auxiliary, %d functions by the counting rule; '
+              '%d NB09 publics, %d functions' % (ref['records'], ref['auxiliary'], ref['functions'],
+                                                 pub['records'], pub['functions']))
         return 0
     if sys.argv[1] == 'write':
         os.makedirs(sys.argv[2], exist_ok=True)
-        for name, data in (('synthetic.dll', image()), ('synthetic.dbg', dbg())):
+        for name, data in (('synthetic.dll', image()), ('synthetic.dbg', dbg()),
+                           ('synthetic-nb09.dbg', dbg_nb09())):
             with open(os.path.join(sys.argv[2], name), 'wb') as f:
                 f.write(data)
         return 0
     if sys.argv[1] == 'check':
-        return check(sys.argv[2], sys.argv[3])
+        return check(sys.argv[2], sys.argv[3], sys.argv[4])
     sys.exit(__doc__)
 
 
