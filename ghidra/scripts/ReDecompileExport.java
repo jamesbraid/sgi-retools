@@ -65,6 +65,8 @@ public class ReDecompileExport extends GhidraScript {
     private static final Pattern WARNING = Pattern.compile(
         "/\\*\\s*((?:WARNING|Warning|Unable|Could not|Bad instruction|Control flow|Removing unreachable|Restart)[^*]*(?:\\*(?!/)[^*]*)*)\\*/");
 
+    private static final int RETRY_TIMEOUT_FACTOR = 4;
+
     private final Gson gson = new GsonBuilder().disableHtmlEscaping().create();
     private final List<String> notes = new ArrayList<>();
     private final List<String> unmatched = new ArrayList<>();
@@ -376,6 +378,11 @@ public class ReDecompileExport extends GhidraScript {
         row.put("calling_convention", function.getCallingConventionName());
         long start = System.nanoTime();
         DecompileResults result = engine.decompileFunction(function, timeout, monitor);
+        if (result != null && result.isTimedOut()) {
+            // A huge routine is slow, not undecompilable: __glCoGenerateNoXformHandler (17 KB) takes 121 s.
+            result = engine.decompileFunction(function, timeout * RETRY_TIMEOUT_FACTOR, monitor);
+            row.put("timeout_retried_s", timeout * RETRY_TIMEOUT_FACTOR);
+        }
         row.put("decompile_ms", (System.nanoTime() - start) / 1_000_000);
         boolean complete = result != null && result.decompileCompleted()
             && result.getDecompiledFunction() != null;

@@ -17,7 +17,8 @@ Options (after OBJECT, a path inside the workspace):
                                           the import log or its FIT labels
   --decompile-list FILE                   one name, glob, @address or @range per line
   --decompile-all                         every function Ghidra found
-  --decompile-timeout SECONDS             per function (default 60)
+  --decompile-timeout SECONDS             per function (default 60); a function that times out is tried
+                                          once more with four times as long
   --types SPEC.json                       structure types to apply first (see
                                           ghidra/README.md)
   --mdebug                                import the object's .mdebug symbol table

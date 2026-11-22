@@ -139,7 +139,7 @@ lists the options, and the top of `tools/ghidra-export.py` explains each.
 | `--decompile-component GLOB` | every function in the program-tree fragment named GLOB; an SN2 PROM has one per FIT component (`SAL_B_5_04`, `PAL_A_generic_7_31`, ...) |
 | `--decompile-list FILE` | one name, glob, `@address` or `@range` per line |
 | `--decompile-all` | every function Ghidra found |
-| `--decompile-timeout SECONDS` | per function (60) |
+| `--decompile-timeout SECONDS` | per function (60); a function that times out is tried once more with four times as long, and its JSON row says so (`timeout_retried_s`) |
 | `--types SPEC.json` | structure types to apply first (`ghidra/README.md`) |
 | `--mdebug` | import the `.mdebug` table of a 32-bit MIPSpro object (next section) |
 | `--dbg FILE.dbg` | apply the COFF symbols, or the CodeView NB09 publics, of a Windows NT separate debug file to an x86 PE image (next section) |
