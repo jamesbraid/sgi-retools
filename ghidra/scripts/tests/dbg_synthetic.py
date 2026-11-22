@@ -58,15 +58,18 @@ PUBLICS = [
     ('_pub_second@8', 0x10, 1, True),
     ('_pub_table', 8, 2, False),
     ('??_C@_0M@EKBA@user?5buffer?$AA@', 0x40, 1, False),
+    ('__IMPORT_DESCRIPTOR_FOO', 0x50, 1, False),
+    ('__NULL_IMPORT_DESCRIPTOR', 0x64, 1, False),
     ('_pub_nosection', 0, 0, False),
     ('_pub_past_the_image', 0x5000, 1, True),
     ('.text', 0x30, 1, False),
 ]
-NB09_COUNTS = dict(records=len(PUBLICS), auxiliary=0, functions=2, labels=2, sections=1, ignored=1,
+NB09_COUNTS = dict(records=len(PUBLICS), auxiliary=0, functions=2, labels=4, sections=1, ignored=1,
                    outside=1, rejected=0, uncreated=0)
 NB09_EXPECT = [('function', 'T', 0, 'entry'), ('function', 'T', 0x10, '_pub_second@8'),
                ('label', 'D', 8, '_pub_table'),
-               ('label', 'T', 0x40, '??_C@_0M@EKBA@user?5buffer?$AA@')]
+               ('label', 'T', 0x40, '??_C@_0M@EKBA@user?5buffer?$AA@'),
+               ('label', 'T', 0x50, '__IMPORT_DESCRIPTOR_FOO'), ('label', 'T', 0x64, '__NULL_IMPORT_DESCRIPTOR')]
 KINDS = {'coff': ('COFF', COUNTS, EXPECT, {}), 'nb09': ('CodeView NB09 publics', NB09_COUNTS, NB09_EXPECT, {}),
          'coff-va': ('COFF', COUNTS, EXPECT, {}), 'coff-low': ('COFF', COUNTS, EXPECT, LOW)}
 

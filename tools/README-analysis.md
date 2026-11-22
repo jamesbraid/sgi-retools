@@ -99,7 +99,7 @@ an NT4 display driver's ImageBase is 0x10000, below many of its own RVAs). A
 `.dbg` that has no COFF table but a CodeView NB09 record (a 1999 driver's symbols, publics only) is read
 from its sstGlobalPub subsection instead: each S_PUB32 or S_PUB16 offset is in segment N, taken as the
 N-th section of the `.dbg`. A public has no type, so one in a code section is called a function, except a
-`??_C@_` string literal. That is an approximation; check names against the disassembly. An NB10 or NB11
+`??_C@_` string literal or an import descriptor (`__IMPORT_DESCRIPTOR_x`, `__NULL_IMPORT_DESCRIPTOR`, which sit in the executable INIT section). That is an approximation; check names against the disassembly. An NB10 or NB11
 record points at a `.pdb` (use `--pdb`) and is refused with that message. The counting rule, which the
 script prints as its last line:
 

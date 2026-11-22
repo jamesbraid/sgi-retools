@@ -21,8 +21,10 @@
  *   - a COFF auxiliary record is skipped, never counted;
  *   - a COFF symbol whose type is a function (derived type 2) in the section named .text is a
  *     function. A CodeView public carries no type, so one in a code section (the section has
- *     the code flag) is taken as a function, except a string literal (??_C@_...): an
- *     approximation, a data-in-code public of another kind would be misread. "functions" counts
+ *     the code flag) is taken as a function, except a string literal (??_C@_...) and an import
+ *     linkage record (__IMPORT_DESCRIPTOR_x, __NULL_IMPORT_DESCRIPTOR), which a linker places in an
+ *     executable section such as INIT: an approximation, a data-in-code public of another kind
+ *     would be misread. "functions" counts
  *     distinct addresses, so aliases of one address add none;
  *   - a name beginning with "." is a section name (the per-object ".text" and ".data" records)
  *     and is skipped, counted apart: it must never become the name of a function or label;
@@ -280,9 +282,10 @@ public class ReDbgImport extends GhidraScript {
 						skippedSections++;
 					}
 					else {
-						// String literals sit in the code segment of some builds; they are data.
-						symbols.add(new Sym(name, rva[section] + off,
-							code[section] && !name.startsWith("??_C@_")));
+						// String literals and import descriptors sit in code sections; they are data.
+						boolean data = name.startsWith("??_C@_") || name.startsWith("__IMPORT_DESCRIPTOR_")
+							|| name.equals("__NULL_IMPORT_DESCRIPTOR");
+						symbols.add(new Sym(name, rva[section] + off, code[section] && !data));
 					}
 				}
 				p += 2 + length;
