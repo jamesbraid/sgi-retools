@@ -7,6 +7,7 @@
                                          at a low base as synthetic-low.dll and synthetic-low.dbg
   dbg_synthetic.py check CASE SYMS LOG   check DumpDbgSymbols.java's output and the headless log;
                                          CASE is coff, coff-va, coff-low or nb09
+  dbg_synthetic.py check-types OUT LOG   check ReFunctionTypesCheck.java's output and the headless log
   dbg_synthetic.py check-returning BEFORE AFTER LOG
                                          check DumpFunctionBodies.java's output before and after
                                          ReReturning.java, and the headless log
@@ -292,6 +293,28 @@ def check_returning(before, after, log):
     return 1 if bad else 0
 
 
+TYPE_RULES = ['callconv\tfastcall\talpha*', 'param\talpha_one\t0\tCtx *', 'param\talpha_one\t3\tint',
+              'param\tnosuch\t0\tint', 'callconv\tnosuchconv\talpha*', 'param\talpha_one\t0\tNoSuchType *']
+
+
+def check_types(out, log):
+    """ReFunctionTypes.java applies what it can and reports each rule it cannot."""
+    bad = []
+    if open(out).read().rstrip('\n') != 'alpha_one\t__fastcall\tCtx *':
+        bad.append('alpha_one has %r, want __fastcall and a Ctx * parameter' % open(out).read())
+    text = open(log).read()
+    for want in ('FAILED no function matches param nosuch 0 int', 'FAILED no calling convention nosuchconv',
+                 'FAILED alpha_one has no parameter 3', 'FAILED type NoSuchType *',
+                 'ReFunctionTypes: 6 rules, 1 calling conventions changed, 1 parameters typed, 4 failed'):
+        if want not in text:
+            bad.append('no line with: ' + want)
+    for b in bad:
+        print('FAIL types: ' + b)
+    print('%s: types, a calling convention and a parameter type applied, 4 bad rules reported' %
+          ('ok' if not bad else 'FAIL'))
+    return 1 if bad else 0
+
+
 def main():
     if len(sys.argv) == 1:
         ref = reference()
@@ -313,7 +336,11 @@ def main():
                            ('synthetic-returning.dll', image(text=returning_text()))):
             with open(os.path.join(sys.argv[2], name), 'wb') as f:
                 f.write(data)
+        with open(os.path.join(sys.argv[2], 'types.tsv'), 'w') as f:
+            f.write('\n'.join(TYPE_RULES) + '\n')
         return 0
+    if sys.argv[1] == 'check-types':
+        return check_types(*sys.argv[2:4])
     if sys.argv[1] == 'check-returning':
         return check_returning(*sys.argv[2:5])
     if sys.argv[1] == 'check':

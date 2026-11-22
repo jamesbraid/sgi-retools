@@ -6,6 +6,7 @@ Run from the repository root: python3 tools/test_ghidra_export.py
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import struct
 import tempfile
@@ -108,6 +109,43 @@ class PlanLanguage(unittest.TestCase):
                 f.write(pe(ge.PE_MACHINE_I386))
             with self.assertRaises(SystemExit):
                 ge.prepare(['--job', d, '--decompile-all', '--returning', ',', obj])
+
+    def prepare_pe(self, *args, touch=()):
+        """Plan an x86 PE export with ARGS (@D is the temporary directory, holding the TOUCH files):
+        the ghidra.sh text, the plan and the retype rules, with the directory shown as @D."""
+        with tempfile.TemporaryDirectory() as d:
+            for name in touch:
+                open(os.path.join(d, name), 'w').close()
+            obj, job = os.path.join(d, 'a.dll'), os.path.join(d, 'job')
+            os.mkdir(job)
+            with open(obj, 'wb') as f:
+                f.write(pe(ge.PE_MACHINE_I386))
+            ge.prepare(['--job', job, '--decompile-all'] + [a.replace('@D', d) for a in args] + [obj])
+            files = {n: open(os.path.join(job, n)).read() for n in os.listdir(job) if os.path.isfile(os.path.join(job, n))}
+        return (files['ghidra.sh'].replace(d, '@D'), json.loads(files['plan.json'].replace(d, '@D')),
+                files.get('retype.tsv'))
+
+    def test_callconv_and_param_type_write_rules_that_run_before_returning(self):
+        script, plan, rules = self.prepare_pe('--callconv', 'fastcall:__gl*,_Foo@8', '--param-type', '__gl*:0:Ctx *',
+                                              '--returning', 'bar')
+        self.assertEqual(rules, 'callconv\tfastcall\t__gl*\ncallconv\tfastcall\t_Foo@8\nparam\t__gl*\t0\tCtx *\n')
+        self.assertIn('-postScript ReFunctionTypes.java @D/job/retype.tsv -postScript ReReturning.java bar '
+                      '-postScript ReDecompileExport.java', script)
+        self.assertEqual(plan['retype_rules'], rules.splitlines())
+
+    def test_callconv_file_and_the_rules_in_order(self):
+        with tempfile.TemporaryDirectory() as d:
+            rules = os.path.join(d, 'cc.txt')
+            with open(rules, 'w') as f:
+                f.write('# the ICD\nthiscall:A*\n\nstdcall:B\n')
+            _, _, text = self.prepare_pe('--callconv', 'fastcall:C', '--callconv-file', rules)
+        self.assertEqual(text, 'callconv\tfastcall\tC\ncallconv\tthiscall\tA*\ncallconv\tstdcall\tB\n')
+
+    def test_bad_callconv_and_param_type_are_refused(self):
+        for args in (['--callconv', 'fastcall'], ['--callconv', ':x'], ['--param-type', 'f:x:T'],
+                     ['--param-type', 'f:1:'], ['--param-type', 'f']):
+            with self.assertRaises(SystemExit, msg=args):
+                self.prepare_pe(*args)
 
     def test_dbg_and_pdb_need_an_x86_pe(self):
         with tempfile.TemporaryDirectory() as d:

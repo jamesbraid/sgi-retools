@@ -55,3 +55,23 @@ signature and age are readable with a package-private call) makes the analyzer s
 goes on without the PDB. There is no fallback inside the tools: that `.dbg` holds only frame-pointer
 data and the CodeView pointer to the PDB, no names. Name its functions from the NT 4 build of the same
 driver by reading both disassemblies, or from the disassembly alone.
+
+## Calling conventions the debug information gets wrong
+
+A PDB or `.dbg` states one convention per function, usually `__cdecl`, and the decompiler trusts it. Code
+that passes a hidden first argument in a register contradicts it: the SGI Visual Workstation OpenGL driver
+(`sgcoicd.dll`) keeps its context in ECX, and its PDB gives 3,609 of 3,633 routines `__cdecl`. The decompile
+then shows the context as `in_ECX + 0x24` and an unrelated stack argument, and no field name ever appears.
+
+    tools/re-run --ghidra-export sgcoicd.dll --dbg sgcoicd.dbg --pdb sgcoicd.pdb \
+        --callconv 'fastcall:__glCoIcd*' --param-type '__glCoIcd*:0:__GLCOcontextRec *' \
+        --decompile-symbol __glCoIcdMakeCurrent
+
+`--callconv CONV:GLOB[,GLOB]` (or `--callconv-file FILE`, one such rule per line) changes the convention
+of every matching function; `--param-type GLOB:INDEX:TYPE` then types a parameter, INDEX counting from 0,
+with a type already in the program (a PDB puts its structures there). For `__glCoIcdMakeCurrent` the
+export changes from `iVar1 = *(int *)(in_ECX + 0x24);` to `pvVar1 = (param_1->gc).imports.other;`.
+`scripts/ReFunctionTypes.java` applies the rules and has no driver name in it. The run exits 1 with a
+"FAILED" line when a rule matches no function, names a convention or type the program lacks, or indexes
+a parameter the function does not have. Which routines take the context in ECX is the reader's call: read
+a few disassemblies, then match by the name prefix they share.

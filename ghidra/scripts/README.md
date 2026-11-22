@@ -146,9 +146,9 @@ filtered imports.
 ## The export helpers
 
 `ReBSimAdd`, `ReDbgImport`, `ReDecompileExport`, `RePdbImport`, `ReMdebugImport`, `ReMipsGp`,
-`ReObjectSymbols` and `ReReturning` are the scripts `tools/re-run --ghidra-export` drives:
+`ReObjectSymbols`, `ReReturning` and `ReFunctionTypes` are the scripts `tools/re-run --ghidra-export` drives:
 global-pointer seeding, `.mdebug` names, `.dbg` and PDB symbols for x86 PE images, clearing a wrong
-no-return flag (`--returning`), decompile export as JSON and function-similarity records. For an IA-64 ELF, `IA64Elf` seeds r1 from
+no-return flag (`--returning`), calling conventions and parameter types (`--callconv`, `--param-type`), decompile export as JSON and function-similarity records. For an IA-64 ELF, `IA64Elf` seeds r1 from
 `__gp` (the processor ends a function at Linux's `BUG()`, an unpredicated `break 0`, so Ghidra's
 own discovery of functions that do not return stays on), and `IA64Signatures` gives each function the
 parameters and return its own body shows, callees first, so a call passes exactly its callee's

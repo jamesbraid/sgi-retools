@@ -35,6 +35,15 @@ Options (after OBJECT, a path inside the workspace):
                                           callers, for a routine analysis
                                           wrongly marked non-returning ("Subroutine does not return"
                                           in every caller)
+  --callconv CONV:GLOB[,GLOB]             after analysis, give every function named GLOB (a name with
+                                          * wildcards, or @0xADDR) the calling convention CONV, one
+                                          of the compiler spec's (fastcall, stdcall, thiscall, cdecl,
+                                          with or without leading underscores); repeatable
+  --callconv-file FILE                    the same, one CONV:GLOB[,GLOB] per line (# starts a comment)
+  --param-type GLOB:INDEX:TYPE            set the type of parameter INDEX (from 0) of the functions
+                                          named GLOB, TYPE a type already in the program such as
+                                          "__GLCOcontextRec *"; repeatable. Rules apply in the order
+                                          given, calling conventions first
   --bsim-db NAME --bsim-label LABEL       match the object against BSim database
                                           NAME, then add it under LABEL
   --bsim-dir DIR  --bsim-min SIMILARITY   database directory (default
@@ -257,6 +266,9 @@ def parser():
     p.add_argument('--dbg', metavar='FILE.dbg')
     p.add_argument('--pdb', metavar='FILE.pdb')
     p.add_argument('--returning', action='append', default=[], metavar='NAME[,NAME]')
+    p.add_argument('--callconv', action='append', default=[], metavar='CONV:GLOB[,GLOB]')
+    p.add_argument('--callconv-file', metavar='FILE')
+    p.add_argument('--param-type', action='append', default=[], metavar='GLOB:INDEX:TYPE')
     p.add_argument('--bsim-db', metavar='NAME')
     p.add_argument('--bsim-label', metavar='LABEL')
     p.add_argument('--bsim-dir', default='.cache/ghidra-bsim')
@@ -274,6 +286,33 @@ def parser():
     p.add_argument('--no-analysis', action='store_true')
     p.add_argument('--cpus', type=int, default=2)
     return p
+
+
+CALLCONV = re.compile(r'([A-Za-z_][A-Za-z0-9_]*):([^\s:][^\t\r\n]*)')
+PARAM_TYPE = re.compile(r'(\S+?):([0-9]+):([^\t\r\n]+)')
+
+
+def retype_rules(args):
+    """The ReFunctionTypes rule lines for --callconv, --callconv-file and --param-type, in order."""
+    items = list(args.callconv)
+    if args.callconv_file:
+        try:
+            lines = pathlib.Path(args.callconv_file).read_text().splitlines()
+        except OSError as error:
+            die('cannot read %s: %s' % (args.callconv_file, error.strerror))
+        items += [l.strip() for l in lines if l.strip() and not l.lstrip().startswith('#')]
+    rules = []
+    for item in items:
+        m = CALLCONV.fullmatch(item)
+        if not m:
+            die('--callconv wants CONV:GLOB[,GLOB], got %r' % item)
+        rules += ['callconv\t%s\t%s' % (m.group(1), g) for g in m.group(2).split(',') if g]
+    for item in args.param_type:
+        m = PARAM_TYPE.fullmatch(item)
+        if not m:
+            die('--param-type wants GLOB:INDEX:TYPE, got %r' % item)
+        rules.append('param\t%s\t%s\t%s' % m.groups())
+    return rules
 
 
 def heap_for(size):
@@ -317,6 +356,7 @@ def prepare(argv):
         die('--returning names functions: NAME[,NAME]')
     if args.heap and not re.fullmatch(r'[1-9][0-9]*[MG]', args.heap):
         die('--heap is a size such as 14G or 4096M')
+    rules = retype_rules(args)
     flat, mips, pe, header_kind = None, True, False, 'ELF'
     if args.sal_runtime and not args.sn2_prom:
         die('--sal-runtime reads the SAL runtime of an SN2 PROM: add --sn2-prom')
@@ -456,6 +496,9 @@ def prepare(argv):
             if not path.is_file():
                 die('no debug file %s' % flag)
             argv += ['-preScript', script, str(path)]
+    if rules:
+        (job / 'retype.tsv').write_text('\n'.join(rules) + '\n')
+        argv += ['-postScript', 'ReFunctionTypes.java', str(job / 'retype.tsv')]
     if returning:
         argv += ['-postScript', 'ReReturning.java', ','.join(returning)]
     if language == IA64_LANGUAGE:
@@ -480,7 +523,7 @@ def prepare(argv):
         'object': str(original), 'image_sha256': sha, 'language': language or 'default (from the %s header)' % header_kind,
         'compiler_spec_requested': spec, 'relocatable': relocatable, 'exporting': exporting,
         'bsim': bool(args.bsim_db), 'mdebug_seeds': len(seeds), 'object_path': args.object,
-        'flat': flat}, indent=1) + '\n')
+        'flat': flat, 'dbg': args.dbg, 'pdb': args.pdb, 'returning': returning, 'retype_rules': rules}, indent=1) + '\n')
     print('ghidra-export: %s (%s, %d .mdebug names seeded)'
           % (args.object, language or 'language from the %s header' % header_kind, len(seeds)),
           file=sys.stderr)
@@ -519,9 +562,13 @@ def finish(argv):
     headless = job / 'headless.txt'
     text = headless.read_text(errors='replace') if headless.is_file() else ''
     rc = int((job / 'rc').read_text()) if (job / 'rc').is_file() else 1
+    # What the scripts behind the options print.
+    reported = ['ReDbgImport.java> ', 'RePdbImport.java> ', 'ReReturning.java> ', 'ReFunctionTypes.java> ']
     for line in text.splitlines():
         if 're-' in line and ('re-bsim:' in line or 're-decompile-export:' in line or 're-symbols:' in line or 're-gp:' in line):
             print(line.split('> ', 1)[-1], file=sys.stderr)
+        elif any(m in line for m in reported):
+            print('ghidra-export: ' + line.split('> ', 1)[-1], file=sys.stderr)
     if rc != 0:
         die('Ghidra exited %d; see %s' % (rc, headless))
     if plan['bsim'] and 're-bsim: ' not in text:
@@ -529,6 +576,9 @@ def finish(argv):
         die('the BSim step failed and nothing was added to the database'
             + ''.join('\n  ' + l for l in errors[-5:]))
     status = 0
+    for line in text.splitlines():
+        if 'ReFunctionTypes.java> ReFunctionTypes: FAILED' in line:
+            status = 1
     if plan['exporting']:
         source = job / 'functions.jsonl'
         if not source.is_file():

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Check ReDbgImport.java on a synthetic x86 PE and its .dbg files (COFF symbols, CodeView NB09
-# publics), and ReReturning.java on callers of a wrongly no-return routine: Python writes and checks,
+# publics), ReReturning.java on callers of a wrongly no-return routine and ReFunctionTypes.java on
+# its rule file: Python writes and checks,
 # the Ghidra image imports.
 #
 #   ghidra/scripts/tests/dbg-check.sh [OUTDIR]
@@ -36,10 +37,17 @@ cid=$($engine create -w /work -e HOME=/tmp "$tag" sh -c '
     analyzeHeadless "$proj" preturning -import in/synthetic-returning.dll -loader PeLoader -noanalysis \
         -scriptPath "/opt/re-scripts;/work/tests" -postScript ReReturningSetup.java 1000 1010 1020 1040 \
         -postScript DumpFunctionBodies.java /work/bodies-before.tsv -postScript ReReturning.java @0x10001000 \
-        -postScript DumpFunctionBodies.java /work/bodies-after.tsv -deleteProject > /work/headless-returning.txt 2>&1')
+        -postScript DumpFunctionBodies.java /work/bodies-after.tsv -deleteProject > /work/headless-returning.txt 2>&1
+    analyzeHeadless "$proj" ptypes -import in/synthetic.dll -loader PeLoader -noanalysis \
+        -scriptPath "/opt/re-scripts;/work/tests" -postScript ReFunctionTypesCheck.java /work/in/types.tsv \
+        /work/types.tsv -deleteProject > /work/headless-types.txt 2>&1')
 trap '$engine rm -f "$cid" >/dev/null 2>&1' EXIT
 $engine cp "$out" "$cid:/work/in"
-$engine cp ghidra/scripts/tests "$cid:/work/tests"
+# Only the scripts this check runs: the rest of tests/ needs classes that are not on the script path.
+mkdir "$out/java"
+cp ghidra/scripts/tests/DumpDbgSymbols.java ghidra/scripts/tests/DumpFunctionBodies.java \
+    ghidra/scripts/tests/ReReturningSetup.java ghidra/scripts/tests/ReFunctionTypesCheck.java "$out/java"
+$engine cp "$out/java" "$cid:/work/tests"
 $engine start -a "$cid" >/dev/null 2>&1 || true
 status=0
 for case in coff nb09 coff-va coff-low; do
@@ -52,4 +60,7 @@ for f in bodies-before.tsv bodies-after.tsv headless-returning.txt; do
 done
 python3 ghidra/scripts/tests/dbg_synthetic.py check-returning "$out/bodies-before.tsv" "$out/bodies-after.tsv" \
     "$out/headless-returning.txt" || status=1
+$engine cp "$cid:/work/headless-types.txt" "$out/headless-types.txt"
+$engine cp "$cid:/work/types.tsv" "$out/types-out.tsv" || { echo "FAIL: Ghidra wrote no types output"; exit 1; }
+python3 ghidra/scripts/tests/dbg_synthetic.py check-types "$out/types-out.tsv" "$out/headless-types.txt" || status=1
 exit $status
