@@ -3,7 +3,8 @@
  * A driver stripped to a separate .dbg and .pdb keeps the CodeView record in the .dbg, so the
  * analyzer finds no PDB information in the program and skips it. This pre-script copies the
  * PDB's own signature and age into the program information and names the file, then analysis
- * applies the types and symbols. It reads PDB 2.0 (VC6 era) and 7.0.
+ * applies the types and symbols. It reads PDB 2.0 (VC6 era) and 7.0, except a PDB 2.0 whose
+ * debug info is version 19960307 (see ghidra/README.md).
  *
  *   -preScript RePdbImport.java FILE.pdb
  *
@@ -17,6 +18,7 @@ import java.io.File;
 import ghidra.app.plugin.core.analysis.PdbUniversalAnalyzer;
 import ghidra.app.script.GhidraScript;
 import ghidra.app.util.bin.format.pdb2.pdbreader.AbstractPdb;
+import ghidra.app.util.bin.format.pdb2.pdbreader.PdbException;
 import ghidra.app.util.bin.format.pdb2.pdbreader.PdbIdentifiers;
 import ghidra.app.util.bin.format.pdb2.pdbreader.PdbParser;
 import ghidra.app.util.bin.format.pdb2.pdbreader.PdbReaderOptions;
@@ -35,6 +37,11 @@ public class RePdbImport extends GhidraScript {
 		try (AbstractPdb pdb = PdbParser.parse(file, new PdbReaderOptions(), monitor)) {
 			pdb.deserialize();
 			id = pdb.getIdentifiers();
+		}
+		catch (PdbException e) {
+			// The analyzer runs the same parse, so it would skip this file without a word.
+			throw new IllegalArgumentException(file.getName() + ": Ghidra's PDB reader cannot " +
+				"parse this file (" + e.getMessage() + "); see ghidra/README.md", e);
 		}
 		Options info = currentProgram.getOptions("Program Information");
 		if (id.getGuid() != null) {

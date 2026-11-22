@@ -39,3 +39,19 @@ because the CodeView record is in the `.dbg`, not the PE ("missing PDB informati
 with `--no-analysis` nothing is applied. On a 32-bit driver the PDB gave the same function count as the
 `.dbg` (`--dbg`, see `tools/README-analysis.md`), plus types. A few ST-form symbol kinds (register, constant,
 frame-relative locals, compile flags) are reported unsupported.
+
+Not every PDB 2.0 file parses. The Windows 2000 build of the SGI 320 drivers (`sgcodd.pdb`, "Microsoft
+C/C++ program database 2.00") has a debug-info stream of version 19960307, and Ghidra 12.1.3 reads the
+module records of any new-style debug-info header with the 6.00 layout, so it stops with
+
+    PdbException: Needed data is not available.
+        at ghidra.app.util.bin.format.pdb2.pdbreader.ModuleInformation600.parseAdditionals(ModuleInformation600.java:42)
+
+The NT 4 build of the same driver (version 19970606) parses. Nothing in a script reaches this: the
+module-information step has no skip option, the reader's options (`PdbReaderOptions`) only choose
+character sets, and the PDB analyzer repeats the parse itself, so naming the file in the program (the
+signature and age are readable with a package-private call) makes the analyzer skip it silently. So
+`RePdbImport.java` stops with the message "Ghidra's PDB reader cannot parse this file" and analysis
+goes on without the PDB. There is no fallback inside the tools: that `.dbg` holds only frame-pointer
+data and the CodeView pointer to the PDB, no names. Name its functions from the NT 4 build of the same
+driver by reading both disassemblies, or from the disassembly alone.
