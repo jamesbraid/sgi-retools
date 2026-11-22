@@ -28,3 +28,14 @@ ranges, symbols, flat PROM images, ELF and PE objects.
 
 Add it here, under the layout above, with its README and both test scripts, even when only one repository
 uses it so far. Scripts that read IRIX objects and don't belong to one hardware family go in `scripts/`.
+
+## PDB files for x86 PE images
+
+Ghidra 12.1.3's PDB loader reads the PDB 2.0 files of VC6-era drivers ("Microsoft C/C++ program database
+2.00") and applies their types, function names and parameters. Its analyzer skips them on a stripped image,
+because the CodeView record is in the `.dbg`, not the PE ("missing PDB information in program metadata").
+`scripts/RePdbImport.java` copies the PDB's own signature and age into the program, so
+`re-run --ghidra-export IMAGE --pdb FILE.pdb` works. It runs inside auto-analysis, so it needs analysis on:
+with `--no-analysis` nothing is applied. On a 32-bit driver the PDB gave the same function count as the
+`.dbg` (`--dbg`, see `tools/README-analysis.md`), plus types. A few ST-form symbol kinds (register, constant,
+frame-relative locals, compile flags) are reported unsupported.

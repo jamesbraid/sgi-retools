@@ -57,9 +57,37 @@ class PlanLanguage(unittest.TestCase):
         self.assertNotIn('IA64Elf', script)
         self.assertIn('-postScript IA64Signatures.java -postScript ReDecompileExport.java', script)
 
-    def test_x86_pe_is_refused(self):
+    def test_x86_64_pe_is_refused(self):
         with self.assertRaises(SystemExit):
             self.plan(pe(0x8664))
+
+    def test_x86_pe_gets_the_pe_loader_and_its_symbol_scripts_in_order(self):
+        with tempfile.TemporaryDirectory() as d:
+            obj, job = os.path.join(d, 'a.dll'), os.path.join(d, 'job')
+            for name in ('a.dbg', 'a.pdb'):
+                open(os.path.join(d, name), 'wb').close()
+            os.mkdir(job)
+            with open(obj, 'wb') as f:
+                f.write(pe(ge.PE_MACHINE_I386))
+            ge.prepare(['--job', job, '--decompile-all', '--dbg', os.path.join(d, 'a.dbg'),
+                        '--pdb', os.path.join(d, 'a.pdb'), obj])
+            with open(os.path.join(job, 'ghidra.sh')) as f:
+                script = f.read()
+        self.assertIn('-loader PeLoader -preScript ReDbgImport.java', script)
+        self.assertLess(script.index('ReDbgImport.java'), script.index('RePdbImport.java'))
+        self.assertNotIn('IA64', script)
+        self.assertNotIn('-processor', script)
+
+    def test_dbg_and_pdb_need_an_x86_pe(self):
+        with tempfile.TemporaryDirectory() as d:
+            obj, sym = os.path.join(d, 'obj'), os.path.join(d, 'a.dbg')
+            open(sym, 'wb').close()
+            for blob in (elf32(ge.EM_MIPS, '>'), pe(ge.PE_MACHINE_IA64)):
+                with open(obj, 'wb') as f:
+                    f.write(blob)
+                for flag in ('--dbg', '--pdb'):
+                    with self.assertRaises(SystemExit):
+                        ge.prepare(['--job', d, '--decompile-all', flag, sym, obj])
 
     def test_sal_runtime_is_an_sn2_prom_option(self):
         with tempfile.TemporaryDirectory() as d:

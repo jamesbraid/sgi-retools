@@ -79,6 +79,33 @@ the table holds no type records for it. `tools/mdebug.py` decodes the same table
 Limits: no parameter types for a pointer to function, `long` is 4 bytes, bit fields that straddle their
 storage unit are dropped, and aggregates with the same tag are merged (the first definition with members wins).
 
+## x86 Windows PE with a separate .dbg
+
+Windows NT drivers and DLLs from the 1990s ship stripped, with the symbols in a `.dbg` file (an
+`IMAGE_SEPARATE_DEBUG_HEADER`, then COFF symbols) and sometimes a `.pdb`. The recipe:
+
+1. Unpack the installer: `7z x` for self-extracting executables, `unshield x` for InstallShield 5 and later
+   cabinets (`cabextract` and `innoextract` are in the image too). InstallShield 3 archives: no extractor
+   in the image yet.
+2. Import and apply the symbols, in the workspace:
+
+       tools/re-run --ghidra-export path/driver.dll --dbg path/driver.dbg --decompile-symbol @0xADDR
+
+`ghidra/scripts/ReDbgImport.java` runs before analysis. Symbol values are RVAs from the image base. The
+counting rule, which the script prints as its last line:
+
+- an auxiliary record is skipped and never counted;
+- a function-typed symbol in the section named `.text` is a function, counted by distinct address, so an
+  alias of the same address adds none;
+- any other named symbol in a section is a label, also counted by distinct address;
+- a symbol with no section (undefined, absolute) or outside the image is ignored, and a name Ghidra
+  rejects (the `\x7f..._NULL_THUNK_DATA` import markers) is counted and skipped;
+- a name Ghidra already holds at an address, such as `entry`, is kept.
+
+Count symbols the same way before comparing totals, or two readers will differ by the aliases and
+auxiliary records. `pefile` is in the image for reading headers. `ghidra/scripts/tests/dbg_synthetic.py` is
+the test, on a generated image (`ghidra/scripts/tests/dbg-check.sh` runs it through Ghidra).
+
 ## Decompile export
 
     tools/re-run --ghidra-export OBJECT OPTIONS
@@ -87,7 +114,7 @@ Ghidra analyses OBJECT and writes decompiled C per function as JSON under `.cach
 file is named on stdout; decompiler output is navigation, not evidence). It reads ELF objects for
 big-endian MIPS, little-endian ARM (language `ARM:LE:32:v4`, for example the SN2 L1 controller firmware) and
 IA-64 (an SN2 Linux kernel, linked or compressed as `vmlinuz`, which is inflated first); the language and
-calling convention come from the ELF header. A PE32+ file is not read. A flat image, such as a PROM, has no
+calling convention come from the ELF header. A PE32+ IA-64 image and a 32-bit x86 PE image (below) are read too. A flat image, such as a PROM, has no
 header, so say what it is with `--flat` or `--sn2-prom`. `python3 retools/tools/ghidra-export.py prepare --help`
 lists the options, and the top of `tools/ghidra-export.py` explains each.
 
@@ -100,6 +127,8 @@ lists the options, and the top of `tools/ghidra-export.py` explains each.
 | `--decompile-timeout SECONDS` | per function (60) |
 | `--types SPEC.json` | structure types to apply first (`ghidra/README.md`) |
 | `--mdebug` | import the `.mdebug` table of a 32-bit MIPSpro object (next section) |
+| `--dbg FILE.dbg` | apply the COFF symbols of a Windows NT separate debug file to an x86 PE image (next section) |
+| `--pdb FILE.pdb` | apply a PDB 2.0 or 7.0 file to an x86 PE image: types, function names, parameters. Needs analysis, so not with `--no-analysis` |
 | `--bsim-db NAME --bsim-label LABEL`, `--bsim-dir DIR`, `--bsim-min S` | match against a BSim database, then add under the label (default directory `.cache/ghidra-bsim`, lowest similarity 0.7) |
 | `--flat`, `--load ADDR`, `--header N`, `--processor LANG`, `--window ADDR` | read OBJECT as raw bytes: the address of the first byte after N header bytes, the Ghidra language (default MIPS 64-bit) and, for a 64-bit MIPS language, the upper address bits of the window it runs in |
 | `--sn2-prom` | OBJECT is an SN2 PROM: IA-64, loaded to end at 4 GiB, laid out by `SN2PromImport.java` (below) |

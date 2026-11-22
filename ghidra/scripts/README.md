@@ -131,7 +131,7 @@ target-specific material.
 Run the synthetic filter/null/import regressions with an existing image:
 
 ```sh
-GHIDRA_IMAGE=localhost/re-ghidra:a851eccc301f python3 ghidra/scripts/tests/run.py
+GHIDRA_IMAGE=localhost/re-ghidra:bfd3c1d2eca6 python3 ghidra/scripts/tests/run.py
 ```
 
 Add `--real-elf /path/to/original` for the full filtered-import/repair regression

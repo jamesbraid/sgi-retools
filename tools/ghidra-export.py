@@ -23,6 +23,11 @@ Options (after OBJECT, a path inside the workspace):
   --mdebug                                import the object's .mdebug symbol table
                                           (names, line numbers, types, procedure
                                           signatures); a 32-bit MIPSpro object only
+  --dbg FILE.dbg                          apply the COFF symbols of a Windows NT separate debug
+                                          file to an x86 PE image (ghidra/scripts/ReDbgImport.java
+                                          states the counting rule)
+  --pdb FILE.pdb                          apply a .pdb (PDB 2.0 or 7.0) to an x86 PE image: its
+                                          types, function names and parameters
   --bsim-db NAME --bsim-label LABEL       match the object against BSim database
                                           NAME, then add it under LABEL
   --bsim-dir DIR  --bsim-min SIMILARITY   database directory (default
@@ -43,6 +48,9 @@ Output goes under .cache/ghidra-export/ (ignored by git): decompile.json holds o
 entry per function with the decompiler's C, warnings and signature. Decompiler
 output and BSim similarity are navigation, not evidence: a committed claim still
 rests on the disassembly.
+
+A 32-bit x86 PE image (a Windows NT driver or DLL) is read with the PE loader; --dbg names its
+separate .dbg file.
 
 An IA-64 PE32+ image (an EFI driver or application, machine 0x200) is read with the PE loader and
 IA64Pe.java; its entry point and exports are function descriptors, resolved to functions named `entry`
@@ -105,6 +113,7 @@ WIDE_ARCH = {0x20000000, 0x30000000, 0x40000000, 0x60000000, 0x80000000}
 EF_MIPS_ABI2 = 0x20
 EM_MIPS, EM_ARM, EM_IA_64 = 8, 40, 50
 PE_MACHINE_IA64 = 0x200
+PE_MACHINE_I386 = 0x14c
 ARM_LANGUAGE = 'ARM:LE:32:v4'
 SHF_EXECINSTR = 4
 ET_REL = 1
@@ -125,9 +134,10 @@ def read_header(path):
         if d[:2] == b'MZ':
             f.seek(struct.unpack('<I', d[0x3c:0x40])[0])
             pe = f.read(6)
-            if pe[:4] != b'PE\0\0' or struct.unpack('<H', pe[4:6])[0] != PE_MACHINE_IA64:
-                die('%s is a PE image, but not for IA-64 (machine 0x200)' % path)
-            return PE_MACHINE_IA64, 2, 0, 0
+            machine = struct.unpack('<H', pe[4:6])[0] if pe[:4] == b'PE\0\0' else 0
+            if machine not in (PE_MACHINE_IA64, PE_MACHINE_I386):
+                die('%s is a PE image, but not for IA-64 (machine 0x200) or x86 (0x14c)' % path)
+            return machine, 2, 0, 0
     if d[:4] != b'\x7fELF':
         die('%s is neither an ELF file nor an IA-64 PE image' % path)
     order = {1: '<', 2: '>'}.get(d[5])
@@ -237,6 +247,8 @@ def parser():
     p.add_argument('--decompile-timeout', type=int, default=60)
     p.add_argument('--types', metavar='SPEC.json')
     p.add_argument('--mdebug', action='store_true')
+    p.add_argument('--dbg', metavar='FILE.dbg')
+    p.add_argument('--pdb', metavar='FILE.pdb')
     p.add_argument('--bsim-db', metavar='NAME')
     p.add_argument('--bsim-label', metavar='LABEL')
     p.add_argument('--bsim-dir', default='.cache/ghidra-bsim')
@@ -290,6 +302,8 @@ def prepare(argv):
         die('--types applies to an export')
     if args.mdebug and args.flat:
         die('--mdebug reads an ELF object')
+    if (args.dbg or args.pdb) and args.flat:
+        die('--dbg and --pdb read a PE image')
     if args.heap and not re.fullmatch(r'[1-9][0-9]*[MG]', args.heap):
         die('--heap is a size such as 14G or 4096M')
     flat, mips, pe = None, True, False
@@ -332,6 +346,8 @@ def prepare(argv):
             die('--mdebug reads a MIPS object')
         relocatable = etype == ET_REL
         pe = machine == PE_MACHINE_IA64
+        if (args.dbg or args.pdb) and machine != PE_MACHINE_I386:
+            die('--dbg and --pdb read an x86 PE image')
         language, spec = plan_language(machine, klass, flags)
 
     wanted = list(args.decompile_symbol)
@@ -413,6 +429,8 @@ def prepare(argv):
             argv += ['-preScript', 'ReMipsGp.java', 'loader', '-']
         elif pe:
             argv += ['-loader', 'PeLoader', '-preScript', 'IA64Pe.java']
+        elif machine == PE_MACHINE_I386:
+            argv += ['-loader', 'PeLoader']
         elif language == IA64_LANGUAGE:
             argv += ['-preScript', 'IA64Elf.java']
     if seeds:
@@ -420,6 +438,12 @@ def prepare(argv):
     if args.mdebug:
         argv += ['-preScript', 'ReMdebugImport.java', 'names', str(image),
                  '-postScript', 'ReMdebugImport.java', 'types', str(image)]
+    for flag, script in ((args.dbg, 'ReDbgImport.java'), (args.pdb, 'RePdbImport.java')):
+        if flag:
+            path = pathlib.Path(flag).resolve()
+            if not path.is_file():
+                die('no debug file %s' % flag)
+            argv += ['-preScript', script, str(path)]
     if language == IA64_LANGUAGE:
         # Callee signatures first, so call sites pass exactly the callee's arguments.
         whole = args.decompile_all or globs or ranges or args.decompile_component

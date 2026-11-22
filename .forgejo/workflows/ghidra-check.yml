@@ -25,3 +25,7 @@ jobs:
         env:
           ENGINE: docker
         run: sh ghidra/processors/ia64/tests/ci.sh
+      - name: Check the .dbg symbol import on a synthetic x86 PE
+        env:
+          ENGINE: docker
+        run: sh ghidra/scripts/tests/dbg-check.sh
