@@ -109,7 +109,7 @@ def gen_docs(u, src, profile="public", banner_first=False):
             if e.get("doc"):
                 out += [e["doc"].strip(), ""]
             out += _table(["Label", "Value", "Grade", "Source"],
-                          [["`%s`" % lab, v["value"], v["grade"], v.get("from") or u.get("from", "")] for lab, v in e["values"].items()])
+                          [["`%s`" % lab, v["value"], v["grade"], (v.get("from") if "from" in v else u.get("from")) or ""] for lab, v in e["values"].items()])
             out.append("")
     if u["constants"]:
         out += ["## Constants", ""]

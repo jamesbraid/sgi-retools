@@ -64,6 +64,14 @@ class GenDocsTest(RepoTest):
         self.assertIn("driver readings", gen_docs.gen_docs(m, "defs/uart.toml", "internal"))
         self.assertNotIn("driver readings", gen_docs.gen_docs(publish_profile(m), "defs/uart.toml", "public"))
 
+    def test_withheld_source_does_not_fall_back_to_the_file(self):
+        self.edit("defs/uart.toml", 'from = "fixture notes (status page)"', 'from = "driver readings"')
+        self.edit("defs/uart.toml", 'odd = { value = 1, grade = "established" }', 'odd = { value = 1, grade = "established", from = "driver readings" }')
+        text = gen_docs.gen_docs(publish_profile(self.unit()), "defs/uart.toml", "public")
+        self.assertNotIn("fixture notes (docs/uart.md)", [l for l in text.splitlines() if l.startswith("| `status`")][0])
+        self.assertNotIn("fixture notes (docs/uart.md)", [l for l in text.splitlines() if l.startswith("| `odd`")][0])
+        self.assertIn("fixture notes (docs/uart.md)", [l for l in text.splitlines() if l.startswith("| `data`")][0])
+
 
 class ResetProvenanceTest(RepoTest):
     """A reset value can carry its own grade and source."""

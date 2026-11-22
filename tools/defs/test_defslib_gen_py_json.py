@@ -63,7 +63,9 @@ class GenPyJsonTest(RepoTest):
         public = json.loads(gen_json.gen_json(publish_profile(self.unit()), "defs/uart.toml", "public"))
         rows = {(r["kind"], r["name"]): r for r in public["rows"]}
         self.assertEqual(public["profile"], "public")
-        self.assertEqual(rows[("register", "status")]["from"], "fixture notes (docs/uart.md)")
+        self.assertNotIn("from", rows[("register", "status")])
+        self.assertNotIn("from", rows[("field", "status.rx_ready")])
+        self.assertEqual(rows[("register", "data")]["from"], "fixture notes (docs/uart.md)")
         internal = json.loads(gen_json.gen_json(self.unit(), "defs/uart.toml", "internal"))
         self.assertEqual({(r["kind"], r["name"]): r for r in internal["rows"]}[("register", "status")]["from"], "driver readings")
 

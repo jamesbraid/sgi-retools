@@ -116,10 +116,11 @@ def canonical_sort(u):
 
 
 def eff_from(unit, node, parent=None):
-    """Nearest `from`: the item, its register or word, then the file."""
+    """Nearest `from`: the item, its register or word, then the file. A `from` of None
+    is one publication withheld, so it ends the walk instead of inheriting from above."""
     for n in (node, parent, unit):
-        if n and n.get("from"):
-            return n["from"]
+        if n and "from" in n:
+            return n["from"] or None
     return None
 
 
@@ -176,13 +177,14 @@ def last_unit(u, r):
 
 def publish_profile(u):
     """What a public output may carry: no notes, and `from` text only when it
-    starts with one of the unit's public_from prefixes."""
+    starts with one of the unit's public_from prefixes. A withheld `from` is set to None, not
+    removed, so the item does not fall back to a public `from` on its register or file."""
     u = copy.deepcopy(u)
 
     def clean(node):
         node["notes"] = ""
         if node.get("from") and not is_public(u, node["from"]):
-            node.pop("from")
+            node["from"] = None
         if node.get("reset_from") and not is_public(u, node["reset_from"]):
             node.pop("reset_from")
     clean(u)
@@ -193,9 +195,9 @@ def publish_profile(u):
                 clean(f)
                 for ev in (f.get("enums") or {}).values():
                     if ev.get("from") and not is_public(u, ev["from"]):
-                        ev.pop("from")
+                        ev["from"] = None
     for e in u["enums"].values():
         for ev in e["values"].values():
             if ev.get("from") and not is_public(u, ev["from"]):
-                ev.pop("from")
+                ev["from"] = None
     return u
