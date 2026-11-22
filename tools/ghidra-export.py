@@ -44,6 +44,11 @@ Options (after OBJECT, a path inside the workspace):
                                           named GLOB, TYPE a type already in the program such as
                                           "__GLCOcontextRec *"; repeatable. Rules apply in the order
                                           given, calling conventions first
+  --pre-script FILE  --post-script FILE   run an extra Ghidra script (repeatable, in order): pre-scripts
+                                          after the importers of --dbg, --pdb and --mdebug and before
+                                          analysis, post-scripts after analysis and the options above
+                                          (--returning included) and before the decompile export, so what
+                                          they change is exported. FILE is in the workspace
   --bsim-db NAME --bsim-label LABEL       match the object against BSim database
                                           NAME, then add it under LABEL
   --bsim-dir DIR  --bsim-min SIMILARITY   database directory (default
@@ -269,6 +274,8 @@ def parser():
     p.add_argument('--callconv', action='append', default=[], metavar='CONV:GLOB[,GLOB]')
     p.add_argument('--callconv-file', metavar='FILE')
     p.add_argument('--param-type', action='append', default=[], metavar='GLOB:INDEX:TYPE')
+    p.add_argument('--pre-script', action='append', default=[], metavar='FILE')
+    p.add_argument('--post-script', action='append', default=[], metavar='FILE')
     p.add_argument('--bsim-db', metavar='NAME')
     p.add_argument('--bsim-label', metavar='LABEL')
     p.add_argument('--bsim-dir', default='.cache/ghidra-bsim')
@@ -315,6 +322,19 @@ def retype_rules(args):
     return rules
 
 
+def extra_scripts(files, option):
+    """Absolute paths of --pre-script or --post-script files; Ghidra finds one by its name in a script path."""
+    paths = []
+    for name in files:
+        path = pathlib.Path(name).resolve()
+        if not path.is_file():
+            die('no script %s for %s' % (name, option))
+        if ';' in str(path.parent):
+            die('%s: a script directory with a semicolon cannot go in the script path' % name)
+        paths.append(path)
+    return paths
+
+
 def heap_for(size):
     """The headless heap for a flat image: 2G plus 1G per MiB, from 2G to 14G."""
     return '%dG' % min(14, max(2, 2 + -(-size // (1 << 20))))
@@ -357,6 +377,11 @@ def prepare(argv):
     if args.heap and not re.fullmatch(r'[1-9][0-9]*[MG]', args.heap):
         die('--heap is a size such as 14G or 4096M')
     rules = retype_rules(args)
+    pre_scripts = extra_scripts(args.pre_script, '--pre-script')
+    post_scripts = extra_scripts(args.post_script, '--post-script')
+    names = [s.name for s in pre_scripts + post_scripts]
+    if len(set(names)) != len(names):
+        die('two --pre-script or --post-script files have the same name; Ghidra finds a script by name')
     flat, mips, pe, header_kind = None, True, False, 'ELF'
     if args.sal_runtime and not args.sn2_prom:
         die('--sal-runtime reads the SAL runtime of an SN2 PROM: add --sn2-prom')
@@ -496,6 +521,8 @@ def prepare(argv):
             if not path.is_file():
                 die('no debug file %s' % flag)
             argv += ['-preScript', script, str(path)]
+    for script in pre_scripts:
+        argv += ['-preScript', script.name]
     if rules:
         (job / 'retype.tsv').write_text('\n'.join(rules) + '\n')
         argv += ['-postScript', 'ReFunctionTypes.java', str(job / 'retype.tsv')]
@@ -506,11 +533,18 @@ def prepare(argv):
         whole = args.decompile_all or globs or ranges or args.decompile_component
         roots = [] if whole else names + addresses
         argv += ['-postScript', 'IA64Signatures.java'] + roots
+    for script in post_scripts:
+        argv += ['-postScript', script.name]
     if exporting:
         argv += ['-postScript', 'ReDecompileExport.java', str(job)]
     if args.bsim_db:
         argv += ['-postScript', 'ReBSimAdd.java', '%s.mv.db' % db, '%s.matches.jsonl' % db,
                  str(args.bsim_min)]
+    if pre_scripts or post_scripts:
+        # Each script is found by name in the script path, so add the directories it sits in.
+        where = argv.index('-scriptPath')
+        dirs = [argv[where + 1]] + sorted({str(s.parent) for s in pre_scripts + post_scripts})
+        argv[where + 1] = ';'.join(dirs)
     argv += ['-analysisTimeoutPerFile', str(args.timeout), '-max-cpu', str(args.cpus), '-deleteProject']
     # analyzeHeadless makes a project inside a directory, not the directory.
     lines.append('grep -h ^application.version= /opt/ghidra/Ghidra/application.properties > "$JOB/version"')
@@ -523,7 +557,8 @@ def prepare(argv):
         'object': str(original), 'image_sha256': sha, 'language': language or 'default (from the %s header)' % header_kind,
         'compiler_spec_requested': spec, 'relocatable': relocatable, 'exporting': exporting,
         'bsim': bool(args.bsim_db), 'mdebug_seeds': len(seeds), 'object_path': args.object,
-        'flat': flat, 'dbg': args.dbg, 'pdb': args.pdb, 'returning': returning, 'retype_rules': rules}, indent=1) + '\n')
+        'flat': flat, 'dbg': args.dbg, 'pdb': args.pdb, 'returning': returning, 'retype_rules': rules,
+        'pre_scripts': [str(s) for s in pre_scripts], 'post_scripts': [str(s) for s in post_scripts]}, indent=1) + '\n')
     print('ghidra-export: %s (%s, %d .mdebug names seeded)'
           % (args.object, language or 'language from the %s header' % header_kind, len(seeds)),
           file=sys.stderr)
@@ -562,8 +597,9 @@ def finish(argv):
     headless = job / 'headless.txt'
     text = headless.read_text(errors='replace') if headless.is_file() else ''
     rc = int((job / 'rc').read_text()) if (job / 'rc').is_file() else 1
-    # What the scripts behind the options print.
+    # What the option scripts print, and what the user's own scripts print.
     reported = ['ReDbgImport.java> ', 'RePdbImport.java> ', 'ReReturning.java> ', 'ReFunctionTypes.java> ']
+    reported += ['%s> ' % pathlib.Path(s).name for s in plan.get('pre_scripts', []) + plan.get('post_scripts', [])]
     for line in text.splitlines():
         if 're-' in line and ('re-bsim:' in line or 're-decompile-export:' in line or 're-symbols:' in line or 're-gp:' in line):
             print(line.split('> ', 1)[-1], file=sys.stderr)

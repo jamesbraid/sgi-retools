@@ -147,6 +147,27 @@ class PlanLanguage(unittest.TestCase):
             with self.assertRaises(SystemExit, msg=args):
                 self.prepare_pe(*args)
 
+    def test_extra_scripts_run_in_order_around_the_built_in_ones(self):
+        script, plan, _ = self.prepare_pe(
+            '--dbg', '@D/a.dbg', '--returning', 'f', '--pre-script', '@D/pre1.java', '--post-script', '@D/post1.java',
+            '--pre-script', '@D/pre2.java', touch=('a.dbg', 'pre1.java', 'pre2.java', 'post1.java'))
+        self.assertIn('-scriptPath /opt/re-scripts;@D ', script.replace("'", ''))
+        self.assertEqual(plan['pre_scripts'], ['@D/pre1.java', '@D/pre2.java'])
+        self.assertEqual(plan['post_scripts'], ['@D/post1.java'])
+        self.assertEqual(plan['returning'], ['f'])
+        self.assertLess(script.index('-preScript ReDbgImport.java'), script.index('-preScript pre1.java'))
+        self.assertLess(script.index('-preScript pre1.java'), script.index('-preScript pre2.java'))
+        self.assertLess(script.index('-postScript ReReturning.java'), script.index('-postScript post1.java'))
+        self.assertLess(script.index('-postScript post1.java'), script.index('-postScript ReDecompileExport.java'))
+
+    def test_extra_script_must_exist_and_be_unique(self):
+        with self.assertRaises(SystemExit):
+            self.prepare_pe('--post-script', '@D/missing.java')
+        with tempfile.TemporaryDirectory() as other:
+            open(os.path.join(other, 'x.java'), 'w').close()
+            with self.assertRaises(SystemExit):
+                self.prepare_pe('--post-script', other + '/x.java', '--pre-script', other + '/x.java')
+
     def test_dbg_and_pdb_need_an_x86_pe(self):
         with tempfile.TemporaryDirectory() as d:
             obj, sym = os.path.join(d, 'obj'), os.path.join(d, 'a.dbg')

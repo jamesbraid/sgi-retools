@@ -35,7 +35,7 @@
 # --decompile-list FILE, --decompile-component GLOB (a FIT component of an SN2 PROM), --decompile-all,
 # --decompile-timeout S, --types SPEC.json, --mdebug (import the object's .mdebug table),
 # --dbg FILE.dbg, --pdb FILE.pdb, --returning NAME (x86 PE images), --callconv CONV:GLOB,
-# --param-type GLOB:INDEX:TYPE,
+# --param-type GLOB:INDEX:TYPE, --pre-script FILE, --post-script FILE (extra Ghidra scripts),
 # --bsim-db NAME --bsim-label LABEL --bsim-dir DIR --bsim-min S (similarity database, default
 # .cache/ghidra-bsim), --flat --load ADDR --header N --processor LANG --window ADDR (a raw image),
 # --sn2-prom, --sal-runtime (with --sn2-prom, also map the SAL runtime ELF), --timeout S, --cpus N,
