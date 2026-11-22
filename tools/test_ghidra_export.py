@@ -88,6 +88,27 @@ class PlanLanguage(unittest.TestCase):
         self.assertNotIn('IA64', script)
         self.assertNotIn('-processor', script)
 
+    def test_returning_runs_after_analysis_and_before_the_export(self):
+        with tempfile.TemporaryDirectory() as d:
+            obj, job = os.path.join(d, 'a.dll'), os.path.join(d, 'job')
+            os.mkdir(job)
+            with open(obj, 'wb') as f:
+                f.write(pe(ge.PE_MACHINE_I386))
+            ge.prepare(['--job', job, '--decompile-all', '--returning', 'pulGetPacket,_foo@8',
+                        '--returning', '@0x1000', obj])
+            with open(os.path.join(job, 'ghidra.sh')) as f:
+                script = f.read()
+        self.assertIn('-postScript ReReturning.java pulGetPacket,_foo@8,@0x1000 -postScript ReDecompileExport.java',
+                      script)
+
+    def test_returning_needs_a_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            obj = os.path.join(d, 'a.dll')
+            with open(obj, 'wb') as f:
+                f.write(pe(ge.PE_MACHINE_I386))
+            with self.assertRaises(SystemExit):
+                ge.prepare(['--job', d, '--decompile-all', '--returning', ',', obj])
+
     def test_dbg_and_pdb_need_an_x86_pe(self):
         with tempfile.TemporaryDirectory() as d:
             obj, sym = os.path.join(d, 'obj'), os.path.join(d, 'a.dbg')

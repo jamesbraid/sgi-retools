@@ -28,6 +28,11 @@ Options (after OBJECT, a path inside the workspace):
                                           (ghidra/scripts/ReDbgImport.java states the counting rule)
   --pdb FILE.pdb                          apply a .pdb (PDB 2.0 or 7.0) to an x86 PE image: its
                                           types, function names and parameters
+  --returning NAME[,NAME]                 after analysis, clear the no-return flag on these functions
+                                          (a name or @0xADDR; repeatable), disassemble after each call
+                                          to them and rebuild the callers, for a routine analysis
+                                          wrongly marked non-returning ("Subroutine does not return"
+                                          in every caller)
   --bsim-db NAME --bsim-label LABEL       match the object against BSim database
                                           NAME, then add it under LABEL
   --bsim-dir DIR  --bsim-min SIMILARITY   database directory (default
@@ -249,6 +254,7 @@ def parser():
     p.add_argument('--mdebug', action='store_true')
     p.add_argument('--dbg', metavar='FILE.dbg')
     p.add_argument('--pdb', metavar='FILE.pdb')
+    p.add_argument('--returning', action='append', default=[], metavar='NAME[,NAME]')
     p.add_argument('--bsim-db', metavar='NAME')
     p.add_argument('--bsim-label', metavar='LABEL')
     p.add_argument('--bsim-dir', default='.cache/ghidra-bsim')
@@ -304,6 +310,9 @@ def prepare(argv):
         die('--mdebug reads an ELF object')
     if (args.dbg or args.pdb) and args.flat:
         die('--dbg and --pdb read a PE image')
+    returning = [n for item in args.returning for n in item.split(',') if n]
+    if args.returning and not returning:
+        die('--returning names functions: NAME[,NAME]')
     if args.heap and not re.fullmatch(r'[1-9][0-9]*[MG]', args.heap):
         die('--heap is a size such as 14G or 4096M')
     flat, mips, pe, header_kind = None, True, False, 'ELF'
@@ -445,6 +454,8 @@ def prepare(argv):
             if not path.is_file():
                 die('no debug file %s' % flag)
             argv += ['-preScript', script, str(path)]
+    if returning:
+        argv += ['-postScript', 'ReReturning.java', ','.join(returning)]
     if language == IA64_LANGUAGE:
         # Callee signatures first, so call sites pass exactly the callee's arguments.
         whole = args.decompile_all or globs or ranges or args.decompile_component

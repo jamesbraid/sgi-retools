@@ -142,6 +142,7 @@ lists the options, and the top of `tools/ghidra-export.py` explains each.
 | `--mdebug` | import the `.mdebug` table of a 32-bit MIPSpro object (next section) |
 | `--dbg FILE.dbg` | apply the COFF symbols, or the CodeView NB09 publics, of a Windows NT separate debug file to an x86 PE image (next section) |
 | `--pdb FILE.pdb` | apply a PDB 2.0 or 7.0 file to an x86 PE image: types, function names, parameters. Needs analysis, so not with `--no-analysis` |
+| `--returning NAME[,NAME]` | after analysis, clear the no-return flag on these functions (a name or `@0xADDR`, repeatable), disassemble after each call to them and rebuild the callers; for a routine analysis wrongly marked non-returning, which cuts every caller at the call ("Subroutine does not return") |
 | `--bsim-db NAME --bsim-label LABEL`, `--bsim-dir DIR`, `--bsim-min S` | match against a BSim database, then add under the label (default directory `.cache/ghidra-bsim`, lowest similarity 0.7) |
 | `--flat`, `--load ADDR`, `--header N`, `--processor LANG`, `--window ADDR` | read OBJECT as raw bytes: the address of the first byte after N header bytes, the Ghidra language (default MIPS 64-bit) and, for a 64-bit MIPS language, the upper address bits of the window it runs in |
 | `--sn2-prom` | OBJECT is an SN2 PROM: IA-64, loaded to end at 4 GiB, laid out by `SN2PromImport.java` (below) |
