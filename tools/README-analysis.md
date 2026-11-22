@@ -100,9 +100,15 @@ counting rule, which the script prints as its last line:
 - a function-typed symbol in the section named `.text` is a function, counted by distinct address, so an
   alias of the same address adds none;
 - any other named symbol in a section is a label, also counted by distinct address;
+- a name beginning with `.` is a section record (the per-object `.text` and `.data` entries) and is
+  skipped, counted apart, so it never becomes the name of a function or label;
 - a symbol with no section (undefined, absolute) or outside the image is ignored, and a name Ghidra
   rejects (the `\x7f..._NULL_THUNK_DATA` import markers) is counted and skipped;
-- a name Ghidra already holds at an address, such as `entry`, is kept.
+- a name Ghidra already holds at an address, such as `entry`, is kept;
+- functions are named before labels, highest address first, so a label never takes a function's name
+  and a function's flow stops at the next one's entry. A function symbol that lies inside another
+  function's body cannot become a function; it keeps its name as a label and is counted as "functions
+  not created".
 
 Count symbols the same way before comparing totals, or two readers will differ by the aliases and
 auxiliary records. `pefile` is in the image for reading headers. `ghidra/scripts/tests/dbg_synthetic.py` is

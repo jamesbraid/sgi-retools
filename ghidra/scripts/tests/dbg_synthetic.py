@@ -5,9 +5,11 @@
   dbg_synthetic.py check SYMS LOG check DumpDbgSymbols.java's output and the headless log
   dbg_synthetic.py                build both and check them against a plain Python reading (no Ghidra)
 
-No vendor bytes. The symbols cover each case of the counting rule in ReDbgImport.java: an
+No vendor bytes. The COFF symbols cover each case of the counting rule in ReDbgImport.java: an
 auxiliary record, an alias of one address, a long (string table) name, a label in .text and in
-.data, an undefined and an absolute symbol, a name Ghidra rejects, and an address past the image.
+.data, a ".text" section record and a label ahead of a function at that function's address (neither
+may take the function's name), an undefined and an absolute symbol, a name Ghidra rejects, and an
+address past the image. The NB09 file holds the same kinds of public.
 """
 import os
 import struct
@@ -19,8 +21,10 @@ SIZE_OF_IMAGE = 0x3000
 # (name, value, section, type, aux records). Section 1 is .text, 2 is .data.
 SYMBOLS = [
     ('func_a', TEXT, 1, 0x20, 1),
+    ('.text', TEXT + 0x10, 1, 0, 1),
     ('func_b', TEXT + 0x10, 1, 0x20, 0),
     ('alias_of_b', TEXT + 0x10, 1, 0x20, 0),
+    ('early_label', TEXT + 0x20, 1, 0, 0),
     ('a_function_with_a_long_name', TEXT + 0x20, 1, 0x20, 0),
     ('text_label', TEXT + 0x30, 1, 0, 0),
     ('table', DATA + 8, 2, 0, 0),
@@ -30,7 +34,8 @@ SYMBOLS = [
     ('past_the_image', TEXT + 0x5000, 1, 0x20, 0),
 ]
 # What the summary line must say, and the symbols that must exist.
-COUNTS = dict(records=len(SYMBOLS), auxiliary=1, functions=3, labels=3, ignored=2, outside=1, rejected=1)
+COUNTS = dict(records=len(SYMBOLS), auxiliary=2, functions=3, labels=4, sections=1, ignored=2, outside=1,
+              rejected=1, uncreated=0)
 # The loader names the entry point, at func_a's address, before the script runs and that name is kept.
 EXPECT = [('function', TEXT, 'entry'), ('function', TEXT + 0x10, 'func_b'),
           ('function', TEXT + 0x20, 'a_function_with_a_long_name'),
@@ -80,17 +85,20 @@ def coff_symbols():
     return table + struct.pack('<I', 4 + len(strings)) + strings, len(table) // 18
 
 
-def dbg():
+def separate(debug_type, raw):
     secs = sections()
-    table, count = coff_symbols()
-    coff_header = struct.pack('<8I', count, 32, 0, 0, TEXT, TEXT + 0x100, DATA, DATA + 0x200)
     first = 48 + 40 * len(secs) + 0 + 28
-    raw = coff_header + table
-    entry = struct.pack('<IIHHIIII', 0, 0, 0, 0, 1, len(raw), 0, first)
+    entry = struct.pack('<IIHHIIII', 0, 0, 0, 0, debug_type, len(raw), 0, first)
     head = struct.pack('<HHHHIIIIIIII8s', 0x4944, 0, 0x14c, 0x230e, 0, 0, BASE, SIZE_OF_IMAGE,
                        len(secs), 0, 28, 0x1000, bytes(8))
     sec_table = header_table(secs, 0)
     return head + sec_table + entry + raw
+
+
+def dbg():
+    table, count = coff_symbols()
+    coff_header = struct.pack('<8I', count, 32, 0, 0, TEXT, TEXT + 0x100, DATA, DATA + 0x200)
+    return separate(1, coff_header + table)
 
 
 def reference():
@@ -100,14 +108,17 @@ def reference():
     entry = 48 + 40 * nsec
     raw, = struct.unpack_from('<I', d, entry + 24)
     count, first = struct.unpack_from('<II', d, raw)
-    at, i, seen = raw + first, 0, dict(records=0, auxiliary=0, functions=set(), ignored=0)
+    at, i = raw + first, 0
+    seen = dict(records=0, auxiliary=0, functions=set(), ignored=0, sections=0)
     while i < count:
-        _, value, section, typ, _, aux = struct.unpack_from('<8sIhHBB', d, at + 18 * i)
+        name, value, section, typ, _, aux = struct.unpack_from('<8sIhHBB', d, at + 18 * i)
         seen['records'] += 1
         seen['auxiliary'] += aux
         i += 1 + aux
         if section <= 0:
             seen['ignored'] += 1
+        elif name.startswith(b'.'):
+            seen['sections'] += 1
         elif section == 1 and (typ >> 4) & 0xf == 2 and value < SIZE_OF_IMAGE:
             seen['functions'].add(value)
     seen['functions'] = len(seen['functions'])
@@ -115,18 +126,24 @@ def reference():
 
 
 def check(syms, log):
+    counts, expect = COUNTS, EXPECT
     seen = set()
     for line in open(syms):
         f = line.rstrip('\n').split('\t')
         if f[0] in ('function', 'label'):
             seen.add((f[0], int(f[1], 16), f[2]))
-    bad = ['%s %#x %s missing' % e for e in EXPECT if e not in seen]
+    bad = ['%s %#x %s missing' % e for e in expect if e not in seen]
+    # Primary names: every function carries a symbol's name, never a placeholder or a section name.
+    bad += ['function %#x is named %s' % (a, n) for k, a, n in sorted(seen)
+            if k == 'function' and (n.startswith('FUN_') or n.startswith('.'))]
     functions = sorted(a for k, a, _ in seen if k == 'function')
-    if len(functions) != COUNTS['functions']:
-        bad.append('%d functions, want %d: %s' % (len(functions), COUNTS['functions'], functions))
-    want = ('%(records)d symbol records, %(auxiliary)d auxiliary skipped, %(functions)d functions, '
-            '%(labels)d other labels, %(ignored)d without a section, %(outside)d outside the image, '
-            '%(rejected)d names Ghidra rejects' % COUNTS)
+    if len(functions) != counts['functions']:
+        bad.append('%d functions, want %d: %s' % (len(functions), counts['functions'], functions))
+    want = ('ReDbgImport: COFF: %d symbol records, %d auxiliary skipped, %d functions, '
+            '%d other labels, %d section names skipped, %d without a section, %d outside the image, '
+            '%d names Ghidra rejects, %d functions not created'
+            % (tuple(counts[k] for k in ('records', 'auxiliary', 'functions', 'labels', 'sections',
+                                                   'ignored', 'outside', 'rejected', 'uncreated'))))
     if want not in open(log).read():
         bad.append('summary line is not: ' + want)
     for b in bad:
@@ -139,7 +156,7 @@ def check(syms, log):
 def main():
     if len(sys.argv) == 1:
         ref = reference()
-        for key in ('records', 'auxiliary', 'functions', 'ignored'):
+        for key in ('records', 'auxiliary', 'functions', 'ignored', 'sections'):
             assert ref[key] == COUNTS[key], (key, ref[key], COUNTS[key])
         assert image()[:2] == b'MZ'
         print('ok: dbg and pe build, %d records, %d auxiliary, %d functions by the counting rule'
