@@ -128,10 +128,11 @@ entries, with no rollback failures. The summary reports pointers, linkages, skip
 and total GOT entries. Keep the original and working files outside the repository when they contain
 target-specific material.
 
-Run the synthetic filter/null/import regressions with an existing image:
+Run the synthetic filter/null/import regressions with an existing image (the tag `tools/re-run --ghidra`
+builds from these scripts; `run.py` names the current one as its default, `GHIDRA_IMAGE` overrides it):
 
 ```sh
-GHIDRA_IMAGE=localhost/re-ghidra:bfd3c1d2eca6 python3 ghidra/scripts/tests/run.py
+python3 ghidra/scripts/tests/run.py
 ```
 
 Add `--real-elf /path/to/original` for the full filtered-import/repair regression
@@ -144,9 +145,10 @@ filtered imports.
 
 ## The export helpers
 
-`ReBSimAdd`, `ReDecompileExport`, `ReMdebugImport`, `ReMipsGp` and `ReObjectSymbols` are the
-scripts `tools/re-run --ghidra-export` drives: global-pointer seeding, `.mdebug` names, decompile
-export as JSON and function-similarity records. For an IA-64 ELF, `IA64Elf` seeds r1 from
+`ReBSimAdd`, `ReDbgImport`, `ReDecompileExport`, `RePdbImport`, `ReMdebugImport`, `ReMipsGp`,
+`ReObjectSymbols` and `ReReturning` are the scripts `tools/re-run --ghidra-export` drives:
+global-pointer seeding, `.mdebug` names, `.dbg` and PDB symbols for x86 PE images, clearing a wrong
+no-return flag (`--returning`), decompile export as JSON and function-similarity records. For an IA-64 ELF, `IA64Elf` seeds r1 from
 `__gp` (the processor ends a function at Linux's `BUG()`, an unpredicated `break 0`, so Ghidra's
 own discovery of functions that do not return stays on), and `IA64Signatures` gives each function the
 parameters and return its own body shows, callees first, so a call passes exactly its callee's

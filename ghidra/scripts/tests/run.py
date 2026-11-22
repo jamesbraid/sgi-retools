@@ -12,7 +12,7 @@ import sys
 import tempfile
 
 SCRIPTS = Path(__file__).resolve().parent.parent
-IMAGE = os.environ.get("GHIDRA_IMAGE", "localhost/re-ghidra:bfd3c1d2eca6")
+IMAGE = os.environ.get("GHIDRA_IMAGE", "localhost/re-ghidra:a3b0ea0bd673")
 
 
 def run(command, **kwargs):
