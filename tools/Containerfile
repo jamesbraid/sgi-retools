@@ -25,6 +25,26 @@ RUN curl -fsSL -o /tmp/binutils.tar.xz https://ftp.gnu.org/gnu/binutils/binutils
  && make -j"$(nproc)" all-binutils \
  && make install-binutils
 
+# Debian has no InstallShield 3 extractor (unshield reads 5 and later). Build
+# wfr/unshieldv3 0.2.2 and copy the one binary; it links libstdc++ statically so
+# the final image needs no extra runtime package.
+FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d AS unshieldv3
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      build-essential ca-certificates cmake curl \
+ && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL -o /tmp/unshieldv3.tar.gz https://github.com/wfr/unshieldv3/archive/refs/tags/v0.2.2.tar.gz \
+ && echo '843f5164d7aa4ed2dfd754bbbccb8ddd693218c3214d02211de9e95ea06e04db  /tmp/unshieldv3.tar.gz' | sha256sum -c - \
+ && tar -C /tmp -xf /tmp/unshieldv3.tar.gz \
+ && cmake -S /tmp/unshieldv3-0.2.2 -B /tmp/ub -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_EXE_LINKER_FLAGS='-static-libstdc++ -static-libgcc' \
+ && cmake --build /tmp/ub -j"$(nproc)" \
+ && mkdir /tmp/ut \
+ && for a in /tmp/unshieldv3-0.2.2/test-data/*.Z; do \
+      /tmp/ub/unshieldv3 list "$a" | grep -q . && /tmp/ub/unshieldv3 extract "$a" /tmp/ut >/dev/null || exit 1; \
+    done \
+ && test -n "$(find /tmp/ut -type f)"
+
 FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d
 
 # binutils-mips64-linux-gnuabi64 (2.44) gives mips64-linux-gnuabi64-objdump,
@@ -71,6 +91,10 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
 
 COPY --from=ia64-binutils /opt/ia64/bin/ia64-linux-gnu-objdump /opt/ia64/bin/ia64-linux-gnu-readelf /opt/ia64/bin/ia64-linux-gnu-nm /usr/local/bin/
 RUN ia64-linux-gnu-objdump -i | grep -q ia64
+
+COPY --from=unshieldv3 /tmp/ub/unshieldv3 /usr/local/bin/
+# unshieldv3 help prints usage and exits 1.
+RUN unshieldv3 help 2>&1 | grep -q '^usage'
 
 WORKDIR /work
 ENV PYTHONDONTWRITEBYTECODE=1

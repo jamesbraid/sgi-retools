@@ -85,8 +85,10 @@ Windows NT drivers and DLLs from the 1990s ship stripped, with the symbols in a 
 `IMAGE_SEPARATE_DEBUG_HEADER`, then COFF symbols) and sometimes a `.pdb`. The recipe:
 
 1. Unpack the installer: `7z x` for self-extracting executables, `unshield x` for InstallShield 5 and later
-   cabinets (`cabextract` and `innoextract` are in the image too). InstallShield 3 archives: no extractor
-   in the image yet.
+   cabinets (`cabextract` and `innoextract` are in the image too). InstallShield 3 archives (a `.Z` file
+   starting `13 5D 65 8C`, as in 1990s driver disks) need `unshieldv3 list ARCHIVE.Z` and
+   `unshieldv3 extract ARCHIVE.Z DESTDIR`; 7z and unshield cannot open them. A `data1.cab` starting `ISc(` is
+   IS5 and later: use `unshield`.
 2. Import and apply the symbols, in the workspace:
 
        tools/re-run --ghidra-export path/driver.dll --dbg path/driver.dbg --decompile-symbol @0xADDR
