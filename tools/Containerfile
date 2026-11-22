@@ -96,5 +96,9 @@ COPY --from=unshieldv3 /tmp/ub/unshieldv3 /usr/local/bin/
 # unshieldv3 help prints usage and exits 1.
 RUN unshieldv3 help 2>&1 | grep -q '^usage'
 
+# Fail the build if an extractor is missing, not the first time someone unpacks a driver.
+RUN 7z i >/dev/null && unshield -V >/dev/null && cabextract --version >/dev/null \
+ && innoextract --version >/dev/null && command -v unshieldv3 >/dev/null
+
 WORKDIR /work
 ENV PYTHONDONTWRITEBYTECODE=1
