@@ -30,8 +30,9 @@ Options (after OBJECT, a path inside the workspace):
   --pdb FILE.pdb                          apply a .pdb (PDB 2.0 or 7.0) to an x86 PE image: its
                                           types, function names and parameters
   --returning NAME[,NAME]                 after analysis, clear the no-return flag on these functions
-                                          (a name or @0xADDR; repeatable), disassemble after each call
-                                          to them and rebuild the callers, for a routine analysis
+                                          (a name or @0xADDR; repeatable), re-disassemble each call
+                                          to them so the code after it is reached, and rebuild the
+                                          callers, for a routine analysis
                                           wrongly marked non-returning ("Subroutine does not return"
                                           in every caller)
   --bsim-db NAME --bsim-label LABEL       match the object against BSim database

@@ -7,6 +7,9 @@
                                          at a low base as synthetic-low.dll and synthetic-low.dbg
   dbg_synthetic.py check CASE SYMS LOG   check DumpDbgSymbols.java's output and the headless log;
                                          CASE is coff, coff-va, coff-low or nb09
+  dbg_synthetic.py check-returning BEFORE AFTER LOG
+                                         check DumpFunctionBodies.java's output before and after
+                                         ReReturning.java, and the headless log
   dbg_synthetic.py                       build all and check them against a plain Python reading
                                          (no Ghidra)
 
@@ -17,6 +20,10 @@ may take the function's name), an undefined and an absolute symbol, a name Ghidr
 address past the image. The NB09 file holds the same kinds of public. The low-base image puts
 its RVAs above its ImageBase (0x10000, as an NT4 display driver does), where reading a value at or
 above the ImageBase as a virtual address would move every function by the base.
+
+synthetic-returning.dll is for ReReturning.java: a routine that returns, and three callers of it
+(one call, two calls, and a call with a branch around it). The test marks the routine non-returning
+before disassembling the callers, as analysis does when it is wrong, so each caller is cut at its call.
 """
 import os
 import struct
@@ -81,8 +88,25 @@ def pad(b, n):
     return b + bytes(-len(b) % n)
 
 
-def sections(lay=STD):
-    text = pad(b'\x55\x89\xe5\x5d\xc3' + b'\xc3' * 0x1f + b'\xc3' * 0x40, 0x200)
+def returning_text():
+    """.text of the ReReturning image: a callee at 0, then callers at 0x10, 0x20 and 0x40."""
+    t = bytearray(b'\xcc' * 0x200)
+
+    def call(at):
+        return b'\xe8' + struct.pack('<i', -(at + 5))
+    t[0:3] = b'\x31\xc0\xc3'                                                  # xor eax,eax; ret
+    t[0x10:0x18] = call(0x10) + b'\x40\x40\xc3'                               # call; inc; inc; ret
+    t[0x20:0x2d] = call(0x20) + b'\x90' + call(0x26) + b'\x90\xc3'            # call; nop; call; nop; ret
+    t[0x40:0x4d] = b'\x85\xc0\x74\x07' + call(0x44) + b'\x40\xc3\x48\xc3'   # test; jz; call; inc; ret; dec; ret
+    return bytes(t)
+
+
+# caller offset: (last byte of its whole body, instructions in it), and the same cut at the call.
+CALLERS = {0x10: (0x17, 4, 0x14, 1), 0x20: (0x2c, 5, 0x24, 1), 0x40: (0x4c, 7, 0x4c, 5)}
+
+
+def sections(lay=STD, text=None):
+    text = pad(text or b'\x55\x89\xe5\x5d\xc3' + b'\xc3' * 0x1f + b'\xc3' * 0x40, 0x200)
     return [(b'.text', lay['text'], text, 0x60000020), (b'.data', lay['data'], bytes(0x200), 0xc0000040)]
 
 
@@ -94,8 +118,8 @@ def header_table(secs, file_off):
     return out
 
 
-def image(lay=STD):
-    secs = sections(lay)
+def image(lay=STD, text=None):
+    secs = sections(lay, text)
     opt = struct.pack('<HBBIIIIIIIIIHHHHHHIIIIHHIIIIII', 0x10b, 6, 0, 0x200, 0x200, 0, lay['text'],
                       lay['text'], lay['data'], lay['base'], 0x1000, 0x200, 4, 0, 0, 0, 4, 0, 0,
                       lay['size'], 0x200, 0, 2, 0,
@@ -237,6 +261,37 @@ def check(case, syms, log):
     return 1 if bad else 0
 
 
+def check_returning(before, after, log):
+    """Each caller is cut at its call before ReReturning and whole after it."""
+    def bodies(path):
+        out = {}
+        for line in open(path):
+            f = line.rstrip('\n').split('\t')
+            out[int(f[1], 16) - TEXT] = (int(f[2], 16) - TEXT, int(f[3]), f[4] == 'true')
+        return out
+    was, now = bodies(before), bodies(after)
+    bad = []
+    if not was.get(0, (0, 0, False))[2]:
+        bad.append('the callee is not marked no-return before the repair: the test models nothing')
+    if now.get(0, (0, 0, True))[2]:
+        bad.append('the callee is still marked no-return')
+    for at, (end, count, cut_end, cut_count) in sorted(CALLERS.items()):
+        if was.get(at, (0, 0))[:2] != (cut_end, cut_count):
+            bad.append('caller %#x before: %s, want it cut at %#x with %d instructions' %
+                       (at, was.get(at), cut_end, cut_count))
+        if now.get(at, (0, 0))[:2] != (end, count):
+            bad.append('caller %#x after: %s, want %#x with %d instructions' % (at, now.get(at), end, count))
+    # The second call of the middle caller is found only once the first is repaired: 3 sites, not 4.
+    want = ('ReReturning: @0x%x at %x was no-return, 3 call sites, 3 callers rebuilt, '
+            '0 sites with no code after the call' % (BASE + TEXT, BASE + TEXT))
+    if want not in open(log).read():
+        bad.append('summary line is not: ' + want)
+    for b in bad:
+        print('FAIL returning: ' + b)
+    print('%s: returning, %d callers whole after the repair' % ('ok' if not bad else 'FAIL', len(CALLERS)))
+    return 1 if bad else 0
+
+
 def main():
     if len(sys.argv) == 1:
         ref = reference()
@@ -254,10 +309,13 @@ def main():
         os.makedirs(sys.argv[2], exist_ok=True)
         for name, data in (('synthetic.dll', image()), ('synthetic.dbg', dbg()),
                            ('synthetic-va.dbg', dbg(va=True)), ('synthetic-nb09.dbg', dbg_nb09()),
-                           ('synthetic-low.dll', image(LOW)), ('synthetic-low.dbg', dbg(LOW))):
+                           ('synthetic-low.dll', image(LOW)), ('synthetic-low.dbg', dbg(LOW)),
+                           ('synthetic-returning.dll', image(text=returning_text()))):
             with open(os.path.join(sys.argv[2], name), 'wb') as f:
                 f.write(data)
         return 0
+    if sys.argv[1] == 'check-returning':
+        return check_returning(*sys.argv[2:5])
     if sys.argv[1] == 'check':
         return check(sys.argv[2], sys.argv[3], sys.argv[4])
     sys.exit(__doc__)

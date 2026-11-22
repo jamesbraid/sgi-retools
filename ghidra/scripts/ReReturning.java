@@ -1,9 +1,10 @@
 /* Clear the no-return flag Ghidra's analysis put on a function, and repair its callers.
  *
  * When analysis marks a routine non-returning wrongly, every caller is cut at the call
- * ("Subroutine does not return"): the code after it was never disassembled and the decompiler
- * drops it. This post-script names the routines that do return, clears the flag, disassembles
- * after each call to them and rebuilds the callers' bodies.
+ * ("Subroutine does not return"): the call was disassembled with no fall-through, so the code
+ * after it was never reached and the decompiler drops it. This post-script names the routines that
+ * do return, clears the flag, clears each call to them from the listing, disassembles it again so
+ * the flow continues after it, and rebuilds the callers' bodies.
  *
  *   -postScript ReReturning.java NAME[,NAME...]
  *
@@ -16,7 +17,7 @@
  */
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -58,30 +59,39 @@ public class ReReturning extends GhidraScript {
 	private void repair(String name, Function f) throws Exception {
 		boolean was = f.hasNoReturn();
 		f.setNoReturn(false);
-		int sites = 0;
-		Set<Function> callers = new HashSet<>();
+		// Collect the sites first: re-disassembling changes the references being walked.
+		List<Address> sites = new ArrayList<>();
 		for (Reference ref : getReferencesTo(f.getEntryPoint())) {
-			if (!ref.getReferenceType().isCall()) {
-				continue;
+			if (ref.getReferenceType().isCall() && getInstructionAt(ref.getFromAddress()) != null) {
+				sites.add(ref.getFromAddress());
 			}
-			Instruction call = getInstructionAt(ref.getFromAddress());
-			if (call == null) {
-				continue;
-			}
-			sites++;
-			Address next = call.getMaxAddress().add(1);
-			if (getInstructionAt(next) == null && currentProgram.getMemory().contains(next)) {
-				disassemble(next);
-			}
-			Function caller = getFunctionContaining(call.getAddress());
+		}
+		Set<Address> callers = new LinkedHashSet<>();
+		int open = 0;
+		for (Address site : sites) {
+			Instruction call = getInstructionAt(site);
+			Function caller = getFunctionContaining(site);
 			if (caller != null) {
-				callers.add(caller);
+				callers.add(caller.getEntryPoint());
+			}
+			// The call was disassembled as a terminator, with no fall-through to the next
+			// instruction. Disassembling after it is not enough: clear the call and flow from it.
+			Address next = call.getMaxAddress().add(1);
+			currentProgram.getListing().clearCodeUnits(site, call.getMaxAddress(), false);
+			disassemble(site);
+			if (getInstructionAt(next) == null && currentProgram.getMemory().contains(next)) {
+				open++;
 			}
 		}
-		for (Function caller : callers) {
-			CreateFunctionCmd.fixupFunctionBody(currentProgram, caller, monitor);
+		for (Address entry : callers) {
+			Function caller = getFunctionAt(entry);
+			if (caller != null) {
+				CreateFunctionCmd.fixupFunctionBody(currentProgram, caller, monitor);
+			}
 		}
-		println(String.format("ReReturning: %s at %s was %s, %d call sites, %d callers rebuilt",
-			name, f.getEntryPoint(), was ? "no-return" : "returning", sites, callers.size()));
+		println(String.format(
+			"ReReturning: %s at %s was %s, %d call sites, %d callers rebuilt, %d sites with no code after the call",
+			name, f.getEntryPoint(), was ? "no-return" : "returning", sites.size(), callers.size(),
+			open));
 	}
 }
