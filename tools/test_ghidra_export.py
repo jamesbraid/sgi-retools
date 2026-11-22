@@ -3,7 +3,9 @@
 
 Run from the repository root: python3 tools/test_ghidra_export.py
 """
+import contextlib
 import importlib.util
+import io
 import os
 import struct
 import tempfile
@@ -56,6 +58,14 @@ class PlanLanguage(unittest.TestCase):
         self.assertIn('-loader PeLoader -preScript IA64Pe.java', script)
         self.assertNotIn('IA64Elf', script)
         self.assertIn('-postScript IA64Signatures.java -postScript ReDecompileExport.java', script)
+
+    def test_status_line_names_the_header_the_language_comes_from(self):
+        for blob, header in ((pe(ge.PE_MACHINE_I386), 'PE'), (elf32(ge.EM_MIPS, '>'), 'ELF')):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.plan(blob)
+            self.assertIn('language from the %s header' % header, err.getvalue())
+            self.assertNotIn('ELF header' if header == 'PE' else 'PE header', err.getvalue())
 
     def test_x86_64_pe_is_refused(self):
         with self.assertRaises(SystemExit):

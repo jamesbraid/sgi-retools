@@ -306,7 +306,7 @@ def prepare(argv):
         die('--dbg and --pdb read a PE image')
     if args.heap and not re.fullmatch(r'[1-9][0-9]*[MG]', args.heap):
         die('--heap is a size such as 14G or 4096M')
-    flat, mips, pe = None, True, False
+    flat, mips, pe, header_kind = None, True, False, 'ELF'
     if args.sal_runtime and not args.sn2_prom:
         die('--sal-runtime reads the SAL runtime of an SN2 PROM: add --sn2-prom')
     if args.gzip_elfs and not args.sn2_prom:
@@ -341,6 +341,7 @@ def prepare(argv):
         if args.header or args.processor:
             die('--header and --processor belong to --flat')
         machine, klass, etype, flags = read_header(obj)
+        header_kind = 'PE' if machine in (PE_MACHINE_IA64, PE_MACHINE_I386) else 'ELF'
         mips = machine == EM_MIPS
         if args.mdebug and not mips:
             die('--mdebug reads a MIPS object')
@@ -463,12 +464,13 @@ def prepare(argv):
     lines.append('echo $? > "$JOB/rc"')
     (job / 'ghidra.sh').write_text('\n'.join(lines) + '\n')
     (job / 'plan.json').write_text(json.dumps({
-        'object': str(original), 'image_sha256': sha, 'language': language or 'default (from the ELF header)',
+        'object': str(original), 'image_sha256': sha, 'language': language or 'default (from the %s header)' % header_kind,
         'compiler_spec_requested': spec, 'relocatable': relocatable, 'exporting': exporting,
         'bsim': bool(args.bsim_db), 'mdebug_seeds': len(seeds), 'object_path': args.object,
         'flat': flat}, indent=1) + '\n')
     print('ghidra-export: %s (%s, %d .mdebug names seeded)'
-          % (args.object, language or 'language from the ELF header', len(seeds)), file=sys.stderr)
+          % (args.object, language or 'language from the %s header' % header_kind, len(seeds)),
+          file=sys.stderr)
     if flat:
         print('ghidra-export: flat image, %d header bytes skipped, loaded at %#x%s'
               % (args.header, flat['load'], ' under window %#x' % flat['window'] if flat['window'] else ''),
