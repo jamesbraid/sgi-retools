@@ -54,7 +54,8 @@ RUN apt-get update \
 # spimdisasm disassembles MIPS objects (the repositories also carry it as a
 # submodule); capstone disassembles raw words; unicorn runs one MIPS routine
 # under emulation (tools/mips_shim.py); numpy is for the sweeps that
-# post-process emulator results.
+# post-process emulator results; pefile reads the headers and separate .dbg files of x86 Windows
+# drivers.
 RUN python3 -m pip install --no-cache-dir --break-system-packages \
       pyelftools==0.32 \
       pycparser==2.22 \
@@ -62,7 +63,8 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
       capstone==5.0.6 \
       unicorn==2.1.4 \
       numpy==2.2.4 \
- && python3 -c 'import capstone, elftools, numpy, pycparser, spimdisasm, unicorn' \
+      pefile==2024.8.26 \
+ && python3 -c 'import capstone, elftools, numpy, pefile, pycparser, spimdisasm, unicorn' \
  && mips64-linux-gnuabi64-objdump --version >/dev/null \
  && dwarfdump --version >/dev/null \
  && cc --version >/dev/null
