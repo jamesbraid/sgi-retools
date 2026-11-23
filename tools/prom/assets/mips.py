@@ -51,7 +51,7 @@ class Machine:
         self.src = {}               # register -> offset of the load that filled it (a call through a table slot)
         self.r[29] = SP
         self.mem = {}               # address -> (value, tag, size)
-        self.writes, self.calls = [], []
+        self.writes, self.calls, self.seen = [], [], set()
         self.pc = 0
 
     def reg(self, n):
@@ -61,6 +61,8 @@ class Machine:
         if n:
             self.src.pop(n, None)
             self.r[n] = None if value is None else value & 0xffffffff
+            if value is not None:
+                self.seen.add(self.r[n])
             self.tag[n] = tag
 
     def fetch(self, pc):
@@ -194,3 +196,18 @@ class Machine:
             self.memory(c)
         else:
             self.alu(c)
+
+    def sweep(self, start, end):
+        """Execute the words from start to end in order, ignoring branches and jumps (callees are not entered and
+        nothing is clobbered). For straight-line set-up code, and to see every constant a routine builds."""
+        for pc in range(start, end, 4):
+            c = self.fetch(pc)
+            if c.op in (1, 2, 3, 4, 5, 6, 7, 0x14, 0x15, 0x16, 0x17) or (c.op == 0 and c.fn in (8, 9)):
+                continue
+            try:
+                self.step(c)
+            except Unknown:
+                if c.op == 0:
+                    self.put(c.rd, None)
+                elif not 0x28 <= c.op <= 0x2f:
+                    self.put(c.rt, None)

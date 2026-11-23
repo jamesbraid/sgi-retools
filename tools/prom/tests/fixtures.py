@@ -201,3 +201,37 @@ NOP, JR_RA = 0, 0x03e00008
 
 def mips(*words):
     return struct.pack('>%dI' % len(words), *words)
+
+
+def or_(rd, rs, rt):
+    return rs << 21 | rt << 16 | rd << 11 | 0x25
+
+
+def sra(rd, rt, sh):
+    return rt << 16 | rd << 11 | sh << 6 | 3
+
+
+def addu(rd, rs, rt):
+    return rs << 21 | rt << 16 | rd << 11 | 0x21
+
+
+def slti(rt, rs, imm):
+    return 0x28000000 | rs << 21 | rt << 16 | imm & 0xffff
+
+
+def div(rs, rt):
+    return rs << 21 | rt << 16 | 0x1a
+
+
+def asset_segment(code, rodata=b'', data=b'', base=0x81000000):
+    """A firmware segment for the asset readers: the code words as the text chunk, then rodata and data chunks laid
+    out as the O2 load map does (each later chunk's bytes start 8 or 0x10 bytes after its address's offset)."""
+    from prom.model import Segment
+    text = mips(*code)
+    ro_addr, ro_off = base + len(text), len(text) + 8
+    data_addr = ro_addr + len(rodata)
+    body = text + b'\0' * 8 + rodata + b'\0' * 8 + data
+    regions = [{'name': 'text', 'address': base, 'offset': 0, 'length': len(text), 'kind': 'code'},
+               {'name': 'rodata', 'address': ro_addr, 'offset': ro_off, 'length': len(rodata), 'kind': 'readonly'},
+               {'name': 'data', 'address': data_addr, 'offset': ro_off + len(rodata) + 8, 'length': len(data), 'kind': 'data'}]
+    return Segment('firmware', body, regions=regions)

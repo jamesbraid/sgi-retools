@@ -3,16 +3,19 @@
 
 Run: python3 tools/prom/tests/test_assets.py
 """
+import json
 import os
+import shutil
 import struct
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, HERE)
 import fixtures as fx  # noqa: E402
-from prom.assets import glyphs, mips, png  # noqa: E402
+from prom.assets import AssetError, glyphs, ip32, mips, png  # noqa: E402
 
 
 def pack_rows(rows):
@@ -142,6 +145,77 @@ class Mips(unittest.TestCase):
         code = mips.decode_all(fx.mips(fx.NOP, fx.JR_RA, fx.NOP, fx.NOP, fx.JR_RA, fx.NOP, fx.NOP), BASE)
         self.assertEqual(mips.routines(code), [0, 3, 6])
         self.assertEqual(mips.routine_at([0, 3, 6], 4), (3, 6))
+
+
+class Ip32Code(unittest.TestCase):
+    """The finders that read constants from code, on routines built here."""
+
+    def palette_routine(self, iterations=120, extra=()):
+        # sets entry 1 to (255, 0, 9), then a ramp from index 96: r, g and b each a running 32-bit sum
+        entry = [fx.lw(25, 8, 21), fx.addiu(5, 0, 1), fx.addiu(6, 0, 255), fx.addiu(8, 0, 9), fx.sw(8, 16, 29),
+                 fx.jalr(25), fx.addiu(7, 0, 0)]
+        setup = [fx.lui(18, 0x5f), fx.or_(17, 18, 0), fx.lui(19, 0x8f), fx.addiu(16, 0, 0)]
+        body = [fx.sra(9, 19, 16), fx.sw(9, 16, 29), fx.lw(25, 8, 21), fx.addiu(5, 16, 96), fx.sra(6, 17, 16), fx.jalr(25),
+                fx.sra(7, 18, 16), fx.ori(1, 0, 0x8199), fx.addu(17, 17, 1), fx.ori(1, 0, 0xb800), fx.addu(18, 18, 1),
+                fx.ori(1, 0, 0xb333), fx.addu(19, 19, 1), fx.addiu(1, 0, iterations), fx.addiu(16, 16, 1),
+                fx.bne(16, 1, -16 & 0xffff), fx.NOP]
+        return [fx.addiu(29, 29, -104)] + entry + setup + body + list(extra) + [fx.JR_RA, fx.NOP]
+
+    def test_the_palette_is_the_calls_and_the_ramp_comes_from_the_running_sums(self):
+        r = ip32.Reader(fx.asset_segment(self.palette_routine()))
+        ip32.palette(r, self.out())
+        doc = json.loads(self.read('assets/palette.json'))
+        by = {e['index']: e['rgb'] for e in doc['entries']}
+        self.assertEqual(by[1], [255, 0, 9])
+        self.assertEqual(len(by), 121)
+        self.assertEqual(doc['ramp']['first_index'], 96)
+        self.assertEqual([c['step'] for c in doc['ramp']['channels']], ['0x8199', '0xb800', '0xb333'])
+        for i in (0, 57, 119):
+            want = [(0x5f0000 + 0x8199 * i) >> 16, (0x5f0000 + 0xb800 * i) >> 16, (0x8f0000 + 0xb333 * i) >> 16]
+            self.assertEqual(by[96 + i], want)
+        self.assertEqual(doc['unwritten'][:3], [0, 2, 3])
+
+    def test_the_swatch_paints_index_i_in_cell_i_and_leaves_unwritten_cells_clear(self):
+        ip32.palette(ip32.Reader(fx.asset_segment(self.palette_routine())), self.out())
+        w, h, _, px = png.decode(self.read('assets/palette.png', 'rb'))
+        pixel = lambda i: px[((i // 16 * 16 + 3) * 256 + i % 16 * 16 + 5) * 4:][:4]
+        self.assertEqual((w, h, pixel(1), pixel(2)), (256, 256, b'\xff\0\x09\xff', b'\0\0\0\0'))
+
+    def test_a_routine_without_the_three_increments_is_not_a_palette(self):
+        code = [w for w in self.palette_routine() if w != fx.ori(1, 0, 0xb800)]
+        with self.assertRaises(AssetError):
+            ip32.palette(ip32.Reader(fx.asset_segment(code)), self.out())
+
+    def test_the_gradient_routine_is_the_one_with_the_divide_and_both_constants(self):
+        gradient = [fx.lui(24, 0xa0), fx.lui(1, 0x60), fx.div(15, 24), fx.sra(5, 18, 16), fx.JR_RA, fx.NOP]
+        decoy = [fx.lui(24, 0xa0), fx.JR_RA, fx.NOP]
+        r = ip32.Reader(fx.asset_segment(decoy + gradient))
+        ip32.gradient(r, self.out())
+        doc = json.loads(self.read('assets/gradient.json'))
+        self.assertEqual((doc['routine'], doc['numerator'], doc['base'], doc['first_index']), ('0x8100000c', '0xa00000', '0x600000', 96))
+        with self.assertRaises(AssetError):
+            ip32.gradient(ip32.Reader(fx.asset_segment(decoy)), self.out())
+
+    def test_layout_needs_both_routines_with_their_constants(self):
+        menu = [fx.slti(1, 2, 1051)] + [fx.addiu(8, 0, v) for v in (65, 150, 50, 60, 15, -75, -25, 3, 2)] + [fx.JR_RA, fx.NOP]
+        bg = [fx.slti(1, 2, 1051)] + [fx.addiu(8, 0, v) for v in (601, 150, 200, 530, 520, 65, 445, 80, 66, 48, 49, 50)] + [fx.JR_RA, fx.NOP]
+        r = ip32.Reader(fx.asset_segment(menu + bg))
+        ip32.layout(r, self.out())
+        doc = json.loads(self.read('assets/layout.json'))
+        self.assertEqual((doc['menu']['routine'], doc['background']['routine']), ('0x81000000', '0x81000030'))
+        with self.assertRaises(AssetError):
+            ip32.layout(ip32.Reader(fx.asset_segment(menu + bg[:-8] + bg[-2:])), self.out())
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+
+    def out(self):
+        return self.dir
+
+    def read(self, rel, mode='r'):
+        with open(os.path.join(self.dir, rel), mode) as f:
+            return f.read()
 
 
 if __name__ == '__main__':
