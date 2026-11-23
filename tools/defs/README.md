@@ -349,7 +349,7 @@ block, named like the unit without the file name as a prefix. The C header stays
 | Profile | File | Contents |
 |---|---|---|
 | `rust-regs` | `generated/rust-regs/<unit>.rs` | One `regs! { ... }` invocation, described below. |
-| `c-regfields` | `generated/c-regfields/<unit>.h` | `<BLOCK>_BASE`, then `REG8`/`REG16`/`REG32`/`REG64 (NAME, offset)` and `FIELD (NAME, FIELD, shift, length)` per register, in the style of the registerfields.h macros. The header defines neither macro: the includer supplies them. Arrays add `<NAME>_COUNT` and `<NAME>_STRIDE`. Every constant of the unit follows as a `#define` named as in the standard C header (an indexed one adds `_COUNT`). A constant named `BASE` stands in for the header's own `<BLOCK>_BASE` when the unit's export `base` is 0. |
+| `c-regfields` | `generated/c-regfields/<unit>.h` | `<BLOCK>_BASE`, then `REG8`/`REG16`/`REG32`/`REG64 (PREFIX_NAME, offset)` and `FIELD (PREFIX_NAME, FIELD, shift, length)` per register, the unit's `prefix` in front of every register name so two units' headers can share one C file, in the style of the registerfields.h macros. The header defines neither macro: the includer supplies them. Arrays add `<PREFIX>_<NAME>_COUNT` and `<PREFIX>_<NAME>_STRIDE`. Every constant of the unit follows as a `#define` named as in the standard C header (an indexed one adds `_COUNT`). A constant named `BASE` stands in for the header's own `<BLOCK>_BASE` when the unit's export `base` is 0. |
 | `c-clean` | `generated/c-clean/<unit>.h` | The same macros as `generated/c/<unit>.h`, with the same names and values. |
 
 A unit gets `c-clean` only when its entry says `profiles = ["c-clean"]` (or lists it among others); a

@@ -30,7 +30,7 @@ class StampTest(RepoTest):
                 continue
             head = text[:600]
             self.assertIn("BSD-3-Clause", head, rel)
-            self.assertIn("defs-gen 3", head, rel)
+            self.assertIn("defs-gen 4", head, rel)
             self.assertIn(digest, head, rel)
         for rel in ("gen/rust/Cargo.toml", "gen/rust/src/lib.rs"):
             self.assertIn("SPDX-License-Identifier: BSD-3-Clause", files[rel])

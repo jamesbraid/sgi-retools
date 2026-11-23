@@ -86,9 +86,10 @@ def verify_export(repo, models, td, cc, rustc, notes):
             src = os.path.join(td, "export_%s.c" % name)
             lines = ['#include "export_shim.h"', '#include "%s"' % os.path.join(root, rel)]
             for n, r in m["registers"].items():
-                lines.append("_Static_assert(A_%s == 0x%x, \"%s\");" % (n.upper(), r["offset"] - base, n))
+                name = "%s_%s" % (m["prefix"], n.upper())
+                lines.append("_Static_assert(A_%s == 0x%x, \"%s\");" % (name, r["offset"] - base, n))
                 if r["count"] > 1:
-                    lines.append("_Static_assert(%s_STRIDE == 0x%x, \"%s\");" % (n.upper(), r["stride"], n))
+                    lines.append("_Static_assert(%s_STRIDE == 0x%x, \"%s\");" % (name, r["stride"], n))
             with open(src, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines) + "\n")
             r = _run([cc, "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-std=gnu11", "-I", td, "-x", "c", src])

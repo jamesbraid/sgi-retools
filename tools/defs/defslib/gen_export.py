@@ -183,12 +183,12 @@ def gen_c_regfields(m, base, project, commit):
     out = [export_banner(project, commit, "/*", " */"),
            *wrap_comment(m.get("title") or m["unit"]),
            *wrap_comment("Needs REG8, REG16, REG32, REG64 (name, offset) and FIELD (register, field, shift, length) "
-                         "defined by the includer. Offsets are relative to %s_BASE. A comment gives each grade." % blk),
+                         "defined by the includer. Offsets are relative to %s_BASE. A comment gives each grade. Register names carry the unit prefix." % blk),
            "#ifndef %s\n#define %s\n" % (guard, guard)]
     if not own:
         out.append("#define %s_BASE 0x%x" % (blk, base))
     for n, r in m["registers"].items():
-        name = n.upper()
+        name = "%s_%s" % (m["prefix"], n.upper())       # the unit prefix keeps two headers in one C file apart
         out.append("")
         out.append("/* %s */" % r["grade"])
         out.append("%s(%s, 0x%x)" % (WIDE[r["width"]], name, r["offset"] - base))
@@ -198,7 +198,7 @@ def gen_c_regfields(m, base, project, commit):
         for fn, f in r["fields"].items():
             hi, lo = f["bits"]
             out.append("FIELD(%s, %s, %d, %d)" % (name, fn.upper(), lo, hi - lo + 1))
-    taken = {n.upper() for n in m["registers"]} | ({"%s_BASE" % blk} if not own else set())
+    taken = {"%s_%s" % (m["prefix"], n.upper()) for n in m["registers"]} | ({"%s_BASE" % blk} if not own else set())
     if m["constants"]:
         out.append("")
     for n, k in m["constants"].items():
