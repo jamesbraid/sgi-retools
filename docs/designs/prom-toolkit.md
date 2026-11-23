@@ -1,8 +1,26 @@
 # A toolkit for SGI PROM images: identify, unpack, facts, assets and Ghidra loading
 
-Status: design, for decision. Nothing here is built. Every new name in this page is a proposal for the
-repository owner to decide; each one is marked *(proposed name)* where it first appears and collected in
-[Proposed names](#proposed-names).
+Status: the decisions below are made; identify and unpack are built (`tools/prom/`), facts, assets and Ghidra
+loading are not. `identify` is the same pipeline as `unpack` (`analyze`), reporting its result; the payload plug-in
+kind is not yet generalised (`payloads/lzw.py` is a plain module). Names marked *(proposed name)* in the text were adopted as proposed.
+
+## Decisions
+
+- Python in sgi-retools. The Rust rule covers shipped code only, so shoji's build may run Python tools.
+- Every name in [Proposed names](#proposed-names) is adopted as proposed.
+- One JSON Schema, `sgi-prom` version 1, replaces the manifest, facts and assets schemas. promkit writes
+  `<image>.prom.json` (identity, segments with true chunk file offsets, empty tables, strings and assets sections);
+  the code analysis will write `<image>.code.json`, whose top-level shape and shared fields the schema also
+  defines. Decompiled output has no schema and is never committed; specs stay in chips and run traces in shoji.
+- Origami's own copies of the decoders are left alone.
+- shoji regenerates its assets at build time from a PROM image the user supplies, and covers both O2 PROM 4.18 and 4.8.
+- The catalogue gains no payload hashes: the committed golden manifests are enough.
+- Boards come in the order the design gives. Container record layouts as defs units are out of scope for now.
+  chips' `prom-images.md` stays a holdings view for now.
+- The first step builds the package, `identify`, `unpack` and its plug-ins (`installer`, `ip32-flash`, `io4-flat`,
+  `io4-segmented`, `promgen64`, `raw`, `swap16`) and the `sgi-prom` layout of `firmware_layout.py`. `installer` is
+  included because the O2 image cannot be read without it. Nested-segment search in `promgen64`, banners, the
+  ECOFF/ELF payload readers, facts, assets and Ghidra loading follow.
 
 ## What it is for
 
@@ -23,7 +41,7 @@ The toolkit turns the written formats into one tool with five steps:
 
 1. **Identify**: hash an image, look it up in the PROM catalogue, and report board, version, revision,
    byte order and container.
-2. **Unpack**: cut out every segment, verify each against its own checksums, and write a manifest of
+2. **Unpack**: cut out every segment, verify each against its own checksums, and write the `.prom.json` file of
    segments with load addresses.
 3. **Facts**: find the PROM's tables and export them as structured data for the chips pages and shoji.
 4. **Assets**: write the PROM's bitmaps, fonts, palettes, layout constants and sounds as PNG, a font
@@ -238,7 +256,7 @@ compression, decoded length, decoded sha256, load, entry, format, regions, check
 | `raw` | none | none |
 | `swap16` | chips byte-order page | reported, not checked |
 | `installer` (256-byte `PROM` header, the O2's `.image` files) | chips O2 PROM page; iris and QEMU decoders | header length equals the file |
-| `ip32-flash` (five `SHDR` segments) | chips O2 PROM page | header words sum to zero; body ends in a balance word; firmware segment type 3 and its load map sum to zero |
+| `ip32-flash` (five `SHDR` segments) | chips O2 PROM page | header words sum to zero; body ends in a balance word; firmware segment type 3 and its load map: the chunks tile the segment up to the closing record |
 | `io4-flat` (`JFK4`) | chips IO4 payload page | halfword-sum checksum |
 | `io4-segmented` (`JKSW`, `SEG2`, `_LZW`) | chips IO4 payload page | record halfword sums; decoded length and byte sum; the `0xce0` offset bias is applied and recorded, not hidden |
 | `promgen64` | QEMU manual page; existing sgi-retools and Origami scripts | decoded length and additive byte sum; nested segments found by magic search |
@@ -261,157 +279,85 @@ retools/tools/re-run --ghidra-export IMAGE --sgi-prom MANIFEST [--program NAME] 
 - `identify` prints one line per image (or one JSON object with `--json`): sha256, catalogue row or
   `uncatalogued`, byte order and any transform, container, banners with where each was found. It reads
   only the image and the catalogue and writes nothing.
-- `unpack` writes `DIR/manifest.json` and one file per segment under `DIR/segments/`, then prints the
-  manifest path. `DIR` defaults to `.cache/prom/<sha256 prefix>/`. It exits 1 when any check fails, after
+- `unpack` writes `DIR/<image>.prom.json` and one file per segment under `DIR/segments/`, then prints the
+  path of the `.prom.json` file. `DIR` defaults to `.cache/prom/<sha256 prefix>/`. It exits 1 when any check fails, after
   writing everything it could, so a damaged image is still readable.
-- `facts` reads a manifest and writes the facts document for one segment or for every segment the family
-  covers.
-- `assets` writes the asset index and the PNG, WAV and font files. `--only` limits it to `logo`, `icon`,
+- `facts` reads a `.prom.json` file and fills its `tables` and `strings` sections for one segment or for
+  every segment the family covers.
+- `assets` fills the `assets` section and writes the PNG, WAV and font files. `--only` limits it to `logo`, `icon`,
   `font`, `palette`, `layout` or `audio`.
 - `--sgi-prom` (proposed name) joins the existing `--ghidra-export` options. It takes the layout from the
   manifest, so `--flat`, `--load`, `--header`, `--processor` and `--window` are refused beside it, as they
   are beside `--sn2-prom`. `--program` picks one of the manifest's Ghidra programs when there are several
-  (each CPU payload of an IO4 container is its own program). `--facts` defaults to the facts file next to
-  the manifest.
+  (each CPU payload of an IO4 container is its own program). `--facts` defaults to the `.prom.json` file's own tables and strings.
 
 Exit status follows the repository: 0 clean, 1 a check failed, 2 a usage or setup problem. Output is
-deterministic: the same image and tool revision give byte-identical manifests and facts.
+deterministic: the same image and tool revision give byte-identical files.
+`promkit validate FILE...` checks files against the schema and exits 1 on the first kind of problem it finds in each.
 
-## Output schemas
+## Output schema
 
-Addresses and sha256 values are strings (`"0x81000000"`), as in Origami's analysis records, so 64-bit
-addresses survive any JSON reader. Every document carries a schema id and the tool revision; a reader
-refuses a major schema it does not know.
+One JSON Schema, `sgi-prom`, version 1 (`tools/prom/sgi-prom.schema.json`), defines every file the toolkit
+and the code analysis write about an image. It replaces the three separate manifest, facts and asset
+schemas this design first proposed. Every file starts with `"schema": "sgi-prom"`, `"version": 1` and a `kind`.
+A tool validates a file against the schema (`promkit validate FILE`; `tools/prom/schema.py` is a small stdlib
+validator, as the repository has no JSON-schema dependency) and refuses a version it does not know before it reads
+anything else. Addresses and sha256 values are strings (`"0x81000000"`), so 64-bit addresses survive any JSON reader.
 
-### Manifest
+Two files per image:
+
+- **`<image>.prom.json`** (kind `prom`), written by promkit:
+  - `identity`: file name, sha256, size, catalogue row, family, byte order, transforms, container.
+  - `segments`: for each, container offset, stored and decoded length, compression, sha256, load and entry
+    address, checks, and `regions`. A region is a run of the segment's bytes that loads at one address, with
+    its true `offset` in the segment (the O2 firmware's chunks are each 8 bytes past their load-map record, so
+    the offset is not the address minus a base). Segment names are unique in a file and a segment's `parent`, when set, names another segment. A
+    segment's `offset` is where it starts in the image file; an address's `offset` is the byte offset within the segment.
+  - `tables`, `strings`, `assets`: defined, and empty until promkit produces them. Table and string entries
+    carry an address and a grade; asset entries add a kind and an output file.
+- **`<image>.code.json`** (kind `code`), written by the Ghidra and m2c analysis, not by promkit. The schema fixes
+  only its top-level shape and the shared fields: `image`, `functions`, `calls`, `device_accesses`, `matches`
+  (against other revisions) and `modules`, each entry carrying an address and a grade.
+
+Shared fields. An **address** names the segment (resolved against the `.prom.json` file for the same image sha256) and the address the segment runs at (`{"segment":
+"firmware", "address": "0x81048e70"}`), with an optional byte offset in the segment, so an address is the same
+in every file. A **grade** is one of the six ratings the QEMU manual pages use (established, observed,
+software expectation, inferred, approximation, unknown). The tool grades only what the bytes show.
+
+Not in the schema: decompiled output stays in Ghidra's and m2c's own formats in private storage and is never
+committed; specs are chips Markdown pages; run traces live in shoji.
+
+The example below is the O2 4.18 firmware segment from the chips O2 PROM page, to show the shape; the document
+is what the tool computes, and the golden test for that image checks it against the chips figures.
 
 ```json
 {
-  "schema": "prom-manifest/1",
+  "schema": "sgi-prom", "version": 1, "kind": "prom",
   "tool": {"name": "promkit", "revision": "b6db4a8"},
-  "image": {
-    "file": "ip32prom.image",
-    "sha256": "11230c35...",
-    "size": 431872,
-    "catalog": {"board": "ip32", "version": "4.18", "rev": "", "part": "", "kind": "shipped"},
-    "banners": [{"text": "...", "where": "segment version +0x40"}],
-    "byte_order": "big",
-    "transforms": [],
-    "container": "installer"
-  },
-  "family": "ip32",
-  "segments": [
-    {
-      "name": "firmware", "id": null, "parent": "flash",
-      "offset": "0x9200", "stored_length": "0x5fffc", "compression": "none",
-      "length": "0x5fffc", "sha256": "...", "format": "flat",
-      "load": "0x81000000", "entry": "0x81000048",
-      "regions": [
-        {"name": "text", "address": "0x81000000", "length": "0x48e70", "kind": "code"},
-        {"name": "rodata", "address": "0x81048e70", "length": "0xb290", "kind": "readonly"},
-        {"name": "data", "address": "0x81054100", "length": "0xbee0", "kind": "data"},
-        {"name": "bss", "address": "0x8105ffe0", "length": null, "kind": "zero"}
-      ],
-      "checks": [
-        {"rule": "shdr-header-zero-sum", "ok": true},
-        {"rule": "shdr-body-balance", "ok": true},
-        {"rule": "ip32-load-map-zero-sum", "ok": true}
-      ],
-      "file": "segments/firmware.bin"
-    }
-  ],
-  "programs": [
-    {"name": "flash", "language": "MIPS:BE:32:default", "segments": ["flash"], "base": "0xbfc00000"},
-    {"name": "firmware", "language": "MIPS:BE:32:default", "segments": ["firmware"]}
-  ]
+  "identity": {"file": "ip32prom.image", "sha256": "11230c35...", "size": 431872,
+               "catalog": {"board": "ip32", "version": "4.18", "rev": "", "part": "", "kind": "shipped"},
+               "family": "ip32", "byte_order": "big", "transforms": [], "container": "installer>ip32-flash"},
+  "segments": [{
+    "name": "firmware", "id": null, "parent": null, "offset": "0x9300", "stored_length": "0x5fffc",
+    "compression": "none", "length": "0x5fffc", "sha256": "...", "format": "flat",
+    "load": "0x81000000", "entry": "0x81000000",
+    "regions": [
+      {"name": "text", "address": "0x81000000", "offset": "0x0", "length": "0x48e70", "kind": "code"},
+      {"name": "rodata", "address": "0x81048e70", "offset": "0x48e78", "length": "0xb290", "kind": "readonly"},
+      {"name": "data", "address": "0x81054100", "offset": "0x54110", "length": "0xbee0", "kind": "data"}],
+    "checks": [{"rule": "shdr-header-zero-sum", "ok": true}, {"rule": "shdr-body-balance", "ok": true},
+               {"rule": "ip32-load-map-tiles", "ok": true}],
+    "version": "4.18", "file": "segments/firmware.bin"}],
+  "tables": [], "strings": [], "assets": []
 }
 ```
 
-The figures above are the O2 4.18 layout from the chips O2 PROM page, used to show the shape; the
-manifest is what the tool computes, and the golden test for that image checks it against those figures.
 A length the tool cannot determine is `null`, never a guess.
-
-### Facts
-
-One document per segment. Each fact carries its address, the rule that found it, and a grade in the words
-the chips repository uses. The tool grades only what the bytes show: a table read in full whose shape was
-verified is `established`; a role name taken from the published ARC slot order, or a meaning taken from a
-string, is `inferred`; anything else is `unknown`. Chips pages may grade higher from other sources; the
-facts file never claims more than the bytes.
-
-```json
-{
-  "schema": "prom-facts/1",
-  "tool": {"name": "promkit", "revision": "b6db4a8"},
-  "image": {"sha256": "11230c35...", "segment": "firmware", "segment_sha256": "..."},
-  "spb": {
-    "builder": "0x810174d8", "address": "0xa0001000", "signature": "0x53435241",
-    "fields": {"length": "0x48", "version": 1, "revision": 10, "firmware_vector_length": "0x8c",
-               "firmware_vector": "0xa0001800", "private_vector_length": "0x34",
-               "private_vector": "0xa0001c00", "adapter_count": 0},
-    "rule": "spb-builder", "grade": "established"
-  },
-  "vectors": {
-    "firmware": {"source": "0x81058840", "entries": [
-      {"index": 0, "target": "0x81014858", "role": "Load", "role_grade": "inferred"}]},
-    "private": {"source": "0x810588cc", "entries": [{"index": 0, "target": "0x81016ebc"}]},
-    "patched": [{"index": 3, "target": "0xbfc0161c", "by": "0x81000530"}]
-  },
-  "commands": {"table": "0x81054100", "record": ["name", "handler", "usage"], "entries": [
-    {"name": "boot", "handler": "0x81047a00", "usage": "...", "hidden": false}]},
-  "environment": {
-    "defaults": {"table": "0x810552f4", "record": ["name", "default", "flags"], "entries": [
-      {"name": "console", "default": "g"}]},
-    "special": {"table": "0x81055438", "entries": [{"name": "DEBUG", "cell": "0x810720d0", "flags": 2}]},
-    "nvram_records": null
-  },
-  "config_tree": {"builders": [
-    {"record": "0x81054280", "install": "0x81003a54", "parent_tag": 1, "identifiers": ["SGI-IP32"]}]},
-  "menus": [{"table": "0x81060c50", "entries": [{"label": "Start System", "handler": "0x81012528",
-             "image": "0x..."}]}],
-  "strings": [{"address": "0x8104a998", "text": "1.0", "referenced_by": ["0x8100ad14"]}]
-}
-```
-
-`nvram_records` holds the byte-addressed record tables of the Indigo, Indigo2 and Indy PROMs (name, NVRAM
-offset, length, default); `defaults` holds the O2's name-and-default table. A family that has neither
-leaves both `null`. Strings are exported only when some exported fact refers to them, not as a dump of
-the image.
-
-### Asset index
-
-```json
-{
-  "schema": "prom-assets/1",
-  "image": {"sha256": "...", "segment": "firmware"},
-  "assets": [
-    {"kind": "logo", "name": "logo-0x81070000", "address": "0x81070000", "encoding": "unknown",
-     "width": 0, "height": 0, "file": "logo-0x81070000.png", "sha256": "...", "drawn_by": "0x8103caa0",
-     "grade": "inferred"},
-    {"kind": "font", "name": "font-0x...", "file": "font-0x....json", "bdf": "font-0x....bdf",
-     "cell": [8, 16], "ascent": 13, "descent": 3, "first": 32, "last": 126, "proportional": false},
-    {"kind": "palette", "file": "palette-0x....json", "entries": 16},
-    {"kind": "layout", "file": "layout.json"},
-    {"kind": "audio", "file": "chime-0x....wav", "rate": null, "rate_from": "unknown",
-     "bits": 16, "channels": 2}
-  ]
-}
-```
-
-Asset names use the address where the data sits, because a descriptive name would be a guess until a
-chips page settles what each one is. The values in the example are placeholders for the shape only.
-
-The font description is JSON (cell size, ascent, descent, glyph range, and for each glyph its advance,
-bounding box and rows as hex), with a BDF copy written beside it so ordinary font tools can open it. A
-palette is a JSON list of RGB triples in table order. `layout.json` holds the menu geometry the PROM's
-drawing code uses (positions, spacing, colours by palette index), each value with the address it was read
-from. Audio is WAV at the rate the PROM programs, when the facts step can read it from the playback code;
-otherwise `rate` is `null` and the asset says so rather than picking a rate.
 
 ## Facts discovery
 
 Discovery runs in Python on the unpacked segments, before Ghidra, so it is testable without Ghidra and
-the Ghidra script only applies what it is given. Each finder states its rule in the facts file.
+the Ghidra script only applies what it is given. Each finder states its rule beside its entry in the `tables` section.
 
 - **System parameter block**: find the signature `0x53435241` built by `lui` and `ori` within a window of
   instructions (the chips survey found that adjacent-only matching misses the IP22, IP24 and IP30
@@ -446,7 +392,7 @@ A new import component, `ghidra/import/sgi-prom/` (proposed name), follows the r
 Ghidra image, and a `tests/check.py` that checks the result with plain Python.
 
 `SgiPromImport.java` (proposed name) runs as a pre-script on a raw import, as `SN2PromImport.java` does. It
-reads the manifest and the facts file and:
+reads the `.prom.json` file and:
 
 - creates one memory block per region of each segment in the chosen program, at its load address and
   under the family's window; marks code regions executable and read-only data read-only; creates the
@@ -455,7 +401,7 @@ reads the manifest and the facts file and:
   segment's load-map chunks at their run-time addresses, in the same program;
 - labels and types the parameter block, both vectors (each entry a pointer, each target a function), the
   command table (each handler a function named from its command), the environment tables, the walker
-  records and the menu records, with a plate comment naming the rule and grade from the facts file;
+  records and the menu records, with a plate comment naming the rule and grade from its `tables` entry;
 - applies any names the payload carries (ELF or ECOFF symbol tables).
 
 `re-run` already includes the SN2 import script in the Ghidra image's tag hash; the new component's
@@ -549,8 +495,8 @@ build container runs:
 
 ```sh
 retools/tools/re-run python3 retools/tools/prom/promkit unpack IMAGE --out build/prom
-retools/tools/re-run python3 retools/tools/prom/promkit facts build/prom/manifest.json --out build/prom/facts.json
-retools/tools/re-run python3 retools/tools/prom/promkit assets build/prom/manifest.json --out build/prom/assets
+retools/tools/re-run python3 retools/tools/prom/promkit facts build/prom/ip32prom.image.prom.json
+retools/tools/re-run python3 retools/tools/prom/promkit assets build/prom/ip32prom.image.prom.json --out build/prom/assets
 ```
 
 - The image is fetched from the published distribution by the sha256 shoji pins, or given as a path.
@@ -603,7 +549,7 @@ Every name below is a proposal. None is used until the owner picks.
 | Ghidra import directory and script | `ghidra/import/sgi-prom/`, `SgiPromImport.java` | `mips-prom`, `MipsPromImport.java` |
 | Ghidra export option | `--sgi-prom MANIFEST` | `--prom-manifest` |
 | `firmware_layout.py` layout | `sgi-prom` | `prom` |
-| Schema ids | `prom-manifest/1`, `prom-facts/1`, `prom-assets/1` | |
+| Schema | `sgi-prom`, version 1 (files `<image>.prom.json` and `<image>.code.json`) | |
 | Image directory variable | `RETOOLS_PROM_IMAGES` | `PROM_IMAGES` |
 | Golden directory | `tools/prom/tests/golden/` | |
 | Chips facts directory | `generated/prom/<board>/` | `platforms/<board>/generated/` |
