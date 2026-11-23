@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 
-from . import AssetError, png
+from . import AssetError, glyphs, png
 from .firmware import Firmware
 from .mips import Machine, Unknown, routine_at, routines
 
@@ -39,7 +39,7 @@ class Reader:
         return {c.imm for c in self.code[lo:hi] if c.op in (9, 0xa, 0xd)} | {c.uimm for c in self.code[lo:hi] if c.op in (0xd, 0xf)}
 
     def addr(self, index):
-        return self.code[index].pc
+        return self.base + 4 * index
 
     def machine(self):
         return Machine(self.code, self.base)
@@ -194,3 +194,166 @@ def layout(r, out):
                           'rule': 'heading pen = (left, heading_y); logo bottom-left = (logo_x, logo_y); tagline pen = '
                                   '(left + tagline_dx, tagline_y); each shadow is drawn first at its offset from the ink'}}
     r.add(out, 'layout', 'menu and logo layout', 'assets/layout.json', dumps(doc), menu, 'established')
+
+
+FONT_HEIGHTS, FONT_DESCENTS = (17, 20, 23, 14), (4, 4, 5, 3)
+FONT_ROLES = ('console text, fixed advance', 'box and keycap pieces (inferred)', 'serif bold 23 pixel: menu labels and titles',
+              'sans 14 pixel: button captions')
+LOOKUP_IMMEDIATES = {7, 32, 66, 128}
+
+
+def find_font_records(r):
+    """The routine that stores four {bitmap base, entry table, height, descent} records, found by the heights and
+    descents it writes. Returns (routine address, [(bitmap, table, height, descent)] for fonts 0 to 3)."""
+    need = set(FONT_HEIGHTS)
+    cands = {}
+    for i, c in enumerate(r.code):
+        if c.op == 9 and c.rs == 0 and c.imm == FONT_HEIGHTS[0]:
+            lo, hi = r.span(i)
+            if need <= {x.imm for x in r.code[lo:hi] if x.op == 9 and x.rs == 0}:
+                cands[lo] = hi
+    found = {}
+    for lo in cands:
+        m = r.machine()
+        try:
+            m.run(r.addr(lo))
+        except Unknown:
+            continue
+        w = {x.addr: x.value for x in m.writes}
+        for a in sorted({x.addr - 8 for x in m.writes if x.size == 2 and x.value == FONT_HEIGHTS[0]}):
+            recs = [(w.get(a + 12 * k), w.get(a + 12 * k + 4), w.get(a + 12 * k + 8), w.get(a + 12 * k + 10)) for k in range(4)]
+            if all(None not in rec for rec in recs) and [x[2] for x in recs] == list(FONT_HEIGHTS) and \
+                    [x[3] for x in recs] == list(FONT_DESCENTS):
+                found[lo] = recs
+    lo, recs = r.only('font table routine', found)
+    return r.addr(lo), recs
+
+
+def entry_count(r, k, recs):
+    """Fonts 0 to 2: the next font's bitmap follows the table. The last: the entries are taken until they have
+    used the bitmap region (to within its two-byte pad)."""
+    bitmap, table = recs[k][:2]
+    if k < 3:
+        n, rem = divmod(recs[k + 1][0] - table, 8)
+        if rem or n < 1:
+            raise AssetError('font %d: the next bitmap does not follow its entry table by whole entries' % k)
+        return n
+    used, n = 0, 0
+    while used < table - bitmap - 2:
+        e = glyphs.parse_entries(r.fw.read(table + 8 * n, 8), 1)[0]
+        if e.off * 2 != used or n > 255:
+            raise AssetError('font %d: entry %d does not continue the bitmap region' % (k, n))
+        used = glyphs.entry_span(e)[1]
+        n += 1
+    return n
+
+
+def find_lookup(r):
+    """The character-to-entry routine, by the constants of its rule."""
+    found = {}
+    for i, c in enumerate(r.code):
+        if c.op == 0xa and c.imm == 7:
+            lo, hi = r.span(i)
+            ims = {x.imm for x in r.code[lo:hi] if x.op in (9, 0xa, 0xc)}
+            if LOOKUP_IMMEDIATES <= ims:
+                found[lo] = hi
+    lo, _ = r.only('character lookup routine', found)
+    return r.addr(lo)
+
+
+def glyph_of(r, bitmap, size, e):
+    """The entry's rows (bottom first), or None when it has none or claims rows past its bitmap region."""
+    lo, hi = glyphs.entry_span(e)
+    if e.width == 0 or e.height == 0 or lo < 0 or hi > size:
+        return None
+    return glyphs.unpack_rows(r.fw.read(bitmap + lo, hi - lo), e.width, e.height)
+
+
+def bdf_glyph(code, e, rows):
+    return {'encoding': code, 'name': 'code%02X' % code, 'width': e.width, 'height': e.height, 'xoffset': e.xoffset,
+            'yoffset': e.yoffset, 'advance': e.advance, 'rows': rows}
+
+
+def fonts(r, out):
+    routine, recs = find_font_records(r)
+    lookup = find_lookup(r)
+    for k, (bitmap, table, height, descent) in enumerate(recs):
+        n = entry_count(r, k, recs)
+        size = table - bitmap
+        entries = glyphs.parse_entries(r.fw.read(table, 8 * n), n)
+        rows = [glyph_of(r, bitmap, size, e) for e in entries]
+        advances = {e.advance for e in entries}
+        doc = {'format': 'promkit-font', 'version': 1, 'font': k, 'role': FONT_ROLES[k], 'height': height, 'descent': descent,
+               'ascent': height - descent, 'fixed_advance': advances.pop() if len(advances) == 1 else None,
+               'bitmap_address': '0x%x' % bitmap, 'bitmap_size': size, 'table_address': '0x%x' % table, 'entry_count': n,
+               'entry_fields': 'off is in halfwords from the bitmap base; the glyph is height rows of ceil(width / 16) '
+                               'halfwords, bottom row first, leftmost pixel most significant; left = pen x + xoffset, '
+                               'bottom = pen y + yoffset; the pen then moves by advance',
+               'lookup': {'routine': '0x%x' % lookup, 'rule': 'code < 7: entry code of font 1, whatever font was asked for; '
+                          'else index = code - 0x20 for code < 0x80 and code - 0x42 for code >= 0x80; no glyph when the '
+                          'index is negative or not below entry_count',
+                          'small_code_limit': 7, 'subtract_low': 0x20, 'subtract_high': 0x42, 'high_bit': 0x80,
+                          'aliases': 'codes 0x80..0x9f reuse the entries of 0x5e..0x7d and 0xa0 that of ~ (inferred: unintended)'},
+               'entries': [dict(index=i, off=e.off, width=e.width, height=e.height, xoffset=e.xoffset, yoffset=e.yoffset,
+                                advance=e.advance, **({} if rows[i] else {'drawable': False}))
+                           for i, e in enumerate(entries)]}
+        grade = 'inferred' if k == 1 else 'established'      # the page rates font 1's role inferred
+        r.add(out, 'font', 'font %d' % k, 'assets/font-%d.json' % k, dumps(doc), bitmap, grade)
+        if k == 1:
+            chars = [bdf_glyph(c, entries[c], rows[c]) for c in range(min(7, n)) if rows[c]]
+        else:
+            chars = []
+            for c in range(7, 256):
+                i = c - 0x20 if c < 0x80 else c - 0x42
+                if 0 <= i < n and rows[i]:
+                    chars.append(bdf_glyph(c, entries[i], rows[i]))
+        r.add(out, 'font', 'font %d bitmap' % k, 'assets/font-%d.bdf' % k, glyphs.bdf('promfont%d' % k, height, descent, chars),
+              bitmap, grade, format='bdf')
+
+
+def find_tagline(r):
+    """The routine that draws the tagline: it ends a byte list on 0xff, loads each entry's word halves unaligned
+    and indexes 8-byte entries. Its three table pointers in the data chunk, in address order, are the bitmap pool,
+    the entries and the index list."""
+    found = {}
+    for i, c in enumerate(r.code):
+        if c.op == 9 and c.rs == 0 and c.imm == 255:
+            lo, hi = r.span(i)
+            if {x.op for x in r.code[lo:hi]} >= {0x22, 0x26} and any(x.word and x.op == 0 and x.fn == 0 and x.sh == 3 for x in r.code[lo:hi]):
+                m = r.machine()
+                m.sweep(r.addr(lo), r.addr(hi))
+                data = {v for v in m.seen if r.fw.in_data(v)}
+                ptrs = sorted(v for v in data if v - 1 not in data)      # a list pointer stepped by one is not a table
+                if len(ptrs) == 3:
+                    found[lo] = ptrs
+    lo, ptrs = r.only('tagline routine', found)
+    return r.addr(lo), ptrs
+
+
+def tagline(r, out):
+    routine, (pool, table, index) = find_tagline(r)
+    n, rem = divmod(index - table, 8)
+    if rem or n < 1:
+        raise AssetError('tagline: the index list does not follow the entries by whole entries')
+    entries = glyphs.parse_entries(r.fw.read(table, 8 * n), n)
+    size = table - pool
+    if max(glyphs.entry_span(e)[1] for e in entries) != size:
+        raise AssetError('tagline: the glyphs do not consume the %d-byte pool exactly' % size)
+    lst, p = [], index
+    while r.fw.read(p, 1)[0] != 0xff:
+        lst.append(r.fw.read(p, 1)[0])
+        p += 1
+    if not lst or max(lst) >= n:
+        raise AssetError('tagline: the index list names an entry the table does not have')
+    rows = [glyph_of(r, pool, size, e) for e in entries]
+    doc = {'format': 'promkit-tagline', 'version': 1, 'routine': '0x%x' % routine, 'pool_address': '0x%x' % pool,
+           'pool_size': size, 'table_address': '0x%x' % table, 'entry_count': n, 'index_address': '0x%x' % index,
+           'index': lst, 'index_rule': 'one entry per character, spaces included; the list ends at a 0xff byte (not listed)',
+           'entries': [dict(index=i, off=e.off, width=e.width, height=e.height, xoffset=e.xoffset, yoffset=e.yoffset,
+                            advance=e.advance, **({} if rows[i] else {'drawable': False})) for i, e in enumerate(entries)]}
+    r.add(out, 'font', 'tagline glyphs', 'assets/tagline.json', dumps(doc), pool, 'established')
+    chars = [bdf_glyph(i, e, rows[i]) for i, e in enumerate(entries) if rows[i]]
+    top = max(c['yoffset'] + c['height'] for c in chars)
+    low = max(0, -min(c['yoffset'] for c in chars))
+    r.add(out, 'font', 'tagline glyph bitmap', 'assets/tagline.bdf', glyphs.bdf('promtagline', top + low, low, chars), pool,
+          'established', format='bdf')

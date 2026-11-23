@@ -218,5 +218,154 @@ class Ip32Code(unittest.TestCase):
             return f.read()
 
 
+def pen_glyph(seed, w, h):
+    """A w by h glyph of rows (bottom first) from a fixed pattern, never all clear."""
+    return [[(x * 7 + y * 3 + seed) % 3 == 0 or (x, y) == (0, 0) for x in range(w)] for y in range(h)]
+
+
+def font_data(glyph_specs, pad=0):
+    """A bitmap region and its entry table for glyphs given as (rows, xoffset, yoffset, advance)."""
+    bitmap, table = b'', b''
+    for rows, xo, yo, adv in glyph_specs:
+        table += struct.pack('>hBBbbH', len(bitmap) // 2, len(rows[0]), len(rows), xo, yo, adv)
+        bitmap += pack_rows([[int(v) for v in row] for row in rows])
+    return bitmap + b'\0' * pad, table
+
+
+def li32(rt, value):
+    return [fx.lui(rt, value >> 16), fx.ori(rt, rt, value & 0xffff)]
+
+
+def assemble(make_code, data):
+    """A firmware segment whose code can name the data's run-time address: the code length cannot depend on it."""
+    n = len(make_code(0))
+    return fx.asset_segment(make_code(0x81000000 + 4 * n), data=data), 0x81000000 + 4 * n
+
+
+class Ip32Fonts(unittest.TestCase):
+    SPECS = [
+        [(pen_glyph(1, 1, 1), 0, 0, 9), (pen_glyph(2, 5, 12), 2, -3, 9)],                          # font 0
+        [(pen_glyph(3, 9, 2), 0, -4, 9), (pen_glyph(4, 9, 3), 0, -4, 0)],                          # font 1
+        [(pen_glyph(5, 1, 1), 0, 0, 7), (pen_glyph(6, 17, 4), 1, 2, 18), (pen_glyph(7, 4, 5), 0, 0, 5)],   # font 2
+        [(pen_glyph(8, 1, 1), 0, 0, 4), (pen_glyph(9, 6, 7), 1, 1, 8)],                            # font 3
+    ]
+
+    def build(self, specs=None, lookup=True, tails=(0, 0, 0, 0)):
+        fonts = [font_data(s, pad=2 if k == 3 else 0) for k, s in enumerate(specs or self.SPECS)]
+        data = b''.join(b + t + b'\0' * tails[k] for k, (b, t) in enumerate(fonts))
+
+        def code(data_addr):
+            at, ptrs = data_addr, []
+            for k, (b, t) in enumerate(fonts):
+                ptrs.append((at, at + len(b)))
+                at += len(b) + len(t) + tails[k]
+            w = li32(12, 0x81070000)
+            for k, ((bp, tp), h, d) in enumerate(zip(ptrs, (17, 20, 23, 14), (4, 4, 5, 3))):
+                w += li32(8, bp) + [fx.sw(8, 12 * k, 12)] + li32(8, tp) + [fx.sw(8, 12 * k + 4, 12),
+                                                                        fx.addiu(9, 0, h), fx.sh(9, 12 * k + 8, 12),
+                                                                        fx.addiu(9, 0, d), fx.sh(9, 12 * k + 10, 12)]
+            w += [fx.JR_RA, fx.NOP]
+            if lookup:
+                w += [fx.slti(1, 4, 7), fx.andi(8, 5, 128), fx.addiu(4, 0, 32), fx.addiu(6, 0, 66), fx.JR_RA, fx.NOP]
+            self.tables = [tp for bp, tp in ptrs]
+            return w
+        return assemble(code, data)
+
+    def run_fonts(self, patch=None, **kw):
+        seg, _ = self.build(**kw)
+        if patch:
+            patch(seg)
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+        r = ip32.Reader(seg)
+        ip32.fonts(r, self.dir)
+        return r
+
+    def doc(self, k):
+        with open(os.path.join(self.dir, 'assets/font-%d.json' % k)) as f:
+            return json.load(f)
+
+    def test_the_four_fonts_come_out_with_their_counts_heights_and_a_fixed_advance(self):
+        self.run_fonts()
+        self.assertEqual([self.doc(k)['entry_count'] for k in range(4)], [2, 2, 3, 2])
+        self.assertEqual([(self.doc(k)['height'], self.doc(k)['descent']) for k in range(4)], [(17, 4), (20, 4), (23, 5), (14, 3)])
+        self.assertEqual([self.doc(k)['fixed_advance'] for k in range(4)], [9, None, None, None])
+
+    def test_a_glyph_in_the_bdf_has_the_rows_and_offsets_it_was_built_with(self):
+        self.run_fonts()
+        with open(os.path.join(self.dir, 'assets/font-2.bdf')) as f:
+            text = f.read()
+        rows = self.SPECS[2][1][0]
+        # code 0x21 is entry 1 of font 2; BDF lists the top row first and pads each row to whole bytes
+        want = '\n'.join('%06X' % int(''.join('1' if v else '0' for v in row).ljust(24, '0'), 2) for row in reversed(rows))
+        self.assertIn('ENCODING 33\nSWIDTH 0 0\nDWIDTH 18 0\nBBX 17 4 1 2\nBITMAP\n' + want + '\nENDCHAR', text)
+        self.assertIn('CHARS 3', text)       # codes 0x20 to 0x22; every higher code is past the 3 entries
+
+    def test_font_1_entries_answer_to_the_codes_below_7_only(self):
+        self.run_fonts()
+        with open(os.path.join(self.dir, 'assets/font-1.bdf')) as f:
+            text = f.read()
+        self.assertIn('CHARS 2', text)
+        self.assertIn('ENCODING 0\n', text)
+        self.assertIn('ENCODING 1\n', text)
+
+    def test_an_entry_that_runs_past_its_bitmap_is_marked_and_left_out(self):
+        def patch(seg):             # font 2's last entry now claims 40 rows (the height byte is the 4th of its 8)
+            off = ip32.Firmware(seg).offset(self.tables[2] + 16 + 3)
+            seg.data = seg.data[:off] + bytes([40]) + seg.data[off + 1:]
+        self.run_fonts(patch)
+        self.assertEqual([e['index'] for e in self.doc(2)['entries'] if 'drawable' in e], [2])
+        with open(os.path.join(self.dir, 'assets/font-2.bdf')) as f:
+            self.assertIn('CHARS 2', f.read())
+
+    def test_without_the_lookup_routine_the_fonts_are_refused(self):
+        with self.assertRaises(AssetError):
+            self.run_fonts(lookup=False)
+
+    def test_a_table_that_does_not_end_on_whole_entries_is_refused(self):
+        with self.assertRaises(AssetError):
+            self.run_fonts(tails=(0, 4, 0, 0))
+
+
+class Ip32Tagline(unittest.TestCase):
+    GLYPHS = [(pen_glyph(1, 5, 6), 0, 0, 6), (pen_glyph(2, 12, 7), 1, -1, 13), (pen_glyph(3, 3, 3), 0, 2, 4)]
+
+    def build(self, chars=(1, 0, 2, 2), pad=0):
+        pool, table = font_data(self.GLYPHS)
+        data = pool + b'\0' * pad + table + bytes(chars) + b'\xff'
+
+        def code(at):
+            ptrs = [at, at + len(pool) + pad, at + len(pool) + pad + len(table)]
+            return ([fx.addiu(19, 0, 255), 0x88000000 | 17 << 16, 0x98000000 | 17 << 16, fx.sll(24, 17, 3)] +
+                    li32(22, ptrs[0]) + li32(21, ptrs[1]) + li32(16, ptrs[2]) + [fx.addiu(16, 16, 1), fx.JR_RA, fx.NOP])
+        return assemble(code, data)[0]
+
+    def run_tagline(self, **kw):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+        ip32.tagline(ip32.Reader(self.build(**kw)), self.dir)
+        with open(os.path.join(self.dir, 'assets/tagline.json')) as f:
+            return json.load(f)
+
+    def test_the_pool_entries_and_index_are_found_in_address_order(self):
+        doc = self.run_tagline()
+        self.assertEqual((doc['entry_count'], doc['index'], doc['pool_size']), (3, [1, 0, 2, 2], 12 + 14 + 6))      # two bytes a row
+
+    def test_the_bdf_holds_one_glyph_per_entry_encoded_by_entry_index(self):
+        self.run_tagline()
+        with open(os.path.join(self.dir, 'assets/tagline.bdf')) as f:
+            text = f.read()
+        self.assertIn('CHARS 3', text)
+        self.assertIn('ENCODING 1\nSWIDTH 0 0\nDWIDTH 13 0\nBBX 12 7 1 -1', text)
+
+    def test_a_pool_the_glyphs_do_not_consume_exactly_is_refused(self):
+        with self.assertRaises(AssetError):
+            self.run_tagline(pad=4)
+
+    def test_an_index_naming_a_missing_entry_is_refused(self):
+        with self.assertRaises(AssetError):
+            self.run_tagline(chars=(0, 3))
+
+
 if __name__ == '__main__':
     unittest.main()

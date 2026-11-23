@@ -203,6 +203,14 @@ def mips(*words):
     return struct.pack('>%dI' % len(words), *words)
 
 
+def sh(rt, off, rs):
+    return 0xa4000000 | rs << 21 | rt << 16 | off & 0xffff
+
+
+def andi(rt, rs, imm):
+    return 0x30000000 | rs << 21 | rt << 16 | imm & 0xffff
+
+
 def or_(rd, rs, rt):
     return rs << 21 | rt << 16 | rd << 11 | 0x25
 
