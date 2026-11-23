@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""Identify and unpack SGI PROM images. See docs/designs/prom-toolkit.md."""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from prom.cli import main  # noqa: E402
+
+sys.exit(main())

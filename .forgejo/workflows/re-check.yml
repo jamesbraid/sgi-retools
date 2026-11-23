@@ -51,6 +51,8 @@ jobs:
         run: python3 tools/test_leakcheck.py
       - name: Run the directory index tests
         run: python3 tools/test_docs_index.py
+      - name: Run the PROM toolkit tests
+        run: python3 tools/prom/tests/test_prom.py
       - name: Run the IA-64 processor table tests
         run: |
           python3 ghidra/processors/ia64/tests/synthetic.py

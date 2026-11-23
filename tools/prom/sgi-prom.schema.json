@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sgi-prom",
+  "title": "sgi-prom, version 1: what promkit and the code analysis write about one PROM image",
+  "description": "Two files per image share one header: <image>.prom.json (kind prom, written by promkit) and <image>.code.json (kind code, written by the Ghidra and m2c analysis). Decompiled output has no schema and is never committed.",
+  "oneOf": [{"$ref": "#/$defs/prom_file"}, {"$ref": "#/$defs/code_file"}],
+  "$defs": {
+    "hex": {"type": "string", "pattern": "^0x[0-9a-f]+$"},
+    "hex_or_null": {"type": ["string", "null"], "pattern": "^0x[0-9a-f]+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "grade": {"enum": ["established", "observed", "software expectation", "inferred", "approximation", "unknown"]},
+    "tool": {
+      "type": "object", "additionalProperties": false, "required": ["name", "revision"],
+      "properties": {"name": {"type": "string"}, "revision": {"type": "string"}}
+    },
+    "address": {
+      "description": "A place in an image: the segment it is in, and the address the segment runs at. In a code file, segment names resolve against the segments of the prom file for image.sha256. This offset is the byte offset within the segment, not the segment's own offset (below) in the image file.",
+      "type": "object", "additionalProperties": false, "required": ["segment", "address"],
+      "properties": {"segment": {"type": "string"}, "address": {"$ref": "#/$defs/hex"}, "offset": {"$ref": "#/$defs/hex"}}
+    },
+    "region": {
+      "description": "A run of a segment's bytes that loads at one address. offset is where the bytes start in the segment; null for a zero-filled range.",
+      "type": "object", "additionalProperties": false, "required": ["name", "address", "offset", "length", "kind"],
+      "properties": {
+        "name": {"type": "string"}, "address": {"$ref": "#/$defs/hex"}, "offset": {"$ref": "#/$defs/hex_or_null"},
+        "length": {"$ref": "#/$defs/hex_or_null"}, "kind": {"enum": ["code", "readonly", "data", "zero"]}
+      }
+    },
+    "check": {
+      "type": "object", "additionalProperties": false, "required": ["rule", "ok"],
+      "properties": {"rule": {"type": "string"}, "ok": {"type": "boolean"}, "detail": {"type": "string"}}
+    },
+    "segment": {
+      "description": "offset is where the segment starts in the image file (after any container header); names are unique in a file and parent, when set, names another segment.",
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "id", "parent", "offset", "stored_length", "compression", "length", "sha256", "format",
+                   "load", "entry", "regions", "checks", "file"],
+      "properties": {
+        "name": {"type": "string"}, "id": {"$ref": "#/$defs/hex_or_null"}, "parent": {"type": ["string", "null"]},
+        "offset": {"$ref": "#/$defs/hex"}, "stored_length": {"$ref": "#/$defs/hex"},
+        "compression": {"enum": ["none", "gzip", "compress"]}, "length": {"$ref": "#/$defs/hex"},
+        "sha256": {"$ref": "#/$defs/sha256"}, "format": {"enum": ["flat", "elf"]},
+        "load": {"$ref": "#/$defs/hex_or_null"}, "entry": {"$ref": "#/$defs/hex_or_null"},
+        "regions": {"type": "array", "items": {"$ref": "#/$defs/region"}},
+        "checks": {"type": "array", "items": {"$ref": "#/$defs/check"}},
+        "file": {"type": "string"},
+        "version": {"type": "string"}, "build": {"type": "integer"}, "lzw_flag": {"type": "integer"},
+        "lzw_trimmed": {"type": "integer"}, "table_offset": {"$ref": "#/$defs/hex"}, "flags": {"$ref": "#/$defs/hex"}
+      }
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["file", "sha256", "size", "catalog", "family", "byte_order", "transforms", "container"],
+      "properties": {
+        "file": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}, "size": {"type": "integer"},
+        "catalog": {"type": ["object", "null"]}, "family": {"type": ["string", "null"]},
+        "byte_order": {"enum": ["big", "little", "unknown"]}, "transforms": {"type": "array", "items": {"type": "string"}},
+        "container": {"type": "string"}
+      }
+    },
+    "table": {
+      "type": "object", "required": ["name", "address", "grade"],
+      "properties": {"name": {"type": "string"}, "address": {"$ref": "#/$defs/address"}, "grade": {"$ref": "#/$defs/grade"}}
+    },
+    "string": {
+      "type": "object", "required": ["address", "text"],
+      "properties": {"address": {"$ref": "#/$defs/address"}, "text": {"type": "string"}, "grade": {"$ref": "#/$defs/grade"}}
+    },
+    "asset": {
+      "type": "object", "required": ["kind", "address", "file", "grade"],
+      "properties": {
+        "kind": {"enum": ["logo", "icon", "font", "palette", "layout", "audio"]}, "address": {"$ref": "#/$defs/address"},
+        "file": {"type": "string"}, "grade": {"$ref": "#/$defs/grade"}
+      }
+    },
+    "prom_file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "version", "kind", "tool", "identity", "segments", "tables", "strings", "assets"],
+      "properties": {
+        "schema": {"const": "sgi-prom"}, "version": {"const": 1}, "kind": {"const": "prom"},
+        "tool": {"$ref": "#/$defs/tool"}, "identity": {"$ref": "#/$defs/identity"},
+        "segments": {"type": "array", "items": {"$ref": "#/$defs/segment"}},
+        "tables": {"type": "array", "items": {"$ref": "#/$defs/table"}},
+        "strings": {"type": "array", "items": {"$ref": "#/$defs/string"}},
+        "assets": {"type": "array", "items": {"$ref": "#/$defs/asset"}}
+      }
+    },
+    "code_file": {
+      "description": "Only the top-level shape and the shared fields are fixed; each entry says where it is and how well it is known.",
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "version", "kind", "tool", "image", "functions", "calls", "device_accesses", "matches", "modules"],
+      "properties": {
+        "schema": {"const": "sgi-prom"}, "version": {"const": 1}, "kind": {"const": "code"},
+        "tool": {"$ref": "#/$defs/tool"},
+        "image": {
+          "type": "object", "additionalProperties": false, "required": ["sha256"],
+          "properties": {"sha256": {"$ref": "#/$defs/sha256"}, "file": {"type": "string"}}
+        },
+        "functions": {"type": "array", "items": {"type": "object", "required": ["address", "grade"],
+                      "properties": {"address": {"$ref": "#/$defs/address"}, "grade": {"$ref": "#/$defs/grade"}}}},
+        "calls": {"type": "array", "items": {"type": "object", "required": ["from", "to", "grade"],
+                  "properties": {"from": {"$ref": "#/$defs/address"}, "to": {"$ref": "#/$defs/address"},
+                                 "grade": {"$ref": "#/$defs/grade"}}}},
+        "device_accesses": {"type": "array", "items": {"type": "object", "required": ["address", "grade"],
+                            "properties": {"address": {"$ref": "#/$defs/address"}, "grade": {"$ref": "#/$defs/grade"}}}},
+        "matches": {"type": "array", "items": {"type": "object", "required": ["address", "image_sha256", "grade"],
+                    "properties": {"address": {"$ref": "#/$defs/address"}, "image_sha256": {"$ref": "#/$defs/sha256"},
+                                   "grade": {"$ref": "#/$defs/grade"}}}},
+        "modules": {"type": "array", "items": {"type": "object", "required": ["name", "address"],
+                    "properties": {"name": {"type": "string"}, "address": {"$ref": "#/$defs/address"}}}}
+      }
+    }
+  }
+}
