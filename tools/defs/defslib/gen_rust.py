@@ -102,7 +102,7 @@ def _shared_enum_fields(u, en):
 
 
 def gen_rust(u, src):
-    out = ["// @" + banner(src, "", "").strip(), "// " + one_line(u.get("title", "")), "#![allow(dead_code)]", RUSTFMT_SKIP, ""]
+    out = ["// @" + banner(src, "", "").strip(), "// " + one_line(u.get("title", "")), "#![allow(dead_code)]", ALLOW_DOC_MARKDOWN, RUSTFMT_SKIP, ""]
     if u["enums"]:
         out.append("pub mod enums {")
         for en, e in u["enums"].items():
@@ -149,6 +149,7 @@ def gen_rust(u, src):
     return "\n".join(out) + "\n"
 
 
+ALLOW_DOC_MARKDOWN = "#![allow(clippy::doc_markdown)]"     # register docs are source prose; names in it are not reliably findable
 RUSTFMT_SKIP = "#![cfg_attr(rustfmt, rustfmt_skip)]"      # module-level skip that stable rustfmt honours
 DEFAULT_CRATE = "hwdefs"
 

@@ -71,6 +71,14 @@ class GenRustTest(RepoTest):
         r = subprocess.run([RUSTFMT, "--check", "--edition", "2021", self.path("crate/src/lib.rs")], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
 
+    def test_doc_markdown_is_allowed_for_register_docs(self):
+        self.assertIn("\n#![allow(clippy::doc_markdown)]\n", gen_rust.gen_rust(self.unit(), "defs/uart.toml"))
+
+    @unittest.skipUnless(CLIPPY, "no clippy-driver on this host; run in the rust container")
+    def test_clippy_doc_markdown_accepts_prose_docs_that_name_registers(self):
+        self.edit("defs/uart.toml", 'doc = "Control register."', 'doc = "Set timer_run and clear TIMER_MASK in the CtlReg; see ctl_status."')
+        self.build(CLIPPY, flags=["-W", "clippy::doc_markdown"])
+
     def test_labels_that_reduce_to_one_variant_get_a_suffix(self):
         v = gen_rust.variants({"k9_6": {"value": 3}, "k96": {"value": 7}, "k8": {"value": 6}})
         self.assertEqual(v, {"k9_6": "K96", "k96": "K96_7", "k8": "K8"})
@@ -84,14 +92,14 @@ class GenRustTest(RepoTest):
         self.assertIn("pub mod a;\npub mod b;\n", lib)
         self.assertIn("\n#![no_std]\n", lib)
 
-    def build(self, *tools):
+    def build(self, *tools, flags=()):
         """Write the crate and run each tool (rustc or clippy-driver) over it with -D warnings."""
         os.makedirs(self.path("crate/src"))
         self.write("crate/src/uart.rs", gen_rust.gen_rust(self.unit(), "defs/uart.toml"))
         self.write("crate/src/lib.rs", gen_rust.gen_lib(["uart"], "defs/").replace("pub mod", "mod"))   # private, as a consumer may include it
         exe = self.path("crate/t")
         for tool in tools:
-            r = subprocess.run([tool, "--edition", "2021", "--test", "-D", "warnings", "-o", exe, self.path("crate/src/lib.rs")],
+            r = subprocess.run([tool, "--edition", "2021", "--test", *flags, "-D", "warnings", "-o", exe, self.path("crate/src/lib.rs")],
                                capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
         return exe
