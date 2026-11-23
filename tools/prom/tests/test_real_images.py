@@ -7,19 +7,26 @@ sgi-prom documents in golden/ (derived numbers only, no image bytes) and the val
 
 Run: RETOOLS_PROM_IMAGES=DIR python3 tools/prom/tests/test_real_images.py
 """
+import atexit
+import contextlib
 import hashlib
+import io
 import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
-from prom import analyze  # noqa: E402
+from prom import analyze, cli  # noqa: E402
+from prom.assets import extract  # noqa: E402
 from prom.model import JR_RA, document  # noqa: E402
 from prom.schema import validate  # noqa: E402
 
 GOLDEN = os.path.join(HERE, 'golden')
+GOLDEN_ASSETS = os.path.join(GOLDEN, 'assets')
 _found = {}
 
 
@@ -130,6 +137,170 @@ class RealImages(unittest.TestCase):
         an = analyze(data)
         self.assertEqual([t['name'] for t in an.transforms], ['swap16'])
         self.assertEqual(sum(1 for i in range(0, len(an.data) - 3, 4) if an.data[i:i + 4] == JR_RA), 753)
+
+
+# What chips platforms/ip32/prom-assets.md gives for the two O2 builds, 4.18 first: the routines the assets are found
+# through, where the logo and tune arrays sit, and the icon objects (menu items in order, then the install dialog's).
+O2_ASSETS = {
+    '11230c35': {'palette': 0x81030270, 'gradient': 0x810461a0, 'menu': 0x810423ec, 'background': 0x81048a10,
+                 'lookup': 0x8104629c, 'tagline': 0x810488d8, 'logo': 0x8105ed04, 'tunes': 0x81054394, 'jump_table': 0x81049414,
+                 'fonts': (0x8105b970, 0x8105cffc, 0x8105d08c, 0x8105e2e4),
+                 'icons': (0x81057498, 0x810578a0, 0x81057bd4, 0x81057f70, 0x81058320, 0x81058630,
+                           0x81057234, 0x81056520, 0x81055e54, 0x81056a54)},
+    '820585be': {'palette': 0x8102f7d0, 'gradient': 0x81045680, 'menu': 0x810418cc, 'background': 0x81047ef0,
+                 'lookup': 0x8104577c, 'tagline': 0x81047db8, 'logo': 0x8105df84, 'tunes': 0x81053704, 'jump_table': 0x810488f4,
+                 'fonts': (0x8105abf0, 0x8105c27c, 0x8105c30c, 0x8105d564),
+                 'icons': (0x81056728, 0x81056b30, 0x81056e64, 0x81057200, 0x810575b0, 0x810578c0,
+                           0x810564c4, 0x810557b0, 0x810550e4, 0x81055ce4)},
+}
+ICON_LAYERS = (10, 10, 6, 6, 5, 10, 9, 7, 8, 8)
+TUNE_VOICES = (7, 5, 6, 6, 5, 5, 4, 5, 7, 7, 7)
+TUNE_TOTALS = (0x1e576, 0x1ec2f, 0x22740, 0x21f4b, 0x1eb23, 0x1ec2f, 0x1ef43, 0x21119, 0x1e576, 0x1e576, 0x1e576)
+_assets = {}
+
+
+def assets_of(image):
+    """(manifest assets, output directory) of the image, extracted once per run."""
+    if image not in _assets:
+        out = tempfile.mkdtemp()
+        atexit.register(shutil.rmtree, out, True)
+        _assets[image] = (extract(analyze(image), out), out)
+    return _assets[image]
+
+
+class RealAssets(unittest.TestCase):
+    def setUp(self):
+        self.full = RealImages().full
+
+    def load(self, prefix):
+        files, out = assets_of(load(self.full(prefix)))
+        self.by = {f['name']: f for f in files}
+        self.out = out
+        self.want = O2_ASSETS[prefix]
+
+    def doc(self, name):
+        with open(os.path.join(self.out, self.by[name]['file'])) as f:
+            return json.load(f)
+
+    def each(self):
+        for prefix in O2_ASSETS:
+            with self.subTest(image=prefix):
+                self.load(prefix)
+                yield prefix
+
+    def test_every_output_is_listed_with_its_hash_and_source_address(self):
+        for _ in self.each():
+            files, out = assets_of(load(self.full(_)))
+            self.assertEqual(len(files), 106)
+            for f in files:
+                with open(os.path.join(out, f['file']), 'rb') as g:
+                    self.assertEqual(hashlib.sha256(g.read()).hexdigest(), f['sha256'])
+                self.assertEqual(f['address']['segment'], 'firmware')
+
+    def test_the_routines_are_the_ones_the_chips_page_names(self):
+        for _ in self.each():
+            at = lambda name: int(self.by[name]['address']['address'], 16)
+            self.assertEqual(at('palette'), self.want['palette'])
+            self.assertEqual(at('background gradient'), self.want['gradient'])
+            self.assertEqual(self.doc('menu and logo layout')['menu']['routine'], '0x%x' % self.want['menu'])
+            self.assertEqual(self.doc('menu and logo layout')['background']['routine'], '0x%x' % self.want['background'])
+            self.assertEqual(self.doc('tagline glyphs')['routine'], '0x%x' % self.want['tagline'])
+            self.assertEqual(self.doc('font 0')['lookup']['routine'], '0x%x' % self.want['lookup'])
+
+    def test_palette_has_the_ramp_and_the_page_colour_entries(self):
+        for _ in self.each():
+            d = self.doc('palette')
+            self.assertEqual((len(d['entries']), len(d['unwritten'])), (201, 55))
+            self.assertEqual((d['ramp']['first_index'], d['ramp']['count']), (0x60, 160))
+            self.assertEqual([c['step'] for c in d['ramp']['channels']], ['0x8199', '0xb800', '0xb333'])
+            self.assertEqual([e['index'] for e in d['entries'] if 'source' in e], [9, 10])
+            self.assertEqual(self.doc('background gradient')['numerator'], '0xa00000')
+
+    def test_fonts_have_the_chips_entry_counts_heights_and_descents(self):
+        for _ in self.each():
+            fonts = [self.doc('font %d' % k) for k in range(4)]
+            self.assertEqual([f['entry_count'] for f in fonts], [190, 7, 95, 95])
+            self.assertEqual([(f['height'], f['descent']) for f in fonts], [(17, 4), (20, 4), (23, 5), (14, 3)])
+            self.assertEqual([f['bitmap_address'] for f in fonts], ['0x%x' % a for a in self.want['fonts']])
+            self.assertEqual(fonts[0]['fixed_advance'], 9)
+            self.assertEqual([e['index'] for e in fonts[1]['entries'] if 'drawable' in e], [4])
+            self.assertEqual([e['index'] for f in (fonts[0], fonts[2], fonts[3]) for e in f['entries'] if 'drawable' in e], [])
+
+    def test_the_tagline_has_nineteen_glyphs_and_a_33_character_index(self):
+        for _ in self.each():
+            d = self.doc('tagline glyphs')
+            self.assertEqual((d['entry_count'], len(d['index']), d['pool_size']), (19, 33, 660))
+
+    def test_the_logo_is_1095_bytes_of_494_by_237(self):
+        for _ in self.each():
+            f = self.by['logo']
+            self.assertEqual((f['details']['width'], f['details']['height'], f['details']['encoded_length']), (494, 237, 1095))
+            self.assertEqual(f['address']['address'], '0x%x' % self.want['logo'])
+
+    def test_ten_icons_with_the_chips_layer_counts_in_use_order(self):
+        for _ in self.each():
+            d = self.doc('icon list')['icons']
+            self.assertEqual([len(i['layers']) for i in d], list(ICON_LAYERS))
+            self.assertEqual([i['object_address'] for i in d], ['0x%x' % a for a in self.want['icons']])
+            self.assertEqual((min(i['width'] for i in d), max(i['width'] for i in d), max(i['height'] for i in d)), (15, 67, 64))
+            self.assertEqual([i['yoffset'] for i in d if i['yoffset']], [-2])
+
+    def test_sixty_four_voices_in_eleven_tunes_laid_out_as_chips_gives(self):
+        for _ in self.each():
+            d = self.doc('tune and voice descriptors')
+            self.assertEqual(d['jump_table'], '0x%x' % self.want['jump_table'])
+            self.assertEqual([t['voice_count'] for t in d['tunes']], list(TUNE_VOICES))
+            self.assertEqual([t['total_length'] for t in d['tunes']], list(TUNE_TOTALS))
+            self.assertEqual(sum(len(t['voices']) for t in d['tunes']), 64)
+            self.assertEqual({v['sample_count'] for t in d['tunes'] for v in t['voices']}, {88200})
+            self.assertEqual(min(int(t['array_address'], 16) for t in d['tunes']), self.want['tunes'])
+
+    def test_both_builds_carry_the_same_payloads(self):
+        outs = []
+        for prefix in O2_ASSETS:
+            self.load(prefix)
+            outs.append({n: f['sha256'] for n, f in self.by.items()})
+        shared = ('logo', 'palette swatch', 'tagline glyph bitmap', 'font 0 bitmap', 'font 1 bitmap', 'font 2 bitmap',
+                  'font 3 bitmap') + tuple('menu-%d' % k for k in range(6)) + tuple('install-%d' % k for k in range(4))
+        for name in shared:
+            self.assertEqual(outs[0][name], outs[1][name], name)
+
+    def test_the_assets_command_writes_a_valid_document_that_lists_them(self):
+        for prefix in O2_ASSETS:
+            with self.subTest(image=prefix):
+                load(self.full(prefix))            # skips when the image is absent
+                path = find(self.full(prefix))
+                out = tempfile.mkdtemp()
+                self.addCleanup(shutil.rmtree, out, True)
+                index = os.path.join(out, 'index.json')
+                with open(index, 'w') as f:
+                    f.write('{"proms": []}')
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(cli.main(['assets', path, '--out', out, '--catalog', index]), 0)
+                with open(os.path.join(out, os.path.basename(path) + '.prom.json')) as f:
+                    doc = json.load(f)
+                validate(doc)
+                self.assertEqual(len(doc['assets']), 106)
+                self.assertEqual(doc['assets'], assets_of(load(self.full(prefix)))[0])
+
+
+def assets_golden_test(name):
+    def test(self):
+        path = os.path.join(GOLDEN_ASSETS, name)
+        with open(path) as f:
+            want = json.load(f)
+        got = {'image': want['image'], 'assets': assets_of(load(want['image']))[0]}
+        if os.environ.get('PROM_WRITE_GOLDEN'):
+            with open(path, 'w') as f:
+                json.dump(got, f, indent=1)
+                f.write('\n')
+        self.assertEqual(got, want)
+    return test
+
+
+if os.path.isdir(GOLDEN_ASSETS):
+    for _name in sorted(os.listdir(GOLDEN_ASSETS)):
+        setattr(RealAssets, 'test_golden_' + _name[:16], assets_golden_test(_name))
 
 
 def golden_test(name):

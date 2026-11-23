@@ -3,6 +3,8 @@
 
 Run: python3 tools/prom/tests/test_assets.py
 """
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -15,6 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, HERE)
 import fixtures as fx  # noqa: E402
+from prom import cli  # noqa: E402
 from prom.assets import AssetError, glyphs, ip32, mips, png  # noqa: E402
 
 
@@ -541,6 +544,32 @@ class Ip32Tunes(unittest.TestCase):
     def test_arrays_that_do_not_tile_by_either_small_count_are_refused(self):
         with self.assertRaises(AssetError):
             self.run_tunes(scratch=lambda k: COUNTS[k])         # both small registers now agree: the choice is ambiguous
+
+
+class AssetsCommand(unittest.TestCase):
+    def run_cli(self, image):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        paths = [os.path.join(d, n) for n in ('image', 'index.json')]
+        for path, body in zip(paths, (image, b'{"proms": []}')):
+            with open(path, 'wb') as f:
+                f.write(body)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            rc = cli.main(['assets', paths[0], '--out', os.path.join(d, 'out'), '--catalog', paths[1]])
+        return rc, err.getvalue(), os.path.join(d, 'out')
+
+    def test_an_image_that_is_not_an_o2_flash_has_no_asset_reader(self):
+        rc, err, out = self.run_cli(b'\x01\x02\x03\x04' * 64)
+        self.assertEqual(rc, 2)
+        self.assertIn('no asset reader', err)
+
+    def test_an_o2_flash_without_the_assets_is_refused_and_writes_no_manifest(self):
+        rc, err, out = self.run_cli(fx.installer(fx.o2_flash()))
+        self.assertEqual(rc, 2)
+        self.assertIn('promkit:', err)
+        self.assertFalse(os.path.exists(os.path.join(out, 'image.prom.json')))
+        self.assertEqual([n for n in os.listdir(out) if 'assets' in n] if os.path.isdir(out) else [], [])
 
 
 if __name__ == '__main__':

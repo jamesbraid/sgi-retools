@@ -54,6 +54,7 @@ jobs:
       - name: Run the PROM toolkit tests
         run: |
           python3 tools/prom/tests/test_prom.py
+          python3 tools/prom/tests/test_assets.py
           python3 tools/prom/tests/test_real_images.py
       - name: Run the IA-64 processor table tests
         run: |

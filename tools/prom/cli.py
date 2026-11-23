@@ -1,4 +1,4 @@
-"""promkit identify IMAGE..., unpack IMAGE and validate FILE.... Exit 0 clean, 1 a check failed, 2 a usage or setup problem."""
+"""promkit identify IMAGE..., unpack IMAGE, assets IMAGE and validate FILE.... Exit 0 clean, 1 a check failed, 2 a usage or setup problem."""
 import argparse
 import hashlib
 import json
@@ -6,6 +6,7 @@ import os
 import sys
 
 from . import analyze, catalog
+from .assets import AssetError, extract
 from .model import ContainerError, document, tool_revision
 from .schema import SchemaError, validate
 
@@ -43,7 +44,7 @@ def identify(args, index):
     return status
 
 
-def unpack(args, index):
+def unpack(args, index, assets=False):
     data = _read(args.image)
     an = analyze(data)
     out = args.out or os.path.join('.cache', 'prom', an.sha256[:16])
@@ -51,6 +52,8 @@ def unpack(args, index):
              for i, s in enumerate(an.segments)}
     here = os.path.dirname(os.path.abspath(__file__))
     doc = document(an, os.path.basename(args.image), files, _row(index, an), tool_revision(here))
+    if assets:
+        doc['assets'] = extract(an, out)
     validate(doc)       # a document the schema refuses is a bug here; nothing is written for it
     os.makedirs(out if args.label else os.path.join(out, 'segments'), exist_ok=True)
     for i, s in enumerate(an.segments):
@@ -66,6 +69,10 @@ def unpack(args, index):
             if not c.ok:
                 print('check failed: %s %s %s' % (s.name, c.rule, c.detail), file=sys.stderr)
     return 0 if an.ok else 1
+
+
+def assets(args, index):
+    return unpack(args, index, assets=True)
 
 
 def check_files(args, index):
@@ -84,10 +91,10 @@ def check_files(args, index):
 def main(argv=None):
     p = argparse.ArgumentParser(prog='promkit', description='Identify and unpack SGI PROM images.')
     sub = p.add_subparsers(dest='cmd', required=True)
-    for name in ('identify', 'unpack'):
+    for name in ('identify', 'unpack', 'assets'):
         s = sub.add_parser(name)
         s.add_argument('--catalog', help='a local copy of the PROM index (default: cached .cache/prom/index.json)')
-        s.add_argument('--refresh', action='store_true', help='fetch the PROM index again (unpack otherwise only reads a cached or given one)')
+        s.add_argument('--refresh', action='store_true', help='fetch the PROM index again (unpack and assets otherwise only read a cached or given one)')
         if name == 'identify':
             s.add_argument('images', nargs='+')
             s.add_argument('--json', action='store_true')
@@ -100,7 +107,7 @@ def main(argv=None):
     try:
         index = None if args.cmd == 'validate' else catalog.load(
             args.catalog, args.refresh, lambda m: print('promkit: ' + m, file=sys.stderr), fetch=args.cmd == 'identify')
-        return {'identify': identify, 'unpack': unpack, 'validate': check_files}[args.cmd](args, index)
-    except (OSError, ValueError, ContainerError, SchemaError) as e:
+        return {'identify': identify, 'unpack': unpack, 'assets': assets, 'validate': check_files}[args.cmd](args, index)
+    except (OSError, ValueError, ContainerError, SchemaError, AssetError) as e:
         print('promkit: %s' % e, file=sys.stderr)
         return 2

@@ -1,0 +1,1687 @@
+{
+ "image": "11230c353cb14fcc50ede286df228e169e32fc9e5a2206276ae29c259fafb23c",
+ "assets": [
+  {
+   "kind": "palette",
+   "name": "palette",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81030270",
+    "offset": "0x30270"
+   },
+   "file": "assets/palette.json",
+   "grade": "established",
+   "sha256": "f825af558e41fb03aa1fa6c8be74253c7aa504e19f46b47f2e8e78fb94db662c"
+  },
+  {
+   "kind": "palette",
+   "name": "palette swatch",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81030270",
+    "offset": "0x30270"
+   },
+   "file": "assets/palette.png",
+   "grade": "established",
+   "sha256": "17b72e5a0ec521d418a260a7a9f437cdec68b90a6ad7db4df41c9b2bbd1aab48",
+   "details": {
+    "cells": "16 by 16, index = row * 16 + column, 16 pixels each; unwritten entries transparent"
+   }
+  },
+  {
+   "kind": "layout",
+   "name": "background gradient",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810461a0",
+    "offset": "0x461a0"
+   },
+   "file": "assets/gradient.json",
+   "grade": "established",
+   "sha256": "96f0fdb87da743c2dc1d651748aa56df3cf2105cf55e64d3e67efd780333e37f"
+  },
+  {
+   "kind": "layout",
+   "name": "menu and logo layout",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810423ec",
+    "offset": "0x423ec"
+   },
+   "file": "assets/layout.json",
+   "grade": "established",
+   "sha256": "09a907fa5713e50f927845a8c50a3d34bbb6dad4a5cf902b94da87775cf960ce"
+  },
+  {
+   "kind": "font",
+   "name": "font 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105b970",
+    "offset": "0x5b980"
+   },
+   "file": "assets/font-0.json",
+   "grade": "established",
+   "sha256": "b90ea3d47703b1a9289e6b3b38d0e166fe1aa76ef88e7068fb886613bfa11994"
+  },
+  {
+   "kind": "font",
+   "name": "font 0 bitmap",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105b970",
+    "offset": "0x5b980"
+   },
+   "file": "assets/font-0.bdf",
+   "grade": "established",
+   "sha256": "16d1d03997e423704b7a06070cd38d35b404da5e694fe50bb00add7aa00d78d6",
+   "format": "bdf"
+  },
+  {
+   "kind": "font",
+   "name": "font 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105cffc",
+    "offset": "0x5d00c"
+   },
+   "file": "assets/font-1.json",
+   "grade": "inferred",
+   "sha256": "53f06f2a169fff5e1c7b42cf7b49dbdea2795f6f090393bbd71d6f8ee0963a3d"
+  },
+  {
+   "kind": "font",
+   "name": "font 1 bitmap",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105cffc",
+    "offset": "0x5d00c"
+   },
+   "file": "assets/font-1.bdf",
+   "grade": "inferred",
+   "sha256": "0fb52bd20883ae45eef978b15a421844143a5b25dfe3c5aa5be01fd699fc7718",
+   "format": "bdf"
+  },
+  {
+   "kind": "font",
+   "name": "font 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105d08c",
+    "offset": "0x5d09c"
+   },
+   "file": "assets/font-2.json",
+   "grade": "established",
+   "sha256": "747ac939a408d710ad9c7d4b7dd53a975eef1738495fc77e8faf144579b3bf9a"
+  },
+  {
+   "kind": "font",
+   "name": "font 2 bitmap",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105d08c",
+    "offset": "0x5d09c"
+   },
+   "file": "assets/font-2.bdf",
+   "grade": "established",
+   "sha256": "d60332725ed411e85072eeb7d5313e2b374a1dd119c40d1a1b7c146e57414800",
+   "format": "bdf"
+  },
+  {
+   "kind": "font",
+   "name": "font 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105e2e4",
+    "offset": "0x5e2f4"
+   },
+   "file": "assets/font-3.json",
+   "grade": "established",
+   "sha256": "cbc85358177dd7787ece17ae7f5dddc181c5a0d975898a398ed5c908a31d9b97"
+  },
+  {
+   "kind": "font",
+   "name": "font 3 bitmap",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105e2e4",
+    "offset": "0x5e2f4"
+   },
+   "file": "assets/font-3.bdf",
+   "grade": "established",
+   "sha256": "e28b41482e8937c1e1d0ab2e73e5182fc76ea246338768f5356f5ee3e684c35a",
+   "format": "bdf"
+  },
+  {
+   "kind": "font",
+   "name": "tagline glyphs",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105fc90",
+    "offset": "0x5fca0"
+   },
+   "file": "assets/tagline.json",
+   "grade": "established",
+   "sha256": "ec0e2b8e1a2b1e08ccf46ee8867dd88d5c3850b3ac2c47f4689e35e45e64b297"
+  },
+  {
+   "kind": "font",
+   "name": "tagline glyph bitmap",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105fc90",
+    "offset": "0x5fca0"
+   },
+   "file": "assets/tagline.bdf",
+   "grade": "established",
+   "sha256": "f4c75c7c21cd8e51acb5b75ec638c5d3931c1375a7002fac133f609571408a3b",
+   "format": "bdf"
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057248",
+    "offset": "0x57258"
+   },
+   "file": "assets/icons/menu-0-layer-0.png",
+   "grade": "established",
+   "sha256": "76353f3a74eb9d08b1ef3f137f3c6d7ac2d16572da4684c3bba4a3ddcc72cb1a",
+   "details": {
+    "colour_index": 39,
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057294",
+    "offset": "0x572a4"
+   },
+   "file": "assets/icons/menu-0-layer-1.png",
+   "grade": "established",
+   "sha256": "44706cddceb2d36377c8835b05d8e125d3ce93476e1589e198c6326358afd599",
+   "details": {
+    "colour_index": 51,
+    "x": 1,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810572dc",
+    "offset": "0x572ec"
+   },
+   "file": "assets/icons/menu-0-layer-2.png",
+   "grade": "established",
+   "sha256": "ee08db96a4ae7a474166b1e7e5a66a6f98ae5dc946656687252e2f8f3060506a",
+   "details": {
+    "colour_index": 0,
+    "x": 2,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057324",
+    "offset": "0x57334"
+   },
+   "file": "assets/icons/menu-0-layer-3.png",
+   "grade": "established",
+   "sha256": "6019c3c9e47dc991f8d9937deafbb0740c2e61e321324798cb508773b0814824",
+   "details": {
+    "colour_index": 58,
+    "x": 6,
+    "y": 2
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057328",
+    "offset": "0x57338"
+   },
+   "file": "assets/icons/menu-0-layer-4.png",
+   "grade": "established",
+   "sha256": "a09a4e701204516b108bdfa00b5e791761f601555e725f685026ce33709f73da",
+   "details": {
+    "colour_index": 57,
+    "x": 2,
+    "y": 4
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057368",
+    "offset": "0x57378"
+   },
+   "file": "assets/icons/menu-0-layer-5.png",
+   "grade": "established",
+   "sha256": "367d166487d54358d2a7eba9aa418d54d5fae2468c64e3e158dedb061aa42b6b",
+   "details": {
+    "colour_index": 2,
+    "x": 5,
+    "y": 6
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 6",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057374",
+    "offset": "0x57384"
+   },
+   "file": "assets/icons/menu-0-layer-6.png",
+   "grade": "established",
+   "sha256": "0e1c270245f6f0c9cbe5eb587b8904ef59aa00c68b1f561259b55ade003ce3f8",
+   "details": {
+    "colour_index": 7,
+    "x": 4,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 7",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105737c",
+    "offset": "0x5738c"
+   },
+   "file": "assets/icons/menu-0-layer-7.png",
+   "grade": "established",
+   "sha256": "7e53525415414d6e436bdb5e540dfffd4428634957c9eb1f3a7d5e9242f89c9f",
+   "details": {
+    "colour_index": 54,
+    "x": 5,
+    "y": 17
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 8",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057384",
+    "offset": "0x57394"
+   },
+   "file": "assets/icons/menu-0-layer-8.png",
+   "grade": "established",
+   "sha256": "6019c3c9e47dc991f8d9937deafbb0740c2e61e321324798cb508773b0814824",
+   "details": {
+    "colour_index": 3,
+    "x": 7,
+    "y": 18
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0 layer 9",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057388",
+    "offset": "0x57398"
+   },
+   "file": "assets/icons/menu-0-layer-9.png",
+   "grade": "established",
+   "sha256": "f9f2084e57b6334963a1c79135899651d07bd787f076b9fd779631a1da89ac0f",
+   "details": {
+    "colour_index": 1,
+    "x": 6,
+    "y": 26
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057498",
+    "offset": "0x574a8"
+   },
+   "file": "assets/icons/menu-0.png",
+   "grade": "established",
+   "sha256": "81a68de68a58a5c0e935f51b658f27c75b83a789c2e7ff04385aba4375c5f1a0"
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810574ac",
+    "offset": "0x574bc"
+   },
+   "file": "assets/icons/menu-1-layer-0.png",
+   "grade": "established",
+   "sha256": "7895011b9380c50956c3ade5675eabd488cd61784d293be761e15af8b2486cf5",
+   "details": {
+    "colour_index": 35,
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057548",
+    "offset": "0x57558"
+   },
+   "file": "assets/icons/menu-1-layer-1.png",
+   "grade": "established",
+   "sha256": "db38f048f513a58be4bb8d5fe0d89c37b9089f0551571993d8853fa1cfe6e1b1",
+   "details": {
+    "colour_index": 51,
+    "x": 7,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810575d0",
+    "offset": "0x575e0"
+   },
+   "file": "assets/icons/menu-1-layer-2.png",
+   "grade": "established",
+   "sha256": "93187b4c90f7d0a7ef4558c774fb82fc11a18aa9ed76c5ed9268db71c149dfb1",
+   "details": {
+    "colour_index": 56,
+    "x": 9,
+    "y": 2
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057650",
+    "offset": "0x57660"
+   },
+   "file": "assets/icons/menu-1-layer-3.png",
+   "grade": "established",
+   "sha256": "73c9301d3af2e62ba6f8cc8613682ba6662b4b7b050ce7e0cc748feba444b296",
+   "details": {
+    "colour_index": 0,
+    "x": 17,
+    "y": 7
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057674",
+    "offset": "0x57684"
+   },
+   "file": "assets/icons/menu-1-layer-4.png",
+   "grade": "established",
+   "sha256": "0060bed7054cfd00823040d52567bc54a02ae29d7826e62800c97e44242e00f1",
+   "details": {
+    "colour_index": 58,
+    "x": 6,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810576a8",
+    "offset": "0x576b8"
+   },
+   "file": "assets/icons/menu-1-layer-5.png",
+   "grade": "established",
+   "sha256": "71fe780c02ffddca6eaabd4ba171df578c5991f086a5b66025f7023c124899d2",
+   "details": {
+    "colour_index": 7,
+    "x": 4,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 6",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810576e4",
+    "offset": "0x576f4"
+   },
+   "file": "assets/icons/menu-1-layer-6.png",
+   "grade": "established",
+   "sha256": "5d0bb9c7b6d63f326bb5f65b850d5603f6009b47b0c2fe74fd3ab99dc6f9a29a",
+   "details": {
+    "colour_index": 37,
+    "x": 34,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 7",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810576f0",
+    "offset": "0x57700"
+   },
+   "file": "assets/icons/menu-1-layer-7.png",
+   "grade": "established",
+   "sha256": "4699c564dc2da069b5090639affd3451154dd976a1ff2b28c09054d220be00a4",
+   "details": {
+    "colour_index": 5,
+    "x": 6,
+    "y": 9
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 8",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105771c",
+    "offset": "0x5772c"
+   },
+   "file": "assets/icons/menu-1-layer-8.png",
+   "grade": "established",
+   "sha256": "bd7f8050c93f76b08443254fc6d20f551ba4eef24e0030bb33f9411eeb96ddea",
+   "details": {
+    "colour_index": 3,
+    "x": 6,
+    "y": 11
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1 layer 9",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057740",
+    "offset": "0x57750"
+   },
+   "file": "assets/icons/menu-1-layer-9.png",
+   "grade": "established",
+   "sha256": "5dea934b7a37fd4adc3e58cef0c4021efebb40b2e3b0d0fd105d0547eb480e15",
+   "details": {
+    "colour_index": 39,
+    "x": 11,
+    "y": 13
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810578a0",
+    "offset": "0x578b0"
+   },
+   "file": "assets/icons/menu-1.png",
+   "grade": "established",
+   "sha256": "a4b38156901b3a54b31c79ee04f754a8d4e25b7852589e688789d1bf95e0a758"
+  },
+  {
+   "kind": "icon",
+   "name": "menu-2 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810578b4",
+    "offset": "0x578c4"
+   },
+   "file": "assets/icons/menu-2-layer-0.png",
+   "grade": "established",
+   "sha256": "bdb53624436b20008a44d21e0a3c8c40acc1670fbb36471037c04f02b8f0e0da",
+   "details": {
+    "colour_index": 35,
+    "x": 2,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-2 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057948",
+    "offset": "0x57958"
+   },
+   "file": "assets/icons/menu-2-layer-1.png",
+   "grade": "established",
+   "sha256": "8bce2a28e1e4c9cac5e6c7654b71ff0fc9449f5246a6a020e0abb334b30f42b8",
+   "details": {
+    "colour_index": 51,
+    "x": 0,
+    "y": 2
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-2 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810579d4",
+    "offset": "0x579e4"
+   },
+   "file": "assets/icons/menu-2-layer-2.png",
+   "grade": "established",
+   "sha256": "db7f38ffabf0717cfbbc6b69d8a62e1fcc2e1a985b1ffbcd9fd2cc013afd630d",
+   "details": {
+    "colour_index": 7,
+    "x": 1,
+    "y": 2
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-2 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057a4c",
+    "offset": "0x57a5c"
+   },
+   "file": "assets/icons/menu-2-layer-3.png",
+   "grade": "established",
+   "sha256": "fc370d8f2357c363d9ba1f1f4affc1d39474497c7338f37ee5604302538ef6fb",
+   "details": {
+    "colour_index": 37,
+    "x": 3,
+    "y": 7
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-2 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057ac4",
+    "offset": "0x57ad4"
+   },
+   "file": "assets/icons/menu-2-layer-4.png",
+   "grade": "established",
+   "sha256": "2e0e5bb3e57dc598513aef6c1351c5915bc109de8cdff1d57ddce6f796f77728",
+   "details": {
+    "colour_index": 39,
+    "x": 1,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-2 layer 5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057af4",
+    "offset": "0x57b04"
+   },
+   "file": "assets/icons/menu-2-layer-5.png",
+   "grade": "established",
+   "sha256": "6f17ff068e263034f6a7b73b24d63899bf6981731823dc394e5bccda951b7e3c",
+   "details": {
+    "colour_index": 58,
+    "x": 9,
+    "y": 9
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057bd4",
+    "offset": "0x57be4"
+   },
+   "file": "assets/icons/menu-2.png",
+   "grade": "established",
+   "sha256": "a952ba1b5a1224ac9dc0e0ccce79a4d3c5f86c4d7c33f7c02a137c01c9192e2c"
+  },
+  {
+   "kind": "icon",
+   "name": "menu-3 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057be8",
+    "offset": "0x57bf8"
+   },
+   "file": "assets/icons/menu-3-layer-0.png",
+   "grade": "established",
+   "sha256": "e98d80f221f5b740d2a7c2267a23e4b01ada20d038042df2b205be57e1d9a494",
+   "details": {
+    "colour_index": 35,
+    "x": 1,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-3 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057cb0",
+    "offset": "0x57cc0"
+   },
+   "file": "assets/icons/menu-3-layer-1.png",
+   "grade": "established",
+   "sha256": "a99e1e5d67aee8125b6721d08ab7e34963a8e1b6f7e0a88c95a788f000d85595",
+   "details": {
+    "colour_index": 54,
+    "x": 4,
+    "y": 1
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-3 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057d28",
+    "offset": "0x57d38"
+   },
+   "file": "assets/icons/menu-3-layer-2.png",
+   "grade": "established",
+   "sha256": "903b0c3fac3760b29ffbb4014900c9d05c3420a9505e94d9bf01a58d350203ce",
+   "details": {
+    "colour_index": 7,
+    "x": 0,
+    "y": 2
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-3 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057de8",
+    "offset": "0x57df8"
+   },
+   "file": "assets/icons/menu-3-layer-3.png",
+   "grade": "established",
+   "sha256": "732e0e6dd88efdbc1bbf123434569d10f80c97e9b22dc4e6056eccd44df4f166",
+   "details": {
+    "colour_index": 51,
+    "x": 1,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-3 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057e48",
+    "offset": "0x57e58"
+   },
+   "file": "assets/icons/menu-3-layer-4.png",
+   "grade": "established",
+   "sha256": "2f4cd74423ab4b705f5f6403f1d35413671309c05b344f5a69fa161d27955a1c",
+   "details": {
+    "colour_index": 3,
+    "x": 1,
+    "y": 9
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-3 layer 5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057ea8",
+    "offset": "0x57eb8"
+   },
+   "file": "assets/icons/menu-3-layer-5.png",
+   "grade": "established",
+   "sha256": "28538980a8804ef0161b50adf499a3cf7bb1eb55006bfd83b86017a141c0b10d",
+   "details": {
+    "colour_index": 37,
+    "x": 20,
+    "y": 16
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057f70",
+    "offset": "0x57f80"
+   },
+   "file": "assets/icons/menu-3.png",
+   "grade": "established",
+   "sha256": "bebcef5c767d050b54293338567f66965c66c3d00638336275db7ac0d62d875c"
+  },
+  {
+   "kind": "icon",
+   "name": "menu-4 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057f84",
+    "offset": "0x57f94"
+   },
+   "file": "assets/icons/menu-4-layer-0.png",
+   "grade": "established",
+   "sha256": "22b54bbba0741c3222f52a9a386ef3fa37bf68bdda723f36755ec3a2de2e5ff8",
+   "details": {
+    "colour_index": 35,
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-4 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058050",
+    "offset": "0x58060"
+   },
+   "file": "assets/icons/menu-4-layer-1.png",
+   "grade": "established",
+   "sha256": "7c2e43083628bc5ab5b9012a0adf8cf94381dfec6ae14f0bdf66f4fa76dd9624",
+   "details": {
+    "colour_index": 51,
+    "x": 28,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-4 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058098",
+    "offset": "0x580a8"
+   },
+   "file": "assets/icons/menu-4-layer-2.png",
+   "grade": "established",
+   "sha256": "e3cb75a9c8e4ea5ce5fcb85d688db5ed3e804b2bdd070c0c32a1c21ce5ac0ce2",
+   "details": {
+    "colour_index": 7,
+    "x": 0,
+    "y": 1
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-4 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058164",
+    "offset": "0x58174"
+   },
+   "file": "assets/icons/menu-4-layer-3.png",
+   "grade": "established",
+   "sha256": "3de49c2f16f2852e00a9a53d48fb454bee06b8195656594b6b63d24800eb95ff",
+   "details": {
+    "colour_index": 58,
+    "x": 1,
+    "y": 1
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-4 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105822c",
+    "offset": "0x5823c"
+   },
+   "file": "assets/icons/menu-4-layer-4.png",
+   "grade": "established",
+   "sha256": "790e79718de5a890b33e8f7fbea5fd14133ea5960d2482249b35354a9ac5deef",
+   "details": {
+    "colour_index": 9,
+    "x": 2,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058320",
+    "offset": "0x58330"
+   },
+   "file": "assets/icons/menu-4.png",
+   "grade": "established",
+   "sha256": "a4289350c487412ce6ac7b876b0c239bbdd80955ff5e7213433171057fe3041c"
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058334",
+    "offset": "0x58344"
+   },
+   "file": "assets/icons/menu-5-layer-0.png",
+   "grade": "established",
+   "sha256": "25850aebe510302b5e74267ca70e2e7623d594110771c21757a8fe1052657c67",
+   "details": {
+    "colour_index": 51,
+    "x": 2,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058398",
+    "offset": "0x583a8"
+   },
+   "file": "assets/icons/menu-5-layer-1.png",
+   "grade": "established",
+   "sha256": "6a266a09dccf43e37a83430016395b35703a31712f1f653a7c10ed4fb5d0f53d",
+   "details": {
+    "colour_index": 35,
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810583ec",
+    "offset": "0x583fc"
+   },
+   "file": "assets/icons/menu-5-layer-2.png",
+   "grade": "established",
+   "sha256": "ac1b001a25a39551772a9de7a1237dc319a011dc82483c8c446c45329350e156",
+   "details": {
+    "colour_index": 37,
+    "x": 15,
+    "y": 1
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058404",
+    "offset": "0x58414"
+   },
+   "file": "assets/icons/menu-5-layer-3.png",
+   "grade": "established",
+   "sha256": "e04c765b304b6d6d92e82d49557564d0b784694daa1ff05799fda71ca7f9fe05",
+   "details": {
+    "colour_index": 58,
+    "x": 22,
+    "y": 5
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058414",
+    "offset": "0x58424"
+   },
+   "file": "assets/icons/menu-5-layer-4.png",
+   "grade": "established",
+   "sha256": "f6c49ddf924f1400fa31edc21f42fd254af3e5042e6282dcc95f8f690d679203",
+   "details": {
+    "colour_index": 7,
+    "x": 23,
+    "y": 5
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058420",
+    "offset": "0x58430"
+   },
+   "file": "assets/icons/menu-5-layer-5.png",
+   "grade": "established",
+   "sha256": "a702368f29649a742936691cc5a0efffd7eadde5ab8f0e36fef5d7acb08e1ef7",
+   "details": {
+    "colour_index": 39,
+    "x": 0,
+    "y": 6
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 6",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058470",
+    "offset": "0x58480"
+   },
+   "file": "assets/icons/menu-5-layer-6.png",
+   "grade": "established",
+   "sha256": "cc0d376def24cf85b87791a696fa2f0bdc26f1349b6facc4908cba5f2db7ea0a",
+   "details": {
+    "colour_index": 52,
+    "x": 0,
+    "y": 7
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 7",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810584b8",
+    "offset": "0x584c8"
+   },
+   "file": "assets/icons/menu-5-layer-7.png",
+   "grade": "established",
+   "sha256": "7e443a9092e4f943b190840d308948c42c98915d43571c451166168e92db5c20",
+   "details": {
+    "colour_index": 54,
+    "x": 0,
+    "y": 7
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 8",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810584fc",
+    "offset": "0x5850c"
+   },
+   "file": "assets/icons/menu-5-layer-8.png",
+   "grade": "established",
+   "sha256": "1b9bc300a70ee5c6f818fdddbabe53300450a656c2d40ff4bfe040100988e12d",
+   "details": {
+    "colour_index": 0,
+    "x": 18,
+    "y": 7
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5 layer 9",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058508",
+    "offset": "0x58518"
+   },
+   "file": "assets/icons/menu-5-layer-9.png",
+   "grade": "established",
+   "sha256": "120fe728ddd91fa85ac64f1b6495d01beca24627370a06395d58bb4f8c820530",
+   "details": {
+    "colour_index": 3,
+    "x": 1,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "menu-5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81058630",
+    "offset": "0x58640"
+   },
+   "file": "assets/icons/menu-5.png",
+   "grade": "established",
+   "sha256": "d474f79a8a39faf73103d43bfc93b4be206d1aef1919b3489122ec564493f97c"
+  },
+  {
+   "kind": "icon",
+   "name": "install-0 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056a68",
+    "offset": "0x56a78"
+   },
+   "file": "assets/icons/install-0-layer-0.png",
+   "grade": "established",
+   "sha256": "4432bb419a169a49a6a37b7ad08c6fff8611c78c8c417d27e2be5aa50b0e699d",
+   "details": {
+    "colour_index": 56,
+    "x": 6,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-0 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056bc0",
+    "offset": "0x56bd0"
+   },
+   "file": "assets/icons/install-0-layer-1.png",
+   "grade": "established",
+   "sha256": "7fb2c6b0e27176f6d150bb11548830f5767674aa018964eb2a9bb5c8c18b9107",
+   "details": {
+    "colour_index": 4,
+    "x": 54,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-0 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056bf8",
+    "offset": "0x56c08"
+   },
+   "file": "assets/icons/install-0-layer-2.png",
+   "grade": "established",
+   "sha256": "5b980541321d01e3a34fd04358307d54e48f75d3169c28720d223eb5e299ac33",
+   "details": {
+    "colour_index": 55,
+    "x": 43,
+    "y": 1
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-0 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056c74",
+    "offset": "0x56c84"
+   },
+   "file": "assets/icons/install-0-layer-3.png",
+   "grade": "established",
+   "sha256": "103eb7717e02f3e7656f5b7692fb761253b50fbf7ce9262d726fbfc175388e66",
+   "details": {
+    "colour_index": 0,
+    "x": 9,
+    "y": 2
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-0 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056d9c",
+    "offset": "0x56dac"
+   },
+   "file": "assets/icons/install-0-layer-4.png",
+   "grade": "established",
+   "sha256": "51684706c0f31d2b3b80b14a3c99dc93cc710e8663faef7052d6f029db0b22a5",
+   "details": {
+    "colour_index": 35,
+    "x": 0,
+    "y": 17
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-0 layer 5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056dd8",
+    "offset": "0x56de8"
+   },
+   "file": "assets/icons/install-0-layer-5.png",
+   "grade": "established",
+   "sha256": "e262bea198f6584f0133bdc7fa5931d4788660fd1db73123c032868b1d41af5d",
+   "details": {
+    "colour_index": 51,
+    "x": 0,
+    "y": 18
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-0 layer 6",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056f4c",
+    "offset": "0x56f5c"
+   },
+   "file": "assets/icons/install-0-layer-6.png",
+   "grade": "established",
+   "sha256": "52d7c629b7e3b0c50f4e050f7da298154386ccdbab399968b1189161bb49cc13",
+   "details": {
+    "colour_index": 37,
+    "x": 0,
+    "y": 19
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-0 layer 7",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056f84",
+    "offset": "0x56f94"
+   },
+   "file": "assets/icons/install-0-layer-7.png",
+   "grade": "established",
+   "sha256": "a9c0687906ef885ffcf49ce70ce4bffe73da240ce462cdba9839f4126aa8d405",
+   "details": {
+    "colour_index": 39,
+    "x": 1,
+    "y": 20
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-0 layer 8",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056ffc",
+    "offset": "0x5700c"
+   },
+   "file": "assets/icons/install-0-layer-8.png",
+   "grade": "established",
+   "sha256": "9f4f4f896b4cbd6a64755ef6763fd5b8ae899a2596524e14b2de3368d41b6db7",
+   "details": {
+    "colour_index": 7,
+    "x": 0,
+    "y": 23
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81057234",
+    "offset": "0x57244"
+   },
+   "file": "assets/icons/install-0.png",
+   "grade": "established",
+   "sha256": "d9a64459fac11ee3a3c075b3e7f8b7e8b0bd1802f75f63b4554f80cb08546c6d"
+  },
+  {
+   "kind": "icon",
+   "name": "install-1 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055e68",
+    "offset": "0x55e78"
+   },
+   "file": "assets/icons/install-1-layer-0.png",
+   "grade": "established",
+   "sha256": "54544a06c35a25ec4cb2bfec74c5ebe106af6a2bcb8ee01ce9b1a275de4053bf",
+   "details": {
+    "colour_index": 56,
+    "x": 42,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-1 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055ee8",
+    "offset": "0x55ef8"
+   },
+   "file": "assets/icons/install-1-layer-1.png",
+   "grade": "established",
+   "sha256": "7fb2c6b0e27176f6d150bb11548830f5767674aa018964eb2a9bb5c8c18b9107",
+   "details": {
+    "colour_index": 4,
+    "x": 53,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-1 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055f20",
+    "offset": "0x55f30"
+   },
+   "file": "assets/icons/install-1-layer-2.png",
+   "grade": "established",
+   "sha256": "5b980541321d01e3a34fd04358307d54e48f75d3169c28720d223eb5e299ac33",
+   "details": {
+    "colour_index": 55,
+    "x": 42,
+    "y": 1
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-1 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055f9c",
+    "offset": "0x55fac"
+   },
+   "file": "assets/icons/install-1-layer-3.png",
+   "grade": "established",
+   "sha256": "c3c6ec6b52a927ba57c1bb9fea985a2650f3314c9de69f36412470078166f869",
+   "details": {
+    "colour_index": 0,
+    "x": 9,
+    "y": 2
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-1 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810560b4",
+    "offset": "0x560c4"
+   },
+   "file": "assets/icons/install-1-layer-4.png",
+   "grade": "established",
+   "sha256": "25d9d512bebcec9303c6115448429b11f2bc06c235b53da3bacc4bacb726eab1",
+   "details": {
+    "colour_index": 39,
+    "x": 10,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-1 layer 5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105615c",
+    "offset": "0x5616c"
+   },
+   "file": "assets/icons/install-1-layer-5.png",
+   "grade": "established",
+   "sha256": "7758607b51ecbded76d5a3b92a528b354d055cb8bf9d5f37ed20d37703919e6b",
+   "details": {
+    "colour_index": 7,
+    "x": 12,
+    "y": 9
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-1 layer 6",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056314",
+    "offset": "0x56324"
+   },
+   "file": "assets/icons/install-1-layer-6.png",
+   "grade": "established",
+   "sha256": "30ceafe5a2df271b571475f86794d2f2a440152c7f26ac0516f712ac6a1b0aa8",
+   "details": {
+    "colour_index": 51,
+    "x": 0,
+    "y": 22
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056520",
+    "offset": "0x56530"
+   },
+   "file": "assets/icons/install-1.png",
+   "grade": "established",
+   "sha256": "3c3cf685eb272e10ee4ca73e799c794f3ef99dfde36364d88422b81743d985d8"
+  },
+  {
+   "kind": "icon",
+   "name": "install-2 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810558d0",
+    "offset": "0x558e0"
+   },
+   "file": "assets/icons/install-2-layer-0.png",
+   "grade": "established",
+   "sha256": "5a2bef31888da2ac1bdd21fe31b50820e567f2fbeade14cb7df57888f7ca321d",
+   "details": {
+    "colour_index": 0,
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-2 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810559f0",
+    "offset": "0x55a00"
+   },
+   "file": "assets/icons/install-2-layer-1.png",
+   "grade": "established",
+   "sha256": "372bd21604a3e89a3ef3cce4595ebd1e4a8b07ee5f676bc9ecf1c3f0c40278b0",
+   "details": {
+    "colour_index": 56,
+    "x": 13,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-2 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055a40",
+    "offset": "0x55a50"
+   },
+   "file": "assets/icons/install-2-layer-2.png",
+   "grade": "established",
+   "sha256": "43566661722938533868d73a06716dabf30f3349af1096fdad0c1b6de7d78298",
+   "details": {
+    "colour_index": 58,
+    "x": 11,
+    "y": 9
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-2 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055ab8",
+    "offset": "0x55ac8"
+   },
+   "file": "assets/icons/install-2-layer-3.png",
+   "grade": "established",
+   "sha256": "43df815c0b7b888b978964226a6dac80ba1f2327903953e51b035593170380da",
+   "details": {
+    "colour_index": 7,
+    "x": 10,
+    "y": 9
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-2 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055b9c",
+    "offset": "0x55bac"
+   },
+   "file": "assets/icons/install-2-layer-4.png",
+   "grade": "established",
+   "sha256": "8d694582c870d503d22cdc5fb2839270c703197e8fcbeec556ab5dd06eb74f41",
+   "details": {
+    "colour_index": 51,
+    "x": 13,
+    "y": 11
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-2 layer 5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055c68",
+    "offset": "0x55c78"
+   },
+   "file": "assets/icons/install-2-layer-5.png",
+   "grade": "established",
+   "sha256": "c0f01513c94ba727a09cd3afd7129e265ec4aeaaa6ab7c870b1bfbd40a0da175",
+   "details": {
+    "colour_index": 56,
+    "x": 20,
+    "y": 11
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-2 layer 6",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055d3c",
+    "offset": "0x55d4c"
+   },
+   "file": "assets/icons/install-2-layer-6.png",
+   "grade": "established",
+   "sha256": "f3fd618153d2934be90bd9bd98510bca94ab3af8a4d3b42f61979821ba8c48d2",
+   "details": {
+    "colour_index": 3,
+    "x": 12,
+    "y": 16
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-2 layer 7",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055d78",
+    "offset": "0x55d88"
+   },
+   "file": "assets/icons/install-2-layer-7.png",
+   "grade": "established",
+   "sha256": "6019c3c9e47dc991f8d9937deafbb0740c2e61e321324798cb508773b0814824",
+   "details": {
+    "colour_index": 37,
+    "x": 52,
+    "y": 19
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055e54",
+    "offset": "0x55e64"
+   },
+   "file": "assets/icons/install-2.png",
+   "grade": "established",
+   "sha256": "c206b09035866c47778bf0aa296d4cd1514a266c55247db33675b4dc81fda18a"
+  },
+  {
+   "kind": "icon",
+   "name": "install-3 layer 0",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056534",
+    "offset": "0x56544"
+   },
+   "file": "assets/icons/install-3-layer-0.png",
+   "grade": "established",
+   "sha256": "417b54292741d1963417179efd0742b2e08a6e071a8d38159f5680fb2ca34c6d",
+   "details": {
+    "colour_index": 0,
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-3 layer 1",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056624",
+    "offset": "0x56634"
+   },
+   "file": "assets/icons/install-3-layer-1.png",
+   "grade": "established",
+   "sha256": "6fe773c2dfcd323fffd690e752996292262291de0ca55fbba75b297c65c5c832",
+   "details": {
+    "colour_index": 51,
+    "x": 10,
+    "y": 5
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-3 layer 2",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810566f0",
+    "offset": "0x56700"
+   },
+   "file": "assets/icons/install-3-layer-2.png",
+   "grade": "established",
+   "sha256": "cfe9e9b5df7ae31ecbeeb59d23cf708fe9800174e59d9df0bbcb4db58102cc34",
+   "details": {
+    "colour_index": 56,
+    "x": 17,
+    "y": 5
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-3 layer 3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810567c4",
+    "offset": "0x567d4"
+   },
+   "file": "assets/icons/install-3-layer-3.png",
+   "grade": "established",
+   "sha256": "a486a7a41b95251867783a9519caa08c00cb6a8a8a875cab8d60e99772a07fed",
+   "details": {
+    "colour_index": 58,
+    "x": 10,
+    "y": 6
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-3 layer 4",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056838",
+    "offset": "0x56848"
+   },
+   "file": "assets/icons/install-3-layer-4.png",
+   "grade": "established",
+   "sha256": "f8ebcb943d3a83a78e3101b4a422a3772a96defca5be0f9c08a5f97bd7fa5571",
+   "details": {
+    "colour_index": 37,
+    "x": 31,
+    "y": 6
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-3 layer 5",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056850",
+    "offset": "0x56860"
+   },
+   "file": "assets/icons/install-3-layer-5.png",
+   "grade": "established",
+   "sha256": "bb2421db86343a68f6c7737bfd8127c88acb6a6604cc6c6ef86d952d2dedf9ba",
+   "details": {
+    "colour_index": 39,
+    "x": 10,
+    "y": 8
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-3 layer 6",
+   "address": {
+    "segment": "firmware",
+    "address": "0x810568b8",
+    "offset": "0x568c8"
+   },
+   "file": "assets/icons/install-3-layer-6.png",
+   "grade": "established",
+   "sha256": "b4a02e7f741b51c76444b8f890fed3c34b4258d984481a66c12ad6e20dd78441",
+   "details": {
+    "colour_index": 7,
+    "x": 17,
+    "y": 12
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-3 layer 7",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056968",
+    "offset": "0x56978"
+   },
+   "file": "assets/icons/install-3-layer-7.png",
+   "grade": "established",
+   "sha256": "3f5135bef4494b8e2b64de4f0493ef5db51f3f73eeca132127772a5192a70ff8",
+   "details": {
+    "colour_index": 35,
+    "x": 38,
+    "y": 14
+   }
+  },
+  {
+   "kind": "icon",
+   "name": "install-3",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81056a54",
+    "offset": "0x56a64"
+   },
+   "file": "assets/icons/install-3.png",
+   "grade": "established",
+   "sha256": "3a10d8476fc651c34298396bab86c7cbe5d7b2044586aea648f46062e00a2d9b"
+  },
+  {
+   "kind": "icon",
+   "name": "icon list",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81055e54",
+    "offset": "0x55e64"
+   },
+   "file": "assets/icons/icons.json",
+   "grade": "established",
+   "sha256": "1820ebf8108ee67c3206c515ed090f04624a9c7eb30b6017434e5a0b3b5b5e87"
+  },
+  {
+   "kind": "logo",
+   "name": "logo",
+   "address": {
+    "segment": "firmware",
+    "address": "0x8105ed04",
+    "offset": "0x5ed14"
+   },
+   "file": "assets/logo.png",
+   "grade": "inferred",
+   "sha256": "f1a45a92abfc53d914b233f2d5f3109fc1885275668e921302220c19295df456",
+   "format": "png mask",
+   "details": {
+    "width": 494,
+    "height": 237,
+    "encoded_length": 1095,
+    "anchor": "0x8105f14c"
+   }
+  },
+  {
+   "kind": "audio",
+   "name": "tune and voice descriptors",
+   "address": {
+    "segment": "firmware",
+    "address": "0x81049414",
+    "offset": "0x4941c"
+   },
+   "file": "assets/tunes.json",
+   "grade": "established",
+   "sha256": "7ee73d5ff769b94c143ee5b5d1b9623e9ec0612c0fe7246e27e33c58b3876fd9"
+  }
+ ]
+}

@@ -4,6 +4,7 @@ refuses an image where the anchor is missing or ambiguous, so both 4.18 and 4.8 
 import hashlib
 import json
 import os
+import shutil
 import struct
 
 from . import AssetError, glyphs, png
@@ -29,7 +30,10 @@ class Reader:
         self.files = []             # {'kind', 'name', 'address', 'file', 'grade', ...}
 
     def span(self, index):
+        """(first, end) instruction indexes of the routine holding index, skipping the padding words before it."""
         lo, hi = routine_at(self.starts, index)
+        while lo < index and self.code[lo].word == 0:
+            lo += 1
         return lo, hi if hi is not None else len(self.code)
 
     def routine_of(self, word_match):
@@ -599,3 +603,18 @@ def tunes(r, out):
                         'sample is added to the mix',
            'unknown': list(SOUND_UNKNOWN), 'tunes': listing}
     r.add(out, 'audio', 'tune and voice descriptors', 'assets/tunes.json', dumps(doc), table, 'established')
+
+
+def extract(segment, out):
+    """Every O2 asset of one firmware segment, written under out/assets only if every finder succeeds."""
+    r = Reader(segment)
+    stage = os.path.join(out, '.assets-stage')
+    shutil.rmtree(stage, ignore_errors=True)
+    try:
+        for step in (palette, gradient, layout, fonts, tagline, icons, logo, tunes):
+            step(r, stage)
+        shutil.rmtree(os.path.join(out, 'assets'), ignore_errors=True)
+        os.replace(os.path.join(stage, 'assets'), os.path.join(out, 'assets'))
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+    return r.files

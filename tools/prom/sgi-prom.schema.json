@@ -70,7 +70,9 @@
       "type": "object", "required": ["kind", "address", "file", "grade"],
       "properties": {
         "kind": {"enum": ["logo", "icon", "font", "palette", "layout", "audio"]}, "address": {"$ref": "#/$defs/address"},
-        "file": {"type": "string"}, "grade": {"$ref": "#/$defs/grade"}
+        "file": {"type": "string"}, "grade": {"$ref": "#/$defs/grade"},
+        "name": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}, "format": {"type": "string"},
+        "details": {"type": "object"}
       }
     },
     "prom_file": {

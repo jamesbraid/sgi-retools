@@ -1,7 +1,7 @@
 # A toolkit for SGI PROM images: identify, unpack, facts, assets and Ghidra loading
 
-Status: the decisions below are made; identify and unpack are built (`tools/prom/`), facts, assets and Ghidra
-loading are not. `identify` is the same pipeline as `unpack` (`analyze`), reporting its result; the payload plug-in
+Status: the decisions below are made; identify, unpack and the O2 asset step are built (`tools/prom/`), facts and
+Ghidra loading are not. `identify` is the same pipeline as `unpack` (`analyze`), reporting its result; the payload plug-in
 kind is not yet generalised (`payloads/lzw.py` is a plain module). Names marked *(proposed name)* in the text were adopted as proposed.
 
 ## Decisions
@@ -61,8 +61,8 @@ The toolkit turns the written formats into one tool with five steps:
 - The toolkit's code and synthetic fixtures live in sgi-retools; the chips repository holds the format
   write-ups and the committed facts exports; shoji takes sgi-retools as a submodule and consumes files,
   not code.
-- Asset formats inside the O2 PROM are not yet known. The asset step is designed as an output contract
-  plus a research step; no extractor is written until a chips page establishes each format.
+- The O2 asset formats are written up in chips (`platforms/ip32/prom-assets.md`) and the asset step implements
+  them for PROM 4.8 and 4.18; other families get a reader only once a chips page establishes their formats.
 
 ## What already exists
 
@@ -284,8 +284,10 @@ retools/tools/re-run --ghidra-export IMAGE --sgi-prom MANIFEST [--program NAME] 
   writing everything it could, so a damaged image is still readable.
 - `facts` reads a `.prom.json` file and fills its `tables` and `strings` sections for one segment or for
   every segment the family covers.
-- `assets` fills the `assets` section and writes the PNG, WAV and font files. `--only` limits it to `logo`, `icon`,
-  `font`, `palette`, `layout` or `audio`.
+- `assets IMAGE [--out DIR]` does what `unpack` does and also fills the `assets` section, writing the asset
+  files under `DIR/assets/`. Built for the O2 (`ip32-flash`) family; any other image is refused with exit 2.
+  The design's `MANIFEST` argument and `--only KIND` filter are not built, and no WAV is written (shoji owns the
+  synthesiser).
 - `--sgi-prom` (proposed name) joins the existing `--ghidra-export` options. It takes the layout from the
   manifest, so `--flat`, `--load`, `--header`, `--processor` and `--window` are refused beside it, as they
   are beside `--sn2-prom`. `--program` picks one of the manifest's Ghidra programs when there are several
@@ -410,20 +412,32 @@ navigation, not evidence.
 
 ## Assets
 
-None of the O2 PROM's asset formats is written up yet. The chips O2 pages give the entry points: the menu
-records carry an image pointer per button; the `sgilogo` variable is read at the logo-drawing site; the
-`pagecolor` and `volume` variables and the hidden `.play` command lead to the palette and the audio path;
-the console's text output leads to the font. The asset step therefore has two stages:
+The O2's formats are established in the chips page `platforms/ip32/prom-assets.md`, so the reader implements them
+(`tools/prom/assets/`). It finds each table from the code that uses it, not by address, so PROM 4.18 and 4.8, whose
+text differs in length, take the same path. Machine code is read with a small interpreter (`assets/mips.py`) that
+runs a routine on the constants it loads and records its stores and calls; a finder that cannot tell which routine
+it wants, or finds none, refuses the image rather than guessing.
 
-1. **Research, in chips.** A reading of each drawing or playback routine establishes the encoding (bit
-   depth, run-length or plain, palette indexing, glyph layout, sample format) and records it in a chips
-   page with addresses and grades. The facts step exports the pointers and sizes it can find mechanically.
-2. **Extractor, in the toolkit.** Each family's asset reader implements only formats a chips page has
-   established, and its test builds a synthetic asset in that format.
+| Output (under `assets/`) | Found from |
+|---|---|
+| `palette.json`, `palette.png` | the routine holding the three ramp increments, run to read its set-entry calls; the ramp's sums are recovered from the registers that hold them |
+| `gradient.json` | the one routine with the `0xa00000` divide, `0x600000` base and shift by 16 |
+| `layout.json` | the menu draw and background draw routines, by the 1051-pixel width test and their immediates |
+| `font-N.json`, `font-N.bdf` (N = 0 to 3) | the routine storing four `{bitmap, table, height, descent}` records; entry counts from the table layout; the character lookup routine's rule is recorded as data |
+| `tagline.json`, `tagline.bdf` | the routine that ends a byte list on `0xff`, and its three table pointers |
+| `icons/icons.json`, `icons/*.png` | five-word icon objects in the data chunk; menu use from the menu builder's stores, dialog use from its table; a composite and one mask per layer |
+| `logo.png` | the 494 by 237 run-length rows ending at the words 494 and 237; an alpha mask (ink opaque white) |
+| `tunes.json` | the jump table the play routine bounds at 11, its stubs run to the shared path; 11 tunes and 64 voices with named fields |
 
-The deliverable for shoji is fidelity, so every asset carries the address it came from and the routine
-that draws it, and the reader refuses an asset whose decoded size disagrees with the size the drawing code
-uses. Which PROM revisions shoji clones decides which images the asset tests cover.
+Displayed strings are not exported; shoji keeps them in Rust. The sound synthesiser is shoji's: only the tune
+and voice descriptors are data, with what the code does not settle (sample rate, ring format, start-offset unit, the
+first noise seed) listed under `unknown`. Every output is listed in the manifest's `assets` section with its
+file, sha256, source address and grade, and are moved into place only when every finder has succeeded. Within schema version 1 the asset object gained the optional fields
+`name`, `sha256`, `format` and `details`; no existing field changed, so older readers still validate the file.
+
+Tests build synthetic RLE, font, icon, tagline, tune and code in the same formats. Against the catalogued images
+(found by sha256 under `RETOOLS_PROM_IMAGES`) they check the chips page's counts and addresses, and a golden
+file per image holds only output hashes and structural numbers.
 
 ## Fitting the existing tools
 
@@ -569,9 +583,9 @@ Every name below is a proposal. None is used until the owner picks.
    rows, with `publish = false` for the dumps of unknown origin?
 5. **Payload hashes.** Should the catalogue gain an optional payload sha256 per row so that sgi-emulator's
    and QEMU's payload hashes resolve without the golden manifests, or do the goldens suffice?
-6. **shoji's copy of the assets.** Commit the extracted assets in shoji (shoji is private), or regenerate
-   them on every build from the pinned image?
-7. **Which O2 PROM shoji clones.** 4.18 only, or 4.8 as well? That sets which images the asset goldens cover.
+6. **shoji's copy of the assets.** Decided: regenerated at build time from a PROM image the user supplies; no asset
+   byte is committed anywhere.
+7. **Which O2 PROM shoji clones.** Decided: both 4.18 and 4.8.
 8. **Origami's Python copies.** Replace `extract-irix`'s promgen code, `promgen-unpack` and `prom-banner`
    with calls into the toolkit, or leave them as they are while Origami winds down?
 9. **Container record layouts as defs units.** Should chips also describe the `SHDR`, `SEG2`, `_LZW` and
