@@ -11,7 +11,7 @@ space is written in bytes: offset = index * register size.
 """
 import re
 
-from .genutil import GenError, banner, lit, one_line
+from .genutil import COMMENT_WIDTH, GenError, banner, lit, one_line, wrap_comment
 from .model import name_source
 
 QEMU_DIR = "qemu"
@@ -44,22 +44,32 @@ def gen_qemu(m, src, board, name, include=None):
     P = "%s_%s" % (board, name or m["unit"].upper())
     guard = "HW_SGI_GPU_%s_REGS_H" % P
     unit_src = _src(m, None)
-    out = [banner(src), "/* %s */" % one_line(m.get("title") or m["unit"]),
-           "/* Names are %s; name source: %s. */" % (P + "_*", unit_src)]
+    out = [*wrap_comment(banner(src, "", "").strip()), *wrap_comment(m.get("title") or m["unit"]),
+           *wrap_comment("Names are %s; name source: %s." % (P + "_*", unit_src))]
     if any(r["space"] and m["spaces"][r["space"]]["unit"] == "reg" for r in m["registers"].values()):
-        out.append("/* Offsets are bytes; registers of a register-indexed space are written as index * size. */")
+        out += wrap_comment("Offsets are bytes; registers of a register-indexed space are written as index * size.")
     out += ["#ifndef %s\n#define %s\n" % (guard, guard), '#include "%s"' % (include or DEFAULT_INCLUDE)]
 
     def tail(node, extra=""):
         t = [node["grade"]] if node.get("grade") else []
         if node.get("name_source") and _src(m, node) != unit_src:
             t.append("name source: " + _src(m, node))
-        return " /* %s%s */" % ("; ".join(t), extra)
+        return "; ".join(t) + extra
+
+    def put(line, note):
+        """The line with its note beside it, or the note above it when that passes 80 columns."""
+        if not note:
+            out.append(line)
+        elif len(line) + len(note) + 6 <= COMMENT_WIDTH:
+            out.append("%s /* %s */" % (line, note))
+        else:
+            out.extend(wrap_comment(note))
+            out.append(line)
 
     def fields(reg, node):
         for fn, f in node["fields"].items():
             hi, lo = f["bits"]
-            out.append("FIELD(%s, %s, %d, %d)%s" % (reg, fn.upper(), lo, hi - lo + 1, tail(f)))
+            put("FIELD(%s, %s, %d, %d)" % (reg, fn.upper(), lo, hi - lo + 1), tail(f))
 
     for n, r in m["registers"].items():
         reg = "%s_%s" % (P, n.upper())
@@ -69,7 +79,7 @@ def gen_qemu(m, src, board, name, include=None):
         if off + max(r["count"] - 1, 0) * (r["stride"] * size if in_regs else r["stride"]) > MAX_OFFSET:
             raise GenError("%s: register %s lies beyond 0x%x" % (m["unit"], n, MAX_OFFSET))
         out.append("")
-        out.append("%s(%s, 0x%x)%s" % (WIDE[r["width"]], reg, off, tail(r)))
+        put("%s(%s, 0x%x)" % (WIDE[r["width"]], reg, off), tail(r))
         if r["count"] > 1:
             out.append("#define %s_COUNT %d" % (reg, r["count"]))
             out.append("#define %s_STRIDE 0x%x" % (reg, r["stride"] * size if in_regs else r["stride"]))
@@ -77,17 +87,17 @@ def gen_qemu(m, src, board, name, include=None):
     for n, w in m["words"].items():
         reg = "%s_%s" % (P, n)
         out.append("")
-        out.append("#define %s_WIDTH %d%s" % (reg, w["width"], tail(w, "; word")))
+        put("#define %s_WIDTH %d" % (reg, w["width"]), tail(w, "; word"))
         fields(reg, w)
     if m["constants"]:
         out.append("")
     for n, k in m["constants"].items():
         c = "%s_%s" % (P, n)
         if k.get("count", 1) > 1:
-            out.append("#define %s(i) (%s + (i) * %d)%s" % (c, lit(k["value"]), k.get("stride", 1), tail(k)))
+            put("#define %s(i) (%s + (i) * %d)" % (c, lit(k["value"]), k.get("stride", 1)), tail(k))
             out.append("#define %s_COUNT %d" % (c, k["count"]))
         else:
-            out.append("#define %s %s%s" % (c, lit(k["value"]), tail(k)))
+            put("#define %s %s" % (c, lit(k["value"])), tail(k))
     out.append("\n#endif /* %s */\n" % guard)
     text = "\n".join(out)
     seen = {}

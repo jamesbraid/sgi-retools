@@ -298,8 +298,8 @@ check always runs on the public rendering, so switching profiles needs no new fi
 
 | Output | Contents |
 |---|---|
-| `generated/c/<unit>.h` | `<BLOCK>_<REG>_OFFSET`, `_COUNT`, `_STRIDE`; `<BLOCK>_<REG>_<FIELD>_SHIFT`, `_MASK`, `_INPLACE`; `<PREFIX>_<WORD>_WIDTH` and word fields the same way; `<field macro>_<LABEL>` for a field's own enum values and `<PREFIX>_<ENUM>_<LABEL>` for shared ones; `<PREFIX>_<NAME>` for constants. Every macro carries its grade. `[c] offset_macro = "bare"` drops `_OFFSET`. |
-| `generated/rust/` | a `#![no_std]` crate with no dependencies (`Cargo.toml`, `src/lib.rs`, a module per unit): typed field accessors, an enum with an `Other` variant per field that has values, constants, a test per vector |
+| `generated/c/<unit>.h` | `<BLOCK>_<REG>_OFFSET`, `_COUNT`, `_STRIDE`; `<BLOCK>_<REG>_<FIELD>_SHIFT`, `_MASK`, `_INPLACE`; `<PREFIX>_<WORD>_WIDTH` and word fields the same way; `<field macro>_<LABEL>` for a field's own enum values and `<PREFIX>_<ENUM>_<LABEL>` for shared ones; `<PREFIX>_<NAME>` for constants. Every macro carries its grade; comments wrap at 80 columns, and a grade that would push a `#define` past 80 moves to a comment above it. `[c] offset_macro = "bare"` drops `_OFFSET`. |
+| `generated/rust/` | a `#![no_std]` crate with no dependencies (`Cargo.toml`, `src/lib.rs`, a module per unit): typed field accessors, an enum with an `Other` variant per field that has values, constants, a test per vector; each file starts `// @generated` and carries `#![cfg_attr(rustfmt, rustfmt_skip)]` |
 | `generated/qemu/<unit>.h` | the QEMU form, see below: `REG` and `FIELD` macros with every name prefixed by board and unit |
 | `generated/python/<unit>.py` | the layout as tables plus `decode`, `encode`, `describe` and `selftest`, no imports |
 | `generated/json/<unit>.json` | one flat row per register, word, field, enum value and constant |
@@ -356,8 +356,8 @@ A unit gets `c-clean` only when its entry says `profiles = ["c-clean"]` (or list
 unit without `profiles` gets the other enabled profiles. The `c-clean` header is for copying into another public project. It keeps every offset, shift, mask,
 `_COUNT`, `_STRIDE`, enum value, constant and reset-value macro of the standard C header and omits all
 prose: block and register documentation, grades, access and reset comments, source references, and the
-unit's hand-written `helpers.h`. Each register or word gets a one-name comment. The one-line banner names the
-repository and commit, and no line is longer than 90 columns (a longer `#define` wraps with a backslash).
+unit's hand-written `helpers.h`. Each register or word gets a one-name comment. The banner names the
+repository and commit (wrapped at 80 columns), and no line is longer than 90 columns (a longer `#define` wraps with a backslash).
 `defs-check --build` compiles it standalone.
 
 The `rust-regs` file is a banner line and one declarative-macro invocation, and nothing else. The consumer

@@ -14,17 +14,24 @@ devices/<unit>/helpers.h (old layout: defs/<unit>_helpers.h), when present, is i
 """
 import os
 
-from .genutil import GenError, banner, cblock, field_macro, lit, one_line
+from .genutil import COMMENT_WIDTH, GenError, banner, cblock, field_macro, lit, wrap_comment
 from .model import block_of, eff_from, mask
 
 CLEAN_WIDTH = 90
 
 
 def define(name, val, comment="", clean=False):
-    """One #define line. The clean form has no comment and wraps a line over CLEAN_WIDTH."""
+    """One #define line (several for a comment that does not fit beside it). The clean form has no comment
+    and wraps a line over CLEAN_WIDTH."""
     line = "#define %-44s %s" % (name, val)
     if not clean:
-        return line + comment
+        if len(line + comment) <= COMMENT_WIDTH:
+            return line + comment
+        if len(line) > COMMENT_WIDTH:       # drop the alignment padding when that is what overflows
+            line = "#define %s %s" % (name, val)
+        if not comment:
+            return line
+        return "\n".join(wrap_comment(comment.strip()[3:-3].strip()) + [line])
     if len(line) <= CLEAN_WIDTH:
         return line
     line = "#define %s \\\n    %s" % (name, val)
@@ -52,8 +59,8 @@ def gen_c(u, src, helpers_include=None, clean=None):
     if clean:
         out.append(clean)
     else:
-        out.append(banner(src))
-        out.append("/* %s */" % one_line(u.get("title") or u["unit"]))
+        out += wrap_comment(banner(src, "", "").strip())
+        out += wrap_comment(u.get("title") or u["unit"])
     guard = "%s_%s_H" % (P, "CLEAN" if clean else "GEN")
     out.append("#ifndef %s\n#define %s\n" % (guard, guard))
     out.append("#include <stdint.h>\n")
@@ -72,7 +79,7 @@ def gen_c(u, src, helpers_include=None, clean=None):
     for en, e in u["enums"].items():
         out.append("")
         if not clean:
-            out.append("/* enum %s%s */" % (en, ": " + one_line(e["doc"]) if e.get("doc") else ""))
+            out += wrap_comment("enum %s%s" % (en, ": " + e["doc"] if e.get("doc") else ""))
         for lab, ev in e["values"].items():
             d("%s_%s_%s" % (P, en.upper(), lab.upper()), str(ev["value"]), ev["value"], ev["grade"])
     for n, r in u["registers"].items():
@@ -84,9 +91,9 @@ def gen_c(u, src, helpers_include=None, clean=None):
                 out.append(cblock(r["doc"]).rstrip())
             c = eff_from(u, r)
             sp = ", space %s" % r["space"] if r["space"] else ""
-            out.append("/* %s: %s%d%s, reset %s%s */" % (n, r["access"], r["width"], sp,
-                                                         "unknown" if r["reset"] == "unknown" else hex(r["reset"]),
-                                                         "; " + one_line(c) if c else ""))
+            out += wrap_comment("%s: %s%d%s, reset %s%s" % (n, r["access"], r["width"], sp,
+                                                            "unknown" if r["reset"] == "unknown" else hex(r["reset"]),
+                                                            "; " + c if c else ""))
         base = "%s_%s" % (block_of(u), n.upper())
         bare = u["c"]["offset_macro"] == "bare"
         d(base if bare else base + "_OFFSET", "0x%06x" % r["offset"] if bare else lit(r["offset"]), r["offset"], r["grade"])
@@ -102,7 +109,7 @@ def gen_c(u, src, helpers_include=None, clean=None):
             if w.get("doc"):
                 out.append(cblock(w["doc"]).rstrip())
             c = eff_from(u, w)
-            out.append("/* word %s: %d bits%s */" % (n, w["width"], "; " + one_line(c) if c else ""))
+            out += wrap_comment("word %s: %d bits%s" % (n, w["width"], "; " + c if c else ""))
         d("%s_%s_WIDTH" % (P, n), str(w["width"]), w["width"], w["grade"])
         emit_fields("word", n, w, w["width"] == 64)
     if u["constants"]:
@@ -162,11 +169,11 @@ def gen_forwarding(u, src, c_rel_from_legacy):
     is a C expression over the new names."""
     c = u["c"]
     guard = c.get("legacy_guard") or "%s_FWD_H" % u["prefix"]
-    out = [banner(src),
-           "/* Transition header: include %s instead. It keeps the names this header" % c_rel_from_legacy,
-           " * had before the definitions moved to generated headers. */",
-           "#ifndef %s\n#define %s\n" % (guard, guard),
-           '#include "%s"' % c_rel_from_legacy]
+    out = wrap_comment(banner(src, "", "").strip())
+    out += wrap_comment("Transition header: include %s instead. It keeps the names this header had before the "
+                        "definitions moved to generated headers." % c_rel_from_legacy)
+    out += ["#ifndef %s\n#define %s\n" % (guard, guard),
+            '#include "%s"' % c_rel_from_legacy]
     if c["aliases"]:
         out.append("")
         for old, expr in sorted(c["aliases"].items()):

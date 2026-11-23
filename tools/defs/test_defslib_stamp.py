@@ -30,11 +30,22 @@ class StampTest(RepoTest):
                 continue
             head = text[:600]
             self.assertIn("BSD-3-Clause", head, rel)
-            self.assertIn("defs-gen 2", head, rel)
+            self.assertIn("defs-gen 3", head, rel)
             self.assertIn(digest, head, rel)
         for rel in ("gen/rust/Cargo.toml", "gen/rust/src/lib.rs"):
             self.assertIn("SPDX-License-Identifier: BSD-3-Clause", files[rel])
         self.assertEqual(json.loads(files["gen/json/uart.json"])["license"], "BSD-3-Clause")
+
+    def test_the_stamp_follows_a_wrapped_banner(self):
+        from defslib import gen_c, stamp
+        self.render()
+        repo = loader.load_repo(self.root)
+        text = gen_c.gen_c(repo.units["uart"].model, "defs/" + "long-name-" * 8 + "uart.toml")[0]
+        head = stamp.Stamper(repo).apply("gen/c/uart.h", text, "uart").split("\n")
+        end = next(i for i, ln in enumerate(head) if "*/" in ln)
+        self.assertGreater(end, 0)
+        self.assertTrue(head[end].endswith("the source */"), head[:5])
+        self.assertTrue(head[end + 1].startswith("/* SPDX-License-Identifier"), head[:5])
 
     def test_the_hash_follows_the_input(self):
         before = self.render()["gen/c/uart.h"]

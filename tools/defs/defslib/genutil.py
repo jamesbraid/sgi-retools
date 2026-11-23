@@ -1,11 +1,12 @@
 """Small helpers shared by the generators."""
 import re
+import textwrap
 
 from .model import block_of
 
 
 # Bump when the form of any generated file changes; every output carries it (see stamp.py).
-GENERATOR_VERSION = "2"
+GENERATOR_VERSION = "3"
 
 
 class GenError(Exception):
@@ -20,10 +21,33 @@ def one_line(s):
     return re.sub(r"\s+", " ", s).replace("*/", "* /").replace("/*", "/ *").strip()
 
 
-def cblock(text, indent=""):
+COMMENT_WIDTH = 80      # comments wrap here, 10 under the 90 columns QEMU's checkpatch allows, so a few extra words never trip it
+
+
+def wrap_comment(text, indent="", width=COMMENT_WIDTH):
+    """`text` as a C comment: one line when it fits, else a block of lines wrapped at `width`."""
+    text = one_line(text)
+    one = "%s/* %s */" % (indent, text)
+    if len(one) <= width:
+        return [one]
+    lines = textwrap.wrap(text, max(width - len(indent) - 3, 20), break_long_words=False, break_on_hyphens=False)
+    out = ["%s/* %s" % (indent, lines[0])] + ["%s * %s" % (indent, ln) for ln in lines[1:]]
+    if len(out[-1]) + 3 <= width:
+        out[-1] += " */"
+    else:
+        out.append("%s */" % indent)
+    return out
+
+
+def cblock(text, indent="", width=COMMENT_WIDTH):
+    """A multi-line C comment: each line of `text` wrapped at `width`, blank lines and indentation kept."""
     if not text:
         return ""
-    body = text.replace("*/", "* /").replace("/*", "/ *").strip().splitlines()
+    body = []
+    for l in text.replace("*/", "* /").replace("/*", "/ *").strip().splitlines():
+        lead = l[:len(l) - len(l.lstrip())]
+        body += textwrap.wrap(l, max(width - len(indent) - 3, 20), subsequent_indent=lead, break_long_words=False,
+                              break_on_hyphens=False) or [""]
     return "%s/*\n%s\n%s */\n" % (indent, "\n".join("%s * %s" % (indent, l) if l else "%s *" % indent for l in body), indent)
 
 

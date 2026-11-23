@@ -30,6 +30,14 @@ class QemuTest(RepoTest):
     def test_nothing_is_written_unless_the_settings_ask(self):
         self.assertFalse([f for f in self.render() if "qemu" in f])
 
+    def test_comments_wrap_at_80_columns(self):
+        self.enable()
+        self.edit("defs/check.toml", 'name = "UART0"', 'name = "UART0_WITH_A_LONG_UNIT_NAME_FOR_WRAPPING"')
+        self.edit("defs/uart.toml", 'title = "made-up UART (fixture for the defs tools)"', 'title = "%s"' % ("a long title " * 12))
+        text = self.render()["gen/qemu/uart.h"]
+        self.assertEqual([ln for ln in text.splitlines() if len(ln) > 80 and not ln.startswith("/* input sha256")], [])
+        self.assertRegex(text, r"/\* established \*/\nFIELD\(TEST_UART0_WITH_A_LONG_UNIT_NAME_FOR_WRAPPING_CTL, DIVISOR, 16, 16\)\n")
+
     def test_header_shape(self):
         self.enable()
         text = self.render()["gen/qemu/uart.h"]

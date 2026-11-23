@@ -123,7 +123,7 @@ class GenerateTest(CurrentRepoTest):
                                  ("gen/c/uart_rev2.h", "generated/c/uart_rev2.h")):
             a = old_files[old_rel].replace("defs/uart.toml", "SRC").replace("defs/uart.rev2.toml", "SRC")
             b = new_files[new_rel].replace("devices/uart/registers.toml", "SRC").replace("devices/uart/registers.rev2.toml", "SRC")
-            self.assertEqual(a, b, new_rel)
+            self.assertEqual(a.replace("\n * ", " "), b.replace("\n * ", " "), new_rel)     # the path length changes the banner wrap
         self.assertEqual(sorted(r for r in old_files if r.startswith("gen/docs/")), ["gen/docs/uart.md", "gen/docs/uart_rev2.md"])
 
     def test_public_profile_still_drops_internal_text(self):

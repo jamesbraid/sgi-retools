@@ -92,6 +92,22 @@ class GenCTest(RepoTest):
         self.assertIn("#define UART_CTL_DIV_SHIFT", text)
         self.assertEqual(gen_c.rel_include("include/old.h", "gen/c/uart.h"), "../gen/c/uart.h")
 
+    def test_descriptions_wrap_at_80_columns(self):
+        long = "A long description of the register that goes on and on about what it does. " * 4
+        self.edit("defs/uart.toml", 'doc = "Control register."', 'doc = "%s"' % long)
+        self.edit("defs/uart.toml", 'doc = "Parity modes of the control register."', 'doc = "%s"' % long)
+        self.edit("defs/uart.toml", 'title = "made-up UART (fixture for the defs tools)"', 'title = "%s"' % long)
+        text, _ = gen_c.gen_c(self.unit(), "defs/" + "long-name-" * 6 + "uart.toml")
+        self.assertIn("long description of the register", text)
+        self.assertEqual([ln for ln in text.splitlines() if len(ln) > 80 and not ln.startswith("#define")], [])
+        self.assertEqual([ln for ln in text.splitlines() if len(ln) > 80 and "#define" in ln and "/*" in ln], [])
+
+    def test_a_trailing_comment_that_overflows_moves_above_its_define(self):
+        out = gen_c.define("UART_A_VERY_LONG_NAME_THAT_FILLS_THE_LINE_WITH_ITS_VALUE", "0x1234567u", " /* established */")
+        self.assertEqual(out.splitlines()[0], "/* established */")
+        self.assertTrue(out.splitlines()[1].startswith("#define UART_A_VERY"))
+        self.assertEqual(gen_c.define("UART_X", "1", " /* inferred */"), "#define %-44s 1 /* inferred */" % "UART_X")
+
     @unittest.skipUnless(CC, "no C compiler")
     def test_header_compiles_and_self_test_passes(self):
         m = self.unit()

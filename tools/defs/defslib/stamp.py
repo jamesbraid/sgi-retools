@@ -56,6 +56,8 @@ class Stamper:
         else:
             wrap = "/* %s */"
         at = 2 if ext == ".xml" else 1
+        if wrap == "/* %s */":      # after the whole first comment, which a long banner wraps
+            at = next(i for i, ln in enumerate(text.split("\n"), 1) if "*/" in ln)
         parts = text.split("\n", at)
         return "\n".join(parts[:at] + [wrap % ln for ln in lines] + parts[at:])
 
