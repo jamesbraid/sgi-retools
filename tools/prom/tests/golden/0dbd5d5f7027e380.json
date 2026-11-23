@@ -1,0 +1,39 @@
+{
+ "schema": "sgi-prom",
+ "version": 1,
+ "kind": "prom",
+ "identity": {
+  "sha256": "0dbd5d5f7027e380383ce81523e1f614d58343ca82e07ec48bb4740b287eba0e",
+  "size": 912848,
+  "byte_order": "big",
+  "transforms": [],
+  "container": "promgen64"
+ },
+ "segments": [
+  {
+   "name": "ip27prom",
+   "id": null,
+   "parent": null,
+   "offset": "0x1000",
+   "stored_length": "0xdddd0",
+   "compression": "none",
+   "length": "0xdddd0",
+   "sha256": "c2c69bf33c375b43ec7ac511fab41ddf595be1b6838ae717e58a9a1273437fdd",
+   "format": "flat",
+   "load": "0xc00000001fc00000",
+   "entry": "0xc00000001fc00000",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "promgen64-byte-sum",
+     "ok": true
+    }
+   ],
+   "flags": "0x10",
+   "file": "segments/ip27prom.bin"
+  }
+ ],
+ "tables": [],
+ "strings": [],
+ "assets": []
+}

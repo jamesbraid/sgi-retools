@@ -1,0 +1,173 @@
+{
+ "schema": "sgi-prom",
+ "version": 1,
+ "kind": "prom",
+ "identity": {
+  "sha256": "820585bed598df75dc2a1dda887b5cd336c560f0575aa065a7cdbc2edbccfab8",
+  "size": 428800,
+  "byte_order": "big",
+  "transforms": [],
+  "container": "installer>ip32-flash"
+ },
+ "segments": [
+  {
+   "name": "sloader",
+   "id": null,
+   "parent": null,
+   "offset": "0x100",
+   "stored_length": "0x4000",
+   "compression": "none",
+   "length": "0x4000",
+   "sha256": "8deb3f0a05e7e268011002a0997dda8a17167b1dbcf07b6b9af61d4c678a5d26",
+   "format": "flat",
+   "load": "0xbfc00000",
+   "entry": null,
+   "regions": [],
+   "checks": [
+    {
+     "rule": "shdr-header-zero-sum",
+     "ok": true
+    },
+    {
+     "rule": "shdr-body-balance",
+     "ok": true
+    }
+   ],
+   "version": "1.0",
+   "file": "segments/sloader.bin"
+  },
+  {
+   "name": "env",
+   "id": null,
+   "parent": null,
+   "offset": "0x4100",
+   "stored_length": "0x400",
+   "compression": "none",
+   "length": "0x400",
+   "sha256": "84973b1ac23d9b17037ddb7f9ac98f66cf249b6d99ae8012dbdbb1eea5f72f6a",
+   "format": "flat",
+   "load": "0xbfc04000",
+   "entry": null,
+   "regions": [],
+   "checks": [
+    {
+     "rule": "shdr-header-zero-sum",
+     "ok": true
+    },
+    {
+     "rule": "shdr-body-balance",
+     "ok": true
+    }
+   ],
+   "version": "1.0",
+   "file": "segments/env.bin"
+  },
+  {
+   "name": "post1",
+   "id": null,
+   "parent": null,
+   "offset": "0x4500",
+   "stored_length": "0x4c34",
+   "compression": "none",
+   "length": "0x4c34",
+   "sha256": "ce7988abe296bd9d392b1428eeed336ea4c0b2f8d11b000903d07d972492807b",
+   "format": "flat",
+   "load": "0xbfc04400",
+   "entry": null,
+   "regions": [],
+   "checks": [
+    {
+     "rule": "shdr-header-zero-sum",
+     "ok": true
+    },
+    {
+     "rule": "shdr-body-balance",
+     "ok": true
+    }
+   ],
+   "version": "1.0",
+   "file": "segments/post1.bin"
+  },
+  {
+   "name": "firmware",
+   "id": null,
+   "parent": null,
+   "offset": "0x9300",
+   "stored_length": "0x5f27c",
+   "compression": "none",
+   "length": "0x5f27c",
+   "sha256": "c341f101442897abd555167dbb81a630fcc18bd47a6df84b8640da8cab92c0a9",
+   "format": "flat",
+   "load": "0x81000000",
+   "entry": "0x81000000",
+   "regions": [
+    {
+     "name": "text",
+     "address": "0x81000000",
+     "offset": "0x0",
+     "length": "0x48350",
+     "kind": "code"
+    },
+    {
+     "name": "rodata",
+     "address": "0x81048350",
+     "offset": "0x48358",
+     "length": "0xb120",
+     "kind": "readonly"
+    },
+    {
+     "name": "data",
+     "address": "0x81053470",
+     "offset": "0x53480",
+     "length": "0xbdf0",
+     "kind": "data"
+    }
+   ],
+   "checks": [
+    {
+     "rule": "shdr-header-zero-sum",
+     "ok": true
+    },
+    {
+     "rule": "shdr-body-balance",
+     "ok": true
+    },
+    {
+     "rule": "ip32-load-map-tiles",
+     "ok": true
+    }
+   ],
+   "version": "4.8",
+   "file": "segments/firmware.bin"
+  },
+  {
+   "name": "version",
+   "id": null,
+   "parent": null,
+   "offset": "0x68700",
+   "stored_length": "0x388",
+   "compression": "none",
+   "length": "0x388",
+   "sha256": "934f03e31ac2980f340466c79bff6990577c0d12c5b2e8b5e2f8e6441a72d8cb",
+   "format": "flat",
+   "load": "0xbfc68600",
+   "entry": null,
+   "regions": [],
+   "checks": [
+    {
+     "rule": "shdr-header-zero-sum",
+     "ok": true
+    },
+    {
+     "rule": "shdr-body-balance",
+     "ok": true
+    }
+   ],
+   "version": "4.8",
+   "file": "segments/version.bin"
+  }
+ ],
+ "tables": [],
+ "strings": [],
+ "assets": []
+}

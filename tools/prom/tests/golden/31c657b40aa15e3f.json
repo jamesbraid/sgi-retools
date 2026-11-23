@@ -1,0 +1,136 @@
+{
+ "schema": "sgi-prom",
+ "version": 1,
+ "kind": "prom",
+ "identity": {
+  "sha256": "31c657b40aa15e3f684d38a3b56307e51907cf7f265a666a6bcf4d01ae0d1aca",
+  "size": 702958,
+  "byte_order": "big",
+  "transforms": [],
+  "container": "io4-segmented"
+ },
+ "segments": [
+  {
+   "name": "loader",
+   "id": "0xff01",
+   "parent": null,
+   "offset": "0x320",
+   "stored_length": "0x3570",
+   "compression": "none",
+   "length": "0x3570",
+   "sha256": "b7b83fc84841ad0323a924be4b89aa6f60f443b2d09914bc6cfc5a8d9b614314",
+   "format": "flat",
+   "load": "0xa800000001b00000",
+   "entry": "0xa800000001b003d0",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "record-halfword-sum",
+     "ok": true
+    },
+    {
+     "rule": "header-halfword-sum",
+     "ok": true
+    }
+   ],
+   "table_offset": "0x1000",
+   "file": "segments/loader.bin"
+  },
+  {
+   "name": "ip19",
+   "id": "0x105",
+   "parent": null,
+   "offset": "0x3890",
+   "stored_length": "0x44388",
+   "compression": "compress",
+   "length": "0x6ee00",
+   "sha256": "ecc1c75eed440b0cc68d539f30f0a2d0398ac3d39fc67b26de8ac0709754f001",
+   "format": "flat",
+   "load": "0xffffffff81800000",
+   "entry": "0xffffffff81800000",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "record-halfword-sum",
+     "ok": true
+    },
+    {
+     "rule": "lzw-length",
+     "ok": true
+    },
+    {
+     "rule": "lzw-byte-sum",
+     "ok": true
+    }
+   ],
+   "lzw_flag": 1,
+   "table_offset": "0x4570",
+   "file": "segments/ip19.bin"
+  },
+  {
+   "name": "ip21",
+   "id": "0x205",
+   "parent": null,
+   "offset": "0x47c18",
+   "stored_length": "0x4ae6a",
+   "compression": "compress",
+   "length": "0x7a000",
+   "sha256": "43e4181126ed46939dfc486cdea3f191e71372e9ee86579c8adda7731ca3ef61",
+   "format": "elf",
+   "load": "0xa800000001800000",
+   "entry": "0xa800000001805000",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "record-halfword-sum",
+     "ok": true
+    },
+    {
+     "rule": "lzw-length",
+     "ok": true
+    },
+    {
+     "rule": "lzw-byte-sum",
+     "ok": true
+    }
+   ],
+   "lzw_flag": 1,
+   "table_offset": "0x488f8",
+   "file": "segments/ip21.bin"
+  },
+  {
+   "name": "graphics",
+   "id": "0x305",
+   "parent": null,
+   "offset": "0x92a82",
+   "stored_length": "0x18f6c",
+   "compression": "compress",
+   "length": "0x33be0",
+   "sha256": "f94b68cfec6731444ce900794e1a732931c062d05c789f3b0a3c09170abea164",
+   "format": "flat",
+   "load": "0xa800000001700000",
+   "entry": "0xa800000001700000",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "record-halfword-sum",
+     "ok": true
+    },
+    {
+     "rule": "lzw-length",
+     "ok": true
+    },
+    {
+     "rule": "lzw-byte-sum",
+     "ok": true
+    }
+   ],
+   "lzw_flag": 1,
+   "table_offset": "0x93762",
+   "file": "segments/graphics.bin"
+  }
+ ],
+ "tables": [],
+ "strings": [],
+ "assets": []
+}

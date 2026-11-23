@@ -1,0 +1,39 @@
+{
+ "schema": "sgi-prom",
+ "version": 1,
+ "kind": "prom",
+ "identity": {
+  "sha256": "1d5986809203bab17b97ee8968789112b3dd5ff721d612b4a2cd554e744b34db",
+  "size": 386488,
+  "byte_order": "big",
+  "transforms": [],
+  "container": "io4-flat"
+ },
+ "segments": [
+  {
+   "name": "ip19",
+   "id": null,
+   "parent": null,
+   "offset": "0x18",
+   "stored_length": "0x5e5a0",
+   "compression": "none",
+   "length": "0x5e5a0",
+   "sha256": "ba6478c18ca5c07e6b5586d50c311d33058bd9d59fc6eab664c0d970dcba08bf",
+   "format": "flat",
+   "load": "0x81800000",
+   "entry": "0x81800000",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "halfword-sum",
+     "ok": true
+    }
+   ],
+   "build": 118,
+   "file": "segments/ip19.bin"
+  }
+ ],
+ "tables": [],
+ "strings": [],
+ "assets": []
+}

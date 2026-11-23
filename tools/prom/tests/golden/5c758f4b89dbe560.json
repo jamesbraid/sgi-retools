@@ -1,0 +1,35 @@
+{
+ "schema": "sgi-prom",
+ "version": 1,
+ "kind": "prom",
+ "identity": {
+  "sha256": "5c758f4b89dbe5607915c869363af9a231f1a2f4d99baeee7f7fd32739d1d3d0",
+  "size": 262144,
+  "byte_order": "big",
+  "transforms": [
+   "swap16"
+  ],
+  "container": "raw"
+ },
+ "segments": [
+  {
+   "name": "image",
+   "id": null,
+   "parent": null,
+   "offset": "0x0",
+   "stored_length": "0x40000",
+   "compression": "none",
+   "length": "0x40000",
+   "sha256": "3d1abc6a2f82bea43948b62d0b7c9b38834a1c1b2c0869e60f47f50e40bda294",
+   "format": "flat",
+   "load": null,
+   "entry": null,
+   "regions": [],
+   "checks": [],
+   "file": "segments/image.bin"
+  }
+ ],
+ "tables": [],
+ "strings": [],
+ "assets": []
+}

@@ -1,0 +1,137 @@
+{
+ "schema": "sgi-prom",
+ "version": 1,
+ "kind": "prom",
+ "identity": {
+  "sha256": "bc9e654a8c05351d44e0ddb38aa35d42a4de5748c5627137213c5c49ad09254f",
+  "size": 1012308,
+  "byte_order": "big",
+  "transforms": [],
+  "container": "io4-segmented"
+ },
+ "segments": [
+  {
+   "name": "loader",
+   "id": "0xff01",
+   "parent": null,
+   "offset": "0x320",
+   "stored_length": "0x4600",
+   "compression": "none",
+   "length": "0x4600",
+   "sha256": "2b6a5c3fce5147aa401a3fc0e56758ade14851a9b41857a687613107896d4a6b",
+   "format": "flat",
+   "load": "0xa800000001b00000",
+   "entry": "0xa800000001b00110",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "record-halfword-sum",
+     "ok": true
+    },
+    {
+     "rule": "header-halfword-sum",
+     "ok": true
+    }
+   ],
+   "table_offset": "0x1000",
+   "file": "segments/loader.bin"
+  },
+  {
+   "name": "ip19",
+   "id": "0x105",
+   "parent": null,
+   "offset": "0x4920",
+   "stored_length": "0x4c3e8",
+   "compression": "compress",
+   "length": "0x7a4c0",
+   "sha256": "bbbc0be25b7e698960ee33adf7284187cf81f797d4c093a26c28c4b3535da679",
+   "format": "elf",
+   "load": "0xffffffff81800000",
+   "entry": "0xffffffff81800180",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "record-halfword-sum",
+     "ok": true
+    },
+    {
+     "rule": "lzw-length",
+     "ok": true
+    },
+    {
+     "rule": "lzw-byte-sum",
+     "ok": true
+    }
+   ],
+   "lzw_flag": 1,
+   "lzw_trimmed": 1,
+   "table_offset": "0x5600",
+   "file": "segments/ip19.bin"
+  },
+  {
+   "name": "ip21",
+   "id": "0x205",
+   "parent": null,
+   "offset": "0x50d08",
+   "stored_length": "0x5359a",
+   "compression": "compress",
+   "length": "0x8ebe8",
+   "sha256": "bc9e9412aa1aca49ff6da21dd00b27a6ba11de8fa9baf779c30a9bff1c200daf",
+   "format": "elf",
+   "load": "0xa800000001800000",
+   "entry": "0xa800000001801000",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "record-halfword-sum",
+     "ok": true
+    },
+    {
+     "rule": "lzw-length",
+     "ok": true
+    },
+    {
+     "rule": "lzw-byte-sum",
+     "ok": true
+    }
+   ],
+   "lzw_flag": 1,
+   "table_offset": "0x519e8",
+   "file": "segments/ip21.bin"
+  },
+  {
+   "name": "ip25",
+   "id": "0x405",
+   "parent": null,
+   "offset": "0xa42a2",
+   "stored_length": "0x52fb2",
+   "compression": "compress",
+   "length": "0x86f60",
+   "sha256": "d41322da06fa9804f780862b3cf3a95c4ac5fe6aa51924498eba6f357d1af76a",
+   "format": "elf",
+   "load": "0xa800000001800000",
+   "entry": "0xa800000001800110",
+   "regions": [],
+   "checks": [
+    {
+     "rule": "record-halfword-sum",
+     "ok": true
+    },
+    {
+     "rule": "lzw-length",
+     "ok": true
+    },
+    {
+     "rule": "lzw-byte-sum",
+     "ok": true
+    }
+   ],
+   "lzw_flag": 1,
+   "table_offset": "0xa4f82",
+   "file": "segments/ip25.bin"
+  }
+ ],
+ "tables": [],
+ "strings": [],
+ "assets": []
+}
