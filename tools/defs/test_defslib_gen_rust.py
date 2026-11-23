@@ -10,6 +10,7 @@ from defslib import gen_rust, loader  # noqa: E402
 from testkit import RepoTest, which  # noqa: E402
 
 RUSTC = which("rustc")
+CLIPPY = which("clippy-driver")
 
 
 class GenRustTest(RepoTest):
@@ -46,6 +47,18 @@ class GenRustTest(RepoTest):
         self.assertIn("pub const N3D_MODE: u32 = 0x3;", text)
         self.assertIn("Self_,", text)
 
+    def test_shared_enum_reexport_allows_unused_imports(self):
+        text = gen_rust.gen_rust(self.unit(), "defs/uart.toml")
+        self.assertIn("    #[allow(unused_imports)]\n        pub use super::super::enums::parity::Value;", text)
+
+    def test_register_named_like_its_field_allows_module_inception(self):
+        self.edit("defs/uart.toml", "enable = { bits = [0, 0]", "ctl = { bits = [0, 0]")
+        self.edit("defs/uart.toml", "expect = { enable = 1, parity = 1", "expect = { ctl = 1, parity = 1")
+        self.edit("defs/uart.toml", "expect = { enable = 1, parity = 7", "expect = { ctl = 1, parity = 7")
+        text = gen_rust.gen_rust(self.unit(), "defs/uart.toml")
+        self.assertIn("#[allow(clippy::module_inception)]\npub mod ctl {", text)
+        self.assertEqual(text.count("module_inception"), 1)
+
     def test_labels_that_reduce_to_one_variant_get_a_suffix(self):
         v = gen_rust.variants({"k9_6": {"value": 3}, "k96": {"value": 7}, "k8": {"value": 6}})
         self.assertEqual(v, {"k9_6": "K96", "k96": "K96_7", "k8": "K8"})
@@ -59,18 +72,30 @@ class GenRustTest(RepoTest):
         self.assertIn("pub mod a;\npub mod b;\n", lib)
         self.assertIn("\n#![no_std]\n", lib)
 
-    @unittest.skipUnless(RUSTC, "no rustc on this host; run in the rust container")
-    def test_crate_compiles_and_its_tests_pass(self):
+    def build(self, *tools):
+        """Write the crate and run each tool (rustc or clippy-driver) over it with -D warnings."""
         os.makedirs(self.path("crate/src"))
         self.write("crate/src/uart.rs", gen_rust.gen_rust(self.unit(), "defs/uart.toml"))
-        self.write("crate/src/lib.rs", gen_rust.gen_lib(["uart"], "defs/"))
+        self.write("crate/src/lib.rs", gen_rust.gen_lib(["uart"], "defs/").replace("pub mod", "mod"))   # private, as a consumer may include it
         exe = self.path("crate/t")
-        r = subprocess.run([RUSTC, "--edition", "2021", "--test", "-D", "warnings", "-o", exe, self.path("crate/src/lib.rs")],
-                           capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        r = subprocess.run([exe], capture_output=True, text=True)
+        for tool in tools:
+            r = subprocess.run([tool, "--edition", "2021", "--test", "-D", "warnings", "-o", exe, self.path("crate/src/lib.rs")],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        return exe
+
+    @unittest.skipUnless(RUSTC, "no rustc on this host; run in the rust container")
+    def test_crate_compiles_and_its_tests_pass(self):
+        r = subprocess.run([self.build(RUSTC)], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn("3 passed", r.stdout)
+
+    @unittest.skipUnless(CLIPPY, "no clippy-driver on this host; run in the rust container")
+    def test_crate_is_clippy_clean_with_a_register_named_like_its_field(self):
+        self.edit("defs/uart.toml", "enable = { bits = [0, 0]", "ctl = { bits = [0, 0]")
+        self.edit("defs/uart.toml", "expect = { enable = 1, parity = 1", "expect = { ctl = 1, parity = 1")
+        self.edit("defs/uart.toml", "expect = { enable = 1, parity = 7", "expect = { ctl = 1, parity = 7")
+        self.build(CLIPPY)
 
 
 if __name__ == "__main__":

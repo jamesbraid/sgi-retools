@@ -91,6 +91,7 @@ def _fields(node, ty, indent="    "):
         if f.get("enums"):
             o += _enum_block(ty, f["enums"], indent + "    ")
         elif f.get("enum"):
+            o.append("%s    #[allow(unused_imports)]" % indent)
             o.append("%s    pub use super::super::enums::%s::Value;" % (indent, rid(f["enum"])))
         o.append("%s}" % indent)
     return o
@@ -116,6 +117,8 @@ def gen_rust(u, src):
             ty = "u64" if x["width"] == 64 else "u32"
             doc = one_line(x.get("doc", ""))[:150]
             out.append("/// %s(%s)" % (doc + " " if doc else "", x["grade"]))
+            if any(rid(fn) == rid(n.lower()) for fn in x["fields"]):
+                out.append("#[allow(clippy::module_inception)]")
             out.append("pub mod %s {" % rid(n.lower()))
             out.append("    pub const WIDTH: u32 = %d;" % x["width"])
             if sect == "registers":
