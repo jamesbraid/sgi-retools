@@ -1,9 +1,15 @@
 // Make the image read-only, as the PROM import does, and create a function at each address listed in a
 // file (one 0x... address a line), last entry first, so a routine that runs on into the next stops there.
-// Args: FUNCTIONS_FILE
+// With a second argument, the function there takes two 32-bit parameters, which -noanalysis would not infer.
+// Args: FUNCTIONS_FILE [TWO_PARAMETER_FUNCTION]
 // @category RE
 import ghidra.app.script.GhidraScript;
+import ghidra.program.model.data.IntegerDataType;
+import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.ParameterImpl;
+import ghidra.program.model.listing.Variable;
 import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.symbol.SourceType;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -22,6 +28,12 @@ public class FixtureSetup extends GhidraScript {
         for (long e : entries) {
             disassemble(toAddr(e));
             createFunction(toAddr(e), null);
+        }
+        if (getScriptArgs().length > 1) {
+            Function f = getFunctionAt(toAddr(Long.decode(getScriptArgs()[1])));
+            List<Variable> params = new ArrayList<>();
+            for (int i = 0; i < 2; i++) params.add(new ParameterImpl("a" + i, IntegerDataType.dataType, currentProgram));
+            f.replaceParameters(params, Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, true, SourceType.USER_DEFINED);
         }
     }
 }

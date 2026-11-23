@@ -2,9 +2,14 @@
 """A big-endian MIPS test image built from hand-encoded words, and the records the walks must give for it.
 
   mips_synthetic.py                      check the generator against itself
-  mips_synthetic.py write DIR            write DIR/synthetic.bin, functions.tsv and expected-*.tsv
+  mips_synthetic.py write DIR            write DIR/mips.bin, mips-functions.tsv and mips-expected-*.tsv
   mips_synthetic.py check-walks DIR [P]  compare DIR/Pcalls.tsv and DIR/Paccesses.tsv (WalkDump.java's
                                          output) with DIR/Pexpected-calls.tsv and DIR/Pexpected-accesses.tsv
+  mips_synthetic.py check-golden DIR GOLDEN P   compare the default output of DumpCallEdges and FindWindowStores
+                                         (DIR/P-edges.tsv, -stores.tsv, -helper.tsv) with the golden ones taken
+                                         before the walks were added: edges and helper rows equal, access rows
+                                         equal in their first ten columns and four columns longer
+  mips_synthetic.py check-sites DIR P    compare DumpCallEdges' sites rows (DIR/P-sites.tsv) with DIR/P-expected-calls.tsv
 
 No byte comes from an SGI image. The image is flat, loaded at BASE as MIPS:BE:64:64-32addr, and read-only
 once imported. Code is at the bottom; the read-only tables are above it.
@@ -204,6 +209,26 @@ def build():
     im.sw(ZERO, T0, 0x64, d + 0x64)
     im.ret()
 
+    # A branch-likely whose delay slot (run only when taken) changes the base: the store after it has no
+    # known address, so no record.
+    im.function(BASE + 0x600)
+    im.lui(T0, d >> 16)
+    im.word(i_type(0x14, T1, ZERO, 2))
+    im.lui(T0, (d + 0x10000) >> 16)
+    im.sw(T2, T0, 0x80, None, rec=False)
+    im.ret()
+
+    # A store helper and a caller that passes it a device address and a value.
+    helper = BASE + 0x500
+    im.function(helper)
+    im.word(i_type(0x2b, A0, A1, 0))
+    im.ret()
+    im.function(BASE + 0x520)
+    im.load_const(A0, d + 0x100)
+    im.addiu(A1, ZERO, 5)
+    im.jal(helper)
+    im.ret()
+
     # A long straight-line function, above any small test budget.
     im.function(BASE + 0xa00)
     for _ in range(600):
@@ -243,13 +268,13 @@ def access_rows(im):
 def write(out):
     im = build()
     os.makedirs(out, exist_ok=True)
-    with open(os.path.join(out, 'synthetic.bin'), 'wb') as f:
+    with open(os.path.join(out, 'mips.bin'), 'wb') as f:
         f.write(image_bytes(im))
-    with open(os.path.join(out, 'functions.tsv'), 'w') as f:
+    with open(os.path.join(out, 'mips-functions.tsv'), 'w') as f:
         f.write(''.join('%s\n' % hexa(e) for e in im.entries))
-    with open(os.path.join(out, 'expected-calls.tsv'), 'w') as f:
+    with open(os.path.join(out, 'mips-expected-calls.tsv'), 'w') as f:
         f.write(''.join(r + '\n' for r in call_rows(im)))
-    with open(os.path.join(out, 'expected-accesses.tsv'), 'w') as f:
+    with open(os.path.join(out, 'mips-expected-accesses.tsv'), 'w') as f:
         f.write(''.join(r + '\n' for r in access_rows(im)))
 
 
@@ -275,11 +300,50 @@ def check_walks(out, prefix=''):
     return bad
 
 
+def check_golden(out, golden, prefix):
+    bad = 0
+    for kind, keep in (('edges', None), ('helper', None), ('stores', 10)):
+        got = open(os.path.join(out, '%s-%s.tsv' % (prefix, kind))).read().splitlines()
+        want = open(os.path.join(golden, '%s-%s.tsv' % (prefix, kind))).read().splitlines()
+        if keep:
+            rows = [r.split('\t') for r in got]
+            if any(len(r) != keep + 4 for r in rows):
+                print('FAIL %s-%s: a row is not %d columns' % (prefix, kind, keep + 4))
+                bad = 1
+            got = ['\t'.join(r[:keep]) for r in rows]
+        if got != want:
+            bad = 1
+            print('FAIL %s-%s differs from the golden' % (prefix, kind))
+            for line in sorted(set(want) - set(got)):
+                print('  missing  ' + line)
+            for line in sorted(set(got) - set(want)):
+                print('  extra    ' + line)
+        else:
+            print('PASS %s-%s: %d rows as before' % (prefix, kind, len(got)))
+    return bad
+
+
+def check_sites(out, prefix):
+    rows = [r.split('\t') for r in open(os.path.join(out, '%s-sites.tsv' % prefix)).read().splitlines()]
+    want = sorted(r.split('\t') for r in open(os.path.join(out, '%s-expected-calls.tsv' % prefix)).read().splitlines())
+    want = [(r[0], r[2].replace('-', ''), r[3]) for r in want if r[5] == '0']
+    got = sorted((r[4], r[5], r[6]) for r in rows)
+    bad = 0 if got == want else 1
+    for r in rows:
+        if len(r) != 7 or (r[2] == '?') != (r[5] == '') or r[3] != ('indirect' if r[5] == '' else 'direct'):
+            bad = 1
+            print('FAIL sites row: %s' % r)
+    print('%s %s-sites: %d rows' % ('FAIL' if bad else 'PASS', prefix, len(rows)))
+    if bad:
+        print('  got  %s\n  want %s' % (got, want))
+    return bad
+
+
 def selfcheck():
     im = build()
     assert len(im.words) * 4 < SIZE and max(im.words) - BASE < SIZE
     assert len(set(im.entries)) == len(im.entries)
-    assert len(call_rows(im)) == 6 and len(access_rows(im)) == 11, (len(call_rows(im)), len(access_rows(im)))
+    assert len(call_rows(im)) == 7 and len(access_rows(im)) == 11, (len(call_rows(im)), len(access_rows(im)))
     print('mips_synthetic: %d words, %d functions' % (len(im.words), len(im.entries)))
     return 0
 
@@ -290,6 +354,10 @@ def main(argv):
     if argv[1] == 'write':
         write(argv[2])
         return 0
+    if argv[1] == 'check-golden':
+        return check_golden(argv[2], argv[3], argv[4])
+    if argv[1] == 'check-sites':
+        return check_sites(argv[2], argv[3])
     if argv[1] == 'check-walks':
         return check_walks(argv[2], argv[3] if len(argv) > 3 else '')
     print(__doc__)

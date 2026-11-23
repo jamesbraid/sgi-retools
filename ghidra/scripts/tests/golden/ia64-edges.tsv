@@ -1,0 +1,2 @@
+ia64.bin	FUN_ram_00080000	?	indirect
+ia64.bin	FUN_ram_00080000	FUN_ram_00080100	direct

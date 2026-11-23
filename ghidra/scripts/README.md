@@ -61,9 +61,9 @@ Each script has its use in the opening comment. Run inside an image that has Ghi
 | `DecompileFunctions.java` | post-script | decompiles named functions (or `@0xADDR` for static ones) to a file with size and time per function |
 | `IrixGp.java` | pre-script for shared objects, pre- or post-script for relocatable objects | sets gp and marks `.got`, `.rodata` and small-data blocks read-only. Shared objects: gp from the function prologues (agrees with `.got + 0x7ff0`), with a function's own value running only to the next code symbol. Relocatable objects: gp from the R_MIPS_GPREL16 relocation records, which must all agree |
 | `IrixJumpTables.java` | post-script, after `IrixGp.java` | finds the table base and case count behind each `jr`, reads the entries from the file's original bytes (shared objects) or the relocated image (relocatable objects), registers a jump-table override so the decompiler prints a `switch`, and re-flows the function body. Handles absolute entries and, for o32, entries that are offsets from gp |
-| `FindWindowStores.java` | post-script | lists calls of a store helper with the folded base-plus-offset address, or with helper `-` every load and store with its base tag (`field`, `chain`, `window`), base expression and offset |
+| `FindWindowStores.java` | post-script | lists calls of a store helper with the folded base-plus-offset address, or with helper `-` every load and store with its base tag (`field`, `chain`, `window`), base expression and offset. Access rows end with `physical`, `op` (`load`, `store`, `rmw`), `addressing` (`absolute`, `base+offset`) and `load_site`, from `ReAccessWalk` |
 | `MarkVolatileWindows.java` | post-script, before the decompile script | declares address ranges volatile so the decompiler prints every store to a command window at a fixed address |
-| `DumpCallEdges.java` | post-script | dumps call edges and unresolved indirect calls |
+| `DumpCallEdges.java` | post-script | dumps call edges and unresolved indirect calls. With a second argument `sites`, one row per call site instead, with `site`, `target` and `resolved_by` after the four columns, from `ReCallWalk` |
 | `ApplyStruct.java` | post-script, before the decompile script | gives functions a typed first parameter from a C header |
 
 How the two IRIX scripts decide.
@@ -176,6 +176,6 @@ plain jump to another function's entry is a tail record), and a branch into a de
 with the nearest earlier load of the same address and width whose value an operation changed; a pure copy is a
 load and a store. They never run the decompiler, so a function it fails on still gives its records.
 
-`tests/re-scripts-check.sh` runs both on a MIPS image from `tests/mips_synthetic.py` and an IA-64 one from
+`tests/re-scripts-check.sh` runs both, and compares the default output of `DumpCallEdges` and `FindWindowStores` with the goldens in `tests/golden/` (taken from the scripts before the walks were added: the same rows, with the access rows' first ten columns unchanged), on a MIPS image from `tests/mips_synthetic.py` and an IA-64 one from
 `ghidra/processors/ia64/tests/synthetic.py write-walk`, each built from hand-encoded words, and compares the
 records with what the generators built.

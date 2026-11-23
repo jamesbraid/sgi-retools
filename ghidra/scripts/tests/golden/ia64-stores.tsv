@@ -1,0 +1,4 @@
+ia64.bin	FUN_ram_00080000	ram:00080040	r	1	window		0x10000020		var
+ia64.bin	FUN_ram_00080000	ram:00080050	r	1	window		0x10000020		var
+ia64.bin	FUN_ram_00080000	ram:000800b0	r	8	window		0x80100		var
+ia64.bin	FUN_ram_00080000	ram:000800c0	r	8	window		0x80100		var

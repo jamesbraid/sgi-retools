@@ -1,0 +1,6 @@
+mips.bin	FUN_bfc00000	FUN_bfc00100	direct
+mips.bin	FUN_bfc00000	?	indirect
+mips.bin	FUN_bfc00000	?	indirect
+mips.bin	FUN_bfc00000	?	indirect
+mips.bin	FUN_bfc00000	?	indirect
+mips.bin	FUN_bfc00520	FUN_bfc00500	direct

@@ -42,6 +42,12 @@
 //                                               (default field,chain,window)
 //   BASEREGEX  access mode: Java regular expression the base expression must
 //              match somewhere (default: any); ignored for tag window
+// Access mode rows end with four more columns, from the instructions' p-code (ReAccessWalk), where the
+// walk resolves the site, else from the row itself: physical (the physical address, empty when the address does
+// not resolve), op (load, store or rmw: a load, a change and a store of the same address, one row at the
+// store), addressing (absolute, or base+offset when the base was loaded from the image) and load_site (for
+// rmw, the load it pairs with). A row's tag does not change when the walk adds a physical address. A
+// delay-slot access is at the branch's address in every column, because Ghidra gives the slot to the branch.
 // Offsets that do not fold to base+constant are printed as "?" with the
 // expression in helper mode, so an unrecovered call is visible rather than
 // dropped. A window mode run needs MINOFFSET and MAXOFFSET (or it lists every
@@ -91,6 +97,11 @@ public class FindWindowStores extends GhidraScript {
         DecompInterface di = new DecompInterface();
         di.openProgram(currentProgram);
         String prog = currentProgram.getName();
+        Map<Long, List<ReAccessWalk.Access>> walked = new HashMap<>();
+        if (access) {
+            for (ReAccessWalk.Access x : ReAccessWalk.walk(currentProgram, monitor))
+                walked.computeIfAbsent(x.site.getOffset(), k -> new ArrayList<>()).add(x);
+        }
         for (Function f : currentProgram.getFunctionManager().getFunctions(true)) {
             if (f.isExternal() || f.isThunk()) continue;
             DecompileResults r = di.decompileFunction(f, 60, monitor);
@@ -103,7 +114,7 @@ public class FindWindowStores extends GhidraScript {
             while (it.hasNext()) {
                 PcodeOpAST op = it.next();
                 if (access) {
-                    accessSites(out, prog, f, op, min, max, tags, want);
+                    accessSites(out, prog, f, op, min, max, tags, want, walked);
                     continue;
                 }
                 if (op.getOpcode() != PcodeOp.CALL) continue;
@@ -131,8 +142,24 @@ public class FindWindowStores extends GhidraScript {
         out.close();
     }
 
+    // The four trailing columns of an access row, from the walk record at the same site (the one with the row's
+    // physical address when several), else from the row itself.
+    private String walkColumns(Map<Long, List<ReAccessWalk.Access>> walked, PcodeOpAST op, boolean window,
+                               long off, boolean store) {
+        List<ReAccessWalk.Access> at = walked.get(op.getSeqnum().getTarget().getOffset());
+        ReAccessWalk.Access hit = null;
+        if (at != null) {
+            for (ReAccessWalk.Access x : at) if (window ? x.physical == off : at.size() == 1) hit = x;
+        }
+        if (hit == null)
+            return "\t" + (window ? "0x" + Long.toHexString(off) : "") + "\t" + (store ? "store" : "load") + "\t"
+                + (window ? "absolute" : "base+offset") + "\t";
+        return "\t0x" + Long.toHexString(hit.physical) + "\t" + hit.op + "\t" + hit.addressing + "\t"
+            + (hit.loadSite == null ? "" : "0x" + Long.toHexString(hit.loadSite.getOffset()));
+    }
+
     private void accessSites(PrintWriter out, String prog, Function f, PcodeOpAST op, long min, long max,
-                             Set<String> tags, Pattern want) {
+                             Set<String> tags, Pattern want, Map<Long, List<ReAccessWalk.Access>> walked) {
         int oc = op.getOpcode();
         String fn = f.getName();
         if (oc != PcodeOp.STORE && oc != PcodeOp.LOAD) {
@@ -143,13 +170,15 @@ public class FindWindowStores extends GhidraScript {
                 String val = oc == PcodeOp.COPY && op.getInput(0).isConstant()
                     ? "0x" + Long.toHexString(op.getInput(0).getOffset()) : "";
                 out.println(prog + "\t" + fn + "\t" + op.getSeqnum().getTarget() + "\tw\t" + o.getSize()
-                    + "\twindow\t\t0x" + Long.toHexString(phys(o.getOffset())) + "\t" + val + "\tvar");
+                    + "\twindow\t\t0x" + Long.toHexString(phys(o.getOffset())) + "\t" + val + "\tvar"
+                    + walkColumns(walked, op, true, phys(o.getOffset()), true));
             }
             for (int k = 0; k < op.getNumInputs(); k++) {
                 Varnode in = op.getInput(k);
                 if (in.getDef() == null && isVar(in) && inRange(phys(in.getOffset()), min, max))
                     out.println(prog + "\t" + fn + "\t" + op.getSeqnum().getTarget() + "\tr\t" + in.getSize()
-                        + "\twindow\t\t0x" + Long.toHexString(phys(in.getOffset())) + "\t\tvar");
+                        + "\twindow\t\t0x" + Long.toHexString(phys(in.getOffset())) + "\t\tvar"
+                        + walkColumns(walked, op, true, phys(in.getOffset()), false));
             }
             return;
         }
@@ -175,7 +204,8 @@ public class FindWindowStores extends GhidraScript {
             if (x.isConst()) val = "0x" + Long.toHexString(x.off);
         }
         out.println(prog + "\t" + fn + "\t" + op.getSeqnum().getTarget() + "\t" + (st ? "w" : "r") + "\t"
-            + size + "\t" + tag + "\t" + expr + "\t0x" + Long.toHexString(off) + "\t" + val + "\t" + note);
+            + size + "\t" + tag + "\t" + expr + "\t0x" + Long.toHexString(off) + "\t" + val + "\t" + note
+            + walkColumns(walked, op, e.isConst(), off, st));
     }
 
     private static boolean isVar(Varnode v) {
@@ -189,11 +219,7 @@ public class FindWindowStores extends GhidraScript {
 
     // Physical address of a kernel-segment or XKPHYS constant; others unchanged.
     private static long phys(long v) {
-        long hi32 = v >>> 32;
-        long lo = v & 0xffffffffL;
-        if ((hi32 == 0xffffffffL || hi32 == 0) && lo >= 0x80000000L && lo < 0xc0000000L) return lo & 0x1fffffffL;
-        if ((v >>> 62) == 2) return v & 0xffffffffffL;
-        return v;
+        return RePhysical.mips(v);
     }
 
     // Fold a varnode to base expression + constant offset by walking its defining

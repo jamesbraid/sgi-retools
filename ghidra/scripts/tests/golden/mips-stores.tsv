@@ -1,0 +1,41 @@
+mips.bin	FUN_bfc00000	bfc00000	r	8	window		0x1fc00100		var
+mips.bin	FUN_bfc00000	bfc00000	w	4	window		0x1fc00800		var
+mips.bin	FUN_bfc00000	bfc00000	r	4	window		0x1fc00800		var
+mips.bin	FUN_bfc00000	bfc00010	r	8	window		0x1fc00200		var
+mips.bin	FUN_bfc00000	bfc00010	w	4	window		0x1fc00800		var
+mips.bin	FUN_bfc00000	bfc00020	w	4	window		0x1fc00800		var
+mips.bin	FUN_bfc00000	bfc00038	w	4	window		0x1fc00800		var
+mips.bin	FUN_bfc00000	bfc00040	w	4	window		0x1fc00800		var
+mips.bin	FUN_bfc00000	bfc00220	w	4	window		0x1fc00800		var
+mips.bin	FUN_bfc00100	bfc00118	r	4	window		0x1f000040		var
+mips.bin	FUN_bfc00100	bfc00140	r	4	window		0x1fc00810		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1f000010		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1f000010		var
+mips.bin	FUN_bfc00100	bfc00140	r	4	window		0x1f000010		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1f000020		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1f000020		var
+mips.bin	FUN_bfc00100	bfc00140	w	1	window		0x1f000030		var
+mips.bin	FUN_bfc00100	bfc00140	w	1	window		0x1f000030		var
+mips.bin	FUN_bfc00100	bfc00140	w	8	window		0x1f000038		var
+mips.bin	FUN_bfc00100	bfc00140	w	8	window		0x1f000038		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1f000040		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1f000040		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1f000044		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1f000044		var
+mips.bin	FUN_bfc00100	bfc00140	r	4	window		0x1f000044		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1fc00810		var
+mips.bin	FUN_bfc00100	bfc00140	w	4	window		0x1fc00810		var
+mips.bin	FUN_bfc00100	bfc00140	r	4	window		0x1fc00810		var
+mips.bin	FUN_bfc00300	bfc00304	r	1	window		0x1fc00340		var
+mips.bin	FUN_bfc00400	bfc00404	w	4	window		0x1f000060	0x0	var
+mips.bin	FUN_bfc00400	bfc00414	w	4	window		0x1f000064	0x0	var
+mips.bin	FUN_bfc00400	bfc00418	w	4	window		0x1f000060		var
+mips.bin	FUN_bfc00400	bfc00418	w	4	window		0x1f000064		var
+mips.bin	FUN_bfc00410	bfc00414	w	4	window		0x1f000064	0x0	var
+mips.bin	FUN_bfc00410	bfc00418	w	4	window		0x1f000064		var
+mips.bin	FUN_bfc00520	bfc0052c	r	8	window		0x1fc00500		var
+mips.bin	FUN_bfc00600	bfc00604	r	1	window		0x1fc0060c		var
+mips.bin	FUN_bfc00600	bfc00604	r	1	window		0x1fc00610		var
+mips.bin	FUN_bfc00600	bfc00604	r	4	window		0x1f000080		var
+mips.bin	FUN_bfc00600	bfc00610	w	4	window		0x1f000080		var
+mips.bin	FUN_bfc00600	bfc00610	w	4	window		0x1f000080		var
