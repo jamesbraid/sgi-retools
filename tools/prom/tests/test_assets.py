@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, HERE)
 import fixtures as fx  # noqa: E402
-from prom.assets import glyphs, png  # noqa: E402
+from prom.assets import glyphs, mips, png  # noqa: E402
 
 
 def pack_rows(rows):
@@ -96,6 +96,52 @@ class Glyphs(unittest.TestCase):
         self.assertIn('BBX 3 2 1 -1\nBITMAP\n60\n80\nENDCHAR', text)
         self.assertIn('FONT_ASCENT 5\nFONT_DESCENT 2', text)
         self.assertIn('DWIDTH 5 0', text)
+
+
+BASE = 0x81000000
+
+
+def run(*words, start=0):
+    m = mips.Machine(mips.decode_all(fx.mips(*words), BASE), BASE)
+    m.run(BASE + start)
+    return m
+
+
+class Mips(unittest.TestCase):
+    def test_a_stored_address_is_built_from_lui_and_addiu(self):
+        # t6 = 0x8105b971 (a negative low half), t7 = 0x1234; store t7 8 past it
+        m = run(fx.lui(14, 0x8106), fx.addiu(14, 14, -0x468f), fx.addiu(15, 0, 0x1234), fx.sw(15, 8, 14),
+                fx.JR_RA, fx.NOP)
+        self.assertEqual([(w.addr, w.value) for w in m.writes], [(0x8105b979, 0x1234)])
+
+    def test_a_call_through_a_table_slot_reports_the_slot_and_arguments(self):
+        m = run(fx.addiu(5, 0, 7), fx.lw(25, 8, 16), fx.addiu(6, 0, 255), fx.jalr(25), fx.addiu(7, 0, 3),
+                fx.JR_RA, fx.NOP)
+        (c,) = m.calls
+        self.assertEqual((c.slot, c.args[1:]), (8, [7, 255, 3]))
+
+    def test_a_loop_runs_to_its_count_and_the_fifth_argument_is_read_from_the_stack(self):
+        # s0 counts to 3 around a call; the stack slot at 16(sp) holds s0 + 10
+        m = run(fx.addiu(16, 0, 0), fx.addiu(18, 0, 3),
+                fx.addiu(8, 16, 10), fx.sw(8, 16, 29), fx.lw(25, 4, 17), fx.jalr(25), fx.addiu(5, 16, 100),
+                fx.addiu(16, 16, 1), fx.bne(16, 18, -7 & 0xffff), fx.NOP, fx.JR_RA, fx.NOP)
+        self.assertEqual([(c.args[1], c.stack0) for c in m.calls], [(100, 10), (101, 11), (102, 12)])
+
+    def test_a_value_read_from_an_out_parameter_is_tagged(self):
+        # the callee gets a pointer into the stack; the default stored after it is still tagged as its output
+        m = run(fx.addiu(4, 29, 24), fx.lw(25, 4, 17), fx.jalr(25), fx.NOP,
+                fx.addiu(8, 0, 9), fx.sw(8, 24, 29), fx.lw(6, 24, 29), fx.lw(25, 8, 17), fx.jalr(25), fx.NOP,
+                fx.JR_RA, fx.NOP)
+        self.assertEqual((m.calls[1].args[2], m.calls[1].tags[0]), (9, 'out:0'))
+
+    def test_a_branch_on_an_unknown_register_is_refused(self):
+        with self.assertRaises(mips.Unknown):
+            run(fx.lw(8, 0, 16), fx.bne(8, 0, 2), fx.NOP, fx.JR_RA, fx.NOP)
+
+    def test_routines_start_after_each_return_slot(self):
+        code = mips.decode_all(fx.mips(fx.NOP, fx.JR_RA, fx.NOP, fx.NOP, fx.JR_RA, fx.NOP, fx.NOP), BASE)
+        self.assertEqual(mips.routines(code), [0, 3, 6])
+        self.assertEqual(mips.routine_at([0, 3, 6], 4), (3, 6))
 
 
 if __name__ == '__main__':

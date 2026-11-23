@@ -161,3 +161,43 @@ def mips_text(n=64, swapped=False):
     if swapped:
         data[0::2], data[1::2] = bytes(data[1::2]), bytes(data[0::2])
     return bytes(data)
+
+
+# MIPS words for the asset tests; the register numbers are the usual ones (a0 = 4, t9 = 25, sp = 29, ra = 31).
+def lui(rt, imm):
+    return 0x3c000000 | rt << 16 | imm & 0xffff
+
+
+def addiu(rt, rs, imm):
+    return 0x24000000 | rs << 21 | rt << 16 | imm & 0xffff
+
+
+def ori(rt, rs, imm):
+    return 0x34000000 | rs << 21 | rt << 16 | imm & 0xffff
+
+
+def lw(rt, off, rs):
+    return 0x8c000000 | rs << 21 | rt << 16 | off & 0xffff
+
+
+def sw(rt, off, rs):
+    return 0xac000000 | rs << 21 | rt << 16 | off & 0xffff
+
+
+def jalr(rs):
+    return rs << 21 | 31 << 11 | 9
+
+
+def bne(rs, rt, off):
+    return 0x14000000 | rs << 21 | rt << 16 | off & 0xffff
+
+
+def sll(rd, rt, sh):
+    return rt << 16 | rd << 11 | sh << 6
+
+
+NOP, JR_RA = 0, 0x03e00008
+
+
+def mips(*words):
+    return struct.pack('>%dI' % len(words), *words)
