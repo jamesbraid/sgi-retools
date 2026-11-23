@@ -155,3 +155,27 @@ parameters and return its own body shows, callees first, so a call passes exactl
 arguments, and a `void` return to a function that never writes r8. The Ghidra
 image carries them under
 `/opt/re-scripts`; `tools/README-analysis.md` describes their output.
+
+## The walk classes
+
+`ReCallWalk`, `ReAccessWalk`, `ReBlockEval` and `RePhysical` are plain Java classes, not scripts: other scripts in
+this directory call them. Headless Ghidra builds a script directory as one bundle, so a script sees them only
+from its own directory, and a script kept elsewhere has to be copied in beside them.
+
+`ReCallWalk.walk` gives one record per call site (direct, constant, table or unresolved, with the image word a
+constant or table index was read from, and whether a jump is a tail call). `ReAccessWalk.walk` gives one record
+per load or store to a constant address outside the program's own memory, with its physical address, width,
+`load`/`store`/`rmw`, and whether the address is absolute or a displacement from a base loaded out of the image.
+A store in a branch delay slot is reported at the branch's address, not the slot's, because Ghidra gives it the branch's p-code. Both
+read the instructions' p-code through `ReBlockEval`, which follows constants through copies, adds, shifts and
+ors and through loads from read-only memory, within one basic block. A constant built in one block and used in
+the next is not followed, and a modify that crosses a branch is a load and a store. An instruction under a
+condition (a predicated IA-64 instruction, a MIPS branch-likely delay slot) leaves what it writes unknown, so a
+walk loses an address rather than reporting a wrong one. Not found: a conditional or indirect tail call (only a
+plain jump to another function's entry is a tail record), and a branch into a delay slot. `rmw` pairs a store
+with the nearest earlier load of the same address and width whose value an operation changed; a pure copy is a
+load and a store. They never run the decompiler, so a function it fails on still gives its records.
+
+`tests/re-scripts-check.sh` runs both on a MIPS image from `tests/mips_synthetic.py` and an IA-64 one from
+`ghidra/processors/ia64/tests/synthetic.py write-walk`, each built from hand-encoded words, and compares the
+records with what the generators built.

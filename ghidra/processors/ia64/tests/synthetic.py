@@ -30,6 +30,8 @@
   synthetic.py check-rotpr C   expected failure: the caller's p17 does not get the p16 the helper rotated (a documented limit)
   synthetic.py itc           the address of the timer self-test function
   synthetic.py check-itc C   check DecompileAt.java's C for it: two reads of ar.itc are not one value
+  synthetic.py write-walk DIR  write DIR/ia64.bin, ia64-functions.tsv and the records ghidra/scripts call and
+                             access walks must give for it (ia64-expected-calls.tsv, ia64-expected-accesses.tsv)
   synthetic.py frames        the addresses of the register stack programs' functions
   synthetic.py check-frames DIR  check DecompileAt.java's C for them
 
@@ -639,6 +641,79 @@ def prog_runs():
     ]
 
 
+def movl(r1, imm, qp=0):
+    """The L and X slots of movl r1=imm64, for an MLX bundle."""
+    lslot = (imm >> 22) & (2 ** 41 - 1)
+    x = slot(op(6), (6, 7, r1), (13, 7, imm), (27, 9, imm >> 7), (22, 5, imm >> 16), (21, 1, imm >> 21),
+             (36, 1, imm >> 63), qp=qp)
+    return lslot, x
+
+
+def walk_program():
+    """The shared walks' IA-64 fixture: (bundles, callee, calls, accesses). A function at BASE that makes two calls
+    (one through b6, loaded from a movl constant) and four accesses (a region 6 address and a bit-63 alias, each
+    loaded, then a different register stored), and a function it calls. Sites are bundle addresses: every instruction here is in slot 0."""
+    callee = BASE + 0x100
+    uncached, alias = 0xc000000010000010, 0x8000000010000020
+    out, calls, accesses = [], [], []
+
+    def here():
+        return BASE + 16 * len(out)
+
+    for r_addr, address, reg in ((14, uncached, 16), (17, alias, 18)):
+        lslot, x = movl(r_addr, address)
+        out.append(bundle(0x05, NOP_M, lslot, x))
+        accesses.append((here(), BASE, address, 8, 'load'))
+        out.append(bundle(0x01, slot(op(4), (30, 6, 0x03), (6, 7, reg), (20, 7, r_addr)), NOP_I, NOP_I))
+        accesses.append((here(), BASE, address, 8, 'store'))
+        out.append(bundle(0x01, slot(op(4), (30, 6, 0x33), (13, 7, 21), (20, 7, r_addr)), NOP_I, NOP_I))
+    # A predicated movl may not run, so the load after it has no known address and gives no record. A walk that
+    # ignored the predicate would report the second address.
+    lslot, x = movl(22, uncached)
+    out.append(bundle(0x05, NOP_M, lslot, x))
+    lslot, x = movl(22, alias, qp=6)
+    out.append(bundle(0x05, NOP_M, lslot, x))
+    out.append(bundle(0x01, slot(op(4), (30, 6, 0x03), (6, 7, 23), (20, 7, 22)), NOP_I, NOP_I))
+    lslot, x = movl(19, callee)
+    out.append(bundle(0x05, NOP_M, lslot, x))
+    out.append(bundle(0x01, NOP_M, mov_to_b(6, 19), NOP_I))
+    calls.append((here(), BASE, callee, 'constant'))
+    out.append(bundle(0x17, slot(op(1), (6, 3, 0), (13, 3, 6), (12, 1, 1), (32, 3, 1)), NOP_B, NOP_B))
+    calls.append((here(), BASE, callee, 'direct'))
+    out.append(bundle(0x17, br_call(callee, here()), NOP_B, NOP_B))
+    out.append(bundle(0x17, BR_RET, NOP_B, NOP_B))
+    assert BASE + 16 * len(out) <= callee
+    return out, callee, calls, accesses
+
+
+def phys(v):
+    """RePhysical.ia64 for the addresses this fixture uses."""
+    if v >> 61 in (6, 7):
+        return v & (2 ** 61 - 1)
+    return v & (2 ** 50 - 1) if v >> 63 and not (v >> 50) & 0x1fff else v
+
+
+def write_walk(out):
+    bundles, callee, calls, accesses = walk_program()
+    img = bytearray(0x200)
+    for i, b in enumerate(bundles):
+        img[16 * i:16 * i + 16] = b
+    img[0x100:0x110] = bundle(0x17, BR_RET, NOP_B, NOP_B)
+    os.makedirs(out, exist_ok=True)
+
+    def h(v):
+        return '0x%x' % v
+    with open(os.path.join(out, 'ia64.bin'), 'wb') as f:
+        f.write(img)
+    with open(os.path.join(out, 'ia64-functions.tsv'), 'w') as f:
+        f.write('%s\n%s\n' % (h(BASE), h(callee)))
+    with open(os.path.join(out, 'ia64-expected-calls.tsv'), 'w') as f:
+        f.write(''.join('\t'.join((h(s), h(fn), h(t), k, '-', '0')) + '\n' for s, fn, t, k in sorted(calls)))
+    with open(os.path.join(out, 'ia64-expected-accesses.tsv'), 'w') as f:
+        f.write(''.join('\t'.join((h(s), h(fn), h(a), h(phys(a)), str(w), o, 'absolute', '-', '-')) + '\n'
+                        for s, fn, a, w, o in sorted(accesses)))
+
+
 def image():
     return (b''.join(b for b, _ in cases()) + b''.join(c[0] for c in emu_cases())
             + b''.join(status_function()) + b''.join(caller_function()) + b''.join(pal_function())
@@ -799,6 +874,9 @@ def main():
             f.write(image())
         with open(os.path.join(sys.argv[2], 'emu.tsv'), 'w') as f:
             f.write(emu_spec())
+        return 0
+    if sys.argv[1] == 'write-walk':
+        write_walk(sys.argv[2])
         return 0
     if sys.argv[1] == 'check':
         got = {}
