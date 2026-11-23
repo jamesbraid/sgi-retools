@@ -94,8 +94,9 @@ public class FindWindowStores extends GhidraScript {
             (a.length > 4 ? a[4] : "field,chain,window").split(",")));
         Pattern want = a.length > 5 ? Pattern.compile(a[5]) : null;
         PrintWriter out = new PrintWriter(new FileWriter(a[0], true));
-        DecompInterface di = new DecompInterface();
-        di.openProgram(currentProgram);
+        ReDecompBudget budget = ReDecompBudget.fromEnvironment();
+        DecompInterface di = budget.open(currentProgram);
+        int ceiling = 0;
         String prog = currentProgram.getName();
         Map<Long, List<ReAccessWalk.Access>> walked = new HashMap<>();
         if (access) {
@@ -104,12 +105,14 @@ public class FindWindowStores extends GhidraScript {
         }
         for (Function f : currentProgram.getFunctionManager().getFunctions(true)) {
             if (f.isExternal() || f.isThunk()) continue;
-            DecompileResults r = di.decompileFunction(f, 60, monitor);
-            if (!r.decompileCompleted()) {
-                out.println(prog + "\t" + f.getName() + "\t?\t?\tdecompile failed");
+            ReDecompBudget.Result r = budget.run(di, f, 60, monitor);
+            if (r.failed()) {
+                out.println(prog + "\t" + f.getName() + "\t?\t?\tdecompile failed\t" + r.status + "\t" + r.reason
+                    + "\t" + String.valueOf(r.message).replaceAll("\\s+", " ").trim());
+                if (r.ceiling()) ceiling++;
                 continue;
             }
-            HighFunction hf = r.getHighFunction();
+            HighFunction hf = r.raw.getHighFunction();
             Iterator<PcodeOpAST> it = hf.getPcodeOps();
             while (it.hasNext()) {
                 PcodeOpAST op = it.next();
@@ -140,6 +143,7 @@ public class FindWindowStores extends GhidraScript {
             }
         }
         out.close();
+        if (ceiling > 0) println("FindWindowStores: " + ceiling + " functions hit the decompile time ceiling");
     }
 
     // The four trailing columns of an access row, from the walk record at the same site (the one with the row's

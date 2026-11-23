@@ -22,7 +22,7 @@ python3 $T/mips_synthetic.py write "$out/in"
 python3 ghidra/processors/ia64/tests/synthetic.py write-walk "$out/in"
 # The scripts under test, with the check's own scripts beside them: the helper classes are only visible to
 # scripts in their own directory, and the rest of tests/ needs classes that are not on the script path.
-cp ghidra/scripts/*.java $T/FixtureSetup.java $T/WalkDump.java "$out/scripts"
+cp ghidra/scripts/*.java $T/FixtureSetup.java $T/WalkDump.java $T/BudgetProbe.java "$out/scripts"
 
 # One headless run per fixture: the walks, then the scripts whose output is compared with a golden or a walk.
 run='proj=$(mktemp -d); cd /work
@@ -38,6 +38,13 @@ run='proj=$(mktemp -d); cd /work
             -deleteProject > /work/headless-$name.txt 2>&1
     }
     go mips 0xbfc00500 FUN_bfc00500 in/mips.bin -loader BinaryLoader -loader-baseAddr 0xbfc00000 -processor MIPS:BE:64:64-32addr
+    # The budget: a limit of 200 instructions stops the 600-instruction function the same way every time.
+    for n in 1 2; do
+        RE_DECOMPILE_BUDGET=200,50,1024 analyzeHeadless "$proj" budget$n -import in/mips.bin -loader BinaryLoader \
+            -loader-baseAddr 0xbfc00000 -processor MIPS:BE:64:64-32addr -noanalysis -scriptPath /work/scripts \
+            -postScript FixtureSetup.java in/mips-functions.tsv -postScript BudgetProbe.java /work/budget$n.tsv \
+            -deleteProject > /work/headless-budget$n.txt 2>&1
+    done
     go ia64 0x80100 FUN_ram_00080100 in/ia64.bin -loader BinaryLoader -loader-baseAddr 0x80000 -processor IA64:LE:64:default'
 cid=$($engine create -w /work -e HOME=/tmp "$tag" bash -c "$run")
 trap '$engine rm -f "$cid" >/dev/null 2>&1' EXIT
@@ -45,13 +52,14 @@ $engine cp "$out/in" "$cid:/work/in"
 $engine cp "$out/scripts" "$cid:/work/scripts"
 $engine start -a "$cid" >/dev/null 2>&1 || true
 for f in mips-calls.tsv mips-accesses.tsv mips-edges.tsv mips-sites.tsv mips-stores.tsv mips-helper.tsv headless-mips.txt \
-         ia64-calls.tsv ia64-accesses.tsv ia64-edges.tsv ia64-sites.tsv ia64-stores.tsv ia64-helper.tsv headless-ia64.txt; do
-    $engine cp "$cid:/work/$f" "$out/$f" || { echo "FAIL: Ghidra wrote no $f"; $engine cp "$cid:/work/headless-${f%%-*}.txt" "$out/" && tail -30 "$out/headless-${f%%-*}.txt"; exit 1; }
+         ia64-calls.tsv ia64-accesses.tsv ia64-edges.tsv ia64-sites.tsv ia64-stores.tsv ia64-helper.tsv headless-ia64.txt budget1.tsv budget2.tsv; do
+    $engine cp "$cid:/work/$f" "$out/$f" || { echo "FAIL: Ghidra wrote no $f"; exit 1; }
 done
 cp "$out"/in/*expected-*.tsv "$out/"
 status=0
 python3 $T/mips_synthetic.py check-walks "$out" mips- || status=1
 python3 $T/mips_synthetic.py check-walks "$out" ia64- || status=1
+python3 $T/mips_synthetic.py check-budget "$out" || status=1
 for p in mips ia64; do
     python3 $T/mips_synthetic.py check-golden "$out" $T/golden $p || status=1
     python3 $T/mips_synthetic.py check-sites "$out" $p || status=1

@@ -179,3 +179,7 @@ load and a store. They never run the decompiler, so a function it fails on still
 `tests/re-scripts-check.sh` runs both, and compares the default output of `DumpCallEdges` and `FindWindowStores` with the goldens in `tests/golden/` (taken from the scripts before the walks were added: the same rows, with the access rows' first ten columns unchanged), on a MIPS image from `tests/mips_synthetic.py` and an IA-64 one from
 `ghidra/processors/ia64/tests/synthetic.py write-walk`, each built from hand-encoded words, and compares the
 records with what the generators built.
+
+## The decompile budget
+
+`ReDecompBudget` applies the decompiler's three work limits (100,000 instructions, 50 MB, 1,024 jump-table entries, Ghidra's suggested ones) in `ReDecompileExport`, `FindWindowStores`, `DecompileFunctions` and `IA64Signatures`, and classifies each result as `complete`, `partial` or `failed` (reason `budget`, `ceiling` or `error`). The timeout the scripts pass is only a ceiling. `RE_DECOMPILE_BUDGET=INSTRUCTIONS,MB,ENTRIES` in the environment overrides the limits for a hand run; `--ghidra-export` sets it from its `--decompile-max-*` options. `FindWindowStores` appends the status, reason and message to its `decompile failed` row, `DecompileFunctions` appends `status=` to its `ok=` line, and `IA64Signatures` applies a parameter list only from a decompile that finished and reports how many functions hit the ceiling.

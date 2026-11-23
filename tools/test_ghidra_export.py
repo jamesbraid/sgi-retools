@@ -234,6 +234,50 @@ class PlanLanguage(unittest.TestCase):
             with open(os.path.join(job, 'ghidra.sh')) as f:
                 self.assertIn(' -noanalysis ', f.read())
 
+    def test_decompile_limits_reach_the_request_and_the_scripts(self):
+        with tempfile.TemporaryDirectory() as d:
+            obj, job = os.path.join(d, 'obj'), os.path.join(d, 'job')
+            os.mkdir(job)
+            with open(obj, 'wb') as f:
+                f.write(elf32(ge.EM_MIPS, '>'))
+            ge.prepare(['--job', job, '--decompile-all', obj])
+            default = json.load(open(os.path.join(job, 'export.json')))['budget']
+            job2 = os.path.join(d, 'job2')
+            os.mkdir(job2)
+            ge.prepare(['--job', job2, '--decompile-all', '--decompile-max-instructions', '500',
+                        '--decompile-max-payload', '7', '--decompile-max-jumptable', '9', obj])
+            given = json.load(open(os.path.join(job2, 'export.json')))['budget']
+            script = open(os.path.join(job2, 'ghidra.sh')).read()
+            with self.assertRaises(SystemExit):
+                ge.prepare(['--job', d, '--decompile-all', '--decompile-max-payload', '0', obj])
+        self.assertEqual(default, {'max_instructions': 100000, 'max_payload_mb': 50, 'max_jumptable_entries': 1024,
+                                   'other_options_reset': False})
+        self.assertEqual(given, {'max_instructions': 500, 'max_payload_mb': 7, 'max_jumptable_entries': 9,
+                                 'other_options_reset': True})
+        self.assertIn('export RE_DECOMPILE_BUDGET=500,7,9', script)
+
+    def test_finish_writes_the_budget_and_counts_ceiling_failures(self):
+        with tempfile.TemporaryDirectory() as d:
+            job = os.path.join(d, 'job')
+            os.mkdir(job)
+            budget = {'max_instructions': 5, 'max_payload_mb': 6, 'max_jumptable_entries': 7}
+            json.dump({'budget': budget}, open(os.path.join(job, 'export.json'), 'w'))
+            json.dump({'object': 'o', 'image_sha256': 'x', 'language': 'l', 'compiler_spec_requested': None,
+                       'bsim': False, 'exporting': True, 'object_path': 'o'}, open(os.path.join(job, 'plan.json'), 'w'))
+            open(os.path.join(job, 'rc'), 'w').write('0')
+            json.dump({'notes': [], 'unmatched': []}, open(os.path.join(job, 'types.json'), 'w'))
+            rows = [{'name': 'a', 'address': '0x1', 'complete': True, 'decompile_status': 'complete'},
+                    {'name': 'b', 'address': '0x2', 'complete': False, 'decompile_status': 'failed',
+                     'failure': {'reason': 'ceiling', 'message': 'timeout'}}]
+            open(os.path.join(job, 'functions.jsonl'), 'w').write(''.join(json.dumps(r) + '\n' for r in rows))
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                ge.finish(['--job', job])
+            out = json.load(open(os.path.join(job, 'decompile.json')))
+        self.assertEqual(out['budget'], budget)
+        self.assertEqual([f['decompile_status'] for f in out['functions']], ['complete', 'failed'])
+        self.assertIn('1 functions hit the decompile time ceiling', err.getvalue())
+
     def test_mips_elf_is_unchanged(self):
         script = self.plan(elf32(ge.EM_MIPS, '>'))
         self.assertNotIn('-processor', script)

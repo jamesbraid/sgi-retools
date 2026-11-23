@@ -1,5 +1,6 @@
 // Decompile named functions of the program Ghidra just analysed.
 // Arguments: OUTFILE name[,name...]
+// The work limits are ReDecompBudget's; RE_DECOMPILE_BUDGET overrides them.
 // A name may also be a virtual address written @0x...; for a shared object
 // Ghidra keeps the link address, so it is the one objdump shows. Needed for
 // static functions in a stripped library, which carry no symbol.
@@ -16,8 +17,8 @@ public class DecompileFunctions extends GhidraScript {
     public void run() throws Exception {
         String[] a = getScriptArgs();
         PrintWriter out = new PrintWriter(new FileWriter(a[0]));
-        DecompInterface di = new DecompInterface();
-        di.openProgram(currentProgram);
+        ReDecompBudget budget = ReDecompBudget.fromEnvironment();
+        DecompInterface di = budget.open(currentProgram);
         for (String n : a[1].split(",")) {
             List<Function> fs = new ArrayList<>();
             if (n.startsWith("@0x")) {
@@ -30,12 +31,13 @@ public class DecompileFunctions extends GhidraScript {
             if (fs.isEmpty()) { out.println("//// " + n + " NOT FOUND"); continue; }
             for (Function f : fs) {
                 long t0 = System.nanoTime();
-                DecompileResults r = di.decompileFunction(f, 120, monitor);
+                ReDecompBudget.Result r = budget.run(di, f, 120, monitor);
                 long ms = (System.nanoTime() - t0) / 1000000;
                 out.println("//// " + n + " @" + f.getEntryPoint() + " bytes=" + f.getBody().getNumAddresses()
-                    + " decompile_ms=" + ms + " ok=" + r.decompileCompleted());
-                if (r.decompileCompleted()) out.println(r.getDecompiledFunction().getC());
-                else out.println("// " + r.getErrorMessage());
+                    + " decompile_ms=" + ms + " ok=" + !r.failed() + " status=" + r.status
+                    + (r.failed() ? " reason=" + r.reason : ""));
+                if (!r.failed()) out.println(r.c());
+                else out.println("// " + r.message);
             }
         }
         out.close();

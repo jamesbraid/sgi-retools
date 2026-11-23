@@ -339,6 +339,30 @@ def check_sites(out, prefix):
     return bad
 
 
+def check_budget(out):
+    rows = [r.split('\t') for r in open(os.path.join(out, 'budget1.tsv')).read().splitlines()]
+    same = open(os.path.join(out, 'budget1.tsv')).read() == open(os.path.join(out, 'budget2.tsv')).read()
+    status = {r[0]: r[1:3] for r in rows}
+    long_fn = 'FUN_bfc00a00'
+    bad = 0
+    if status.get(long_fn) != ['failed', 'budget']:
+        bad = 1
+        print('FAIL %s under a 200-instruction limit: %s' % (long_fn, status.get(long_fn)))
+    odd = [n for n, s in status.items() if n != long_fn and s[0] == 'failed']
+    if odd:
+        bad = 1
+        print('FAIL functions failed that should not have: %s' % odd)
+    if status.get('FUN_bfc00300', [''])[0] != 'partial':
+        bad = 1
+        print('FAIL the switch function should be partial (jump table not recovered): %s' % status.get('FUN_bfc00300'))
+    if not same:
+        bad = 1
+        print('FAIL two runs gave different statuses')
+    if not bad:
+        print('PASS budget: the long function fails on budget, the switch is partial, two runs agree')
+    return bad
+
+
 def selfcheck():
     im = build()
     assert len(im.words) * 4 < SIZE and max(im.words) - BASE < SIZE
@@ -354,6 +378,8 @@ def main(argv):
     if argv[1] == 'write':
         write(argv[2])
         return 0
+    if argv[1] == 'check-budget':
+        return check_budget(argv[2])
     if argv[1] == 'check-golden':
         return check_golden(argv[2], argv[3], argv[4])
     if argv[1] == 'check-sites':

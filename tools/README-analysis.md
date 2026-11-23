@@ -139,7 +139,8 @@ lists the options, and the top of `tools/ghidra-export.py` explains each.
 | `--decompile-component GLOB` | every function in the program-tree fragment named GLOB; an SN2 PROM has one per FIT component (`SAL_B_5_04`, `PAL_A_generic_7_31`, ...) |
 | `--decompile-list FILE` | one name, glob, `@address` or `@range` per line |
 | `--decompile-all` | every function Ghidra found |
-| `--decompile-timeout SECONDS` | per function (60); a function that times out is tried once more with four times as long, and its JSON row says so (`timeout_retried_s`) |
+| `--decompile-timeout SECONDS` | per function (60), a ceiling against a hung decompiler; a function that times out is tried once more with four times as long, and its JSON row says so (`timeout_retried_s`) |
+| `--decompile-max-instructions N`, `--decompile-max-payload MB`, `--decompile-max-jumptable N` | the decompiler's work limits (100000, 50, 1024: Ghidra's suggested ones). They count work, not time, so what decompiles does not depend on host load. Each row gains `decompile_status` (`complete`, `partial` when its C warns that part of the body is missing, `failed`) and, when failed, `failure` (`reason` `budget`, `ceiling` or `error`, and the decompiler's message); `decompile.json` gains `budget`, whose `other_options_reset` is true for non-default limits (the decompiler then takes its other options from a fresh options object, which can change its output). Only a `ceiling` failure depends on time |
 | `--types SPEC.json` | structure types to apply first (`ghidra/README.md`) |
 | `--mdebug` | import the `.mdebug` table of a 32-bit MIPSpro object (next section) |
 | `--dbg FILE.dbg` | apply the COFF symbols, or the CodeView NB09 publics, of a Windows NT separate debug file to an x86 PE image (next section) |

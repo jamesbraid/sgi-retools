@@ -17,8 +17,13 @@ Options (after OBJECT, a path inside the workspace):
                                           the import log or its FIT labels
   --decompile-list FILE                   one name, glob, @address or @range per line
   --decompile-all                         every function Ghidra found
-  --decompile-timeout SECONDS             per function (default 60); a function that times out is tried
+  --decompile-timeout SECONDS             per function (default 60); a ceiling against a hung decompiler,
+                                          not a limit on normal work. A function that times out is tried
                                           once more with four times as long
+  --decompile-max-instructions N          the decompiler's work limits, which count work and not time, so
+  --decompile-max-payload MB              what decompiles does not depend on host load (defaults: Ghidra's
+  --decompile-max-jumptable N             suggested 100000, 50 and 1024). Each function's row says whether it
+                                          is complete, partial or failed (budget, ceiling or error)
   --types SPEC.json                       structure types to apply first (see
                                           ghidra/README.md)
   --mdebug                                import the object's .mdebug symbol table
@@ -142,6 +147,8 @@ FLAT_DEFAULT_LANGUAGE = 'MIPS:BE:64:default'
 IA64_LANGUAGE = 'IA64:LE:64:default'
 WIDE_WINDOW = 0xc000000000000000
 PLAIN = re.compile(r'[A-Za-z0-9._-]+')
+# Ghidra 12.1.3's DecompileOptions.SUGGESTED_* limits; ghidra/scripts/ReDecompBudget.java reads the same.
+BUDGET_DEFAULTS = {'max_instructions': 100000, 'max_payload_mb': 50, 'max_jumptable_entries': 1024}
 RANGE = re.compile(r'@0x[0-9a-fA-F]+-0x[0-9a-fA-F]+')
 
 
@@ -266,6 +273,9 @@ def parser():
     p.add_argument('--decompile-list', metavar='FILE')
     p.add_argument('--decompile-all', action='store_true')
     p.add_argument('--decompile-timeout', type=int, default=60)
+    p.add_argument('--decompile-max-instructions', type=int, default=BUDGET_DEFAULTS['max_instructions'], metavar='N')
+    p.add_argument('--decompile-max-payload', type=int, default=BUDGET_DEFAULTS['max_payload_mb'], metavar='MB')
+    p.add_argument('--decompile-max-jumptable', type=int, default=BUDGET_DEFAULTS['max_jumptable_entries'], metavar='N')
     p.add_argument('--types', metavar='SPEC.json')
     p.add_argument('--mdebug', action='store_true')
     p.add_argument('--dbg', metavar='FILE.dbg')
@@ -447,7 +457,14 @@ def prepare(argv):
             globs.append(item)
         else:
             names.append(item)
-    request = {'all': args.decompile_all, 'names': names, 'glob': globs,
+    budget = {'max_instructions': args.decompile_max_instructions, 'max_payload_mb': args.decompile_max_payload,
+              'max_jumptable_entries': args.decompile_max_jumptable}
+    if min(budget.values()) < 1:
+        die('the decompile limits are positive')
+    # A non-default limit makes the decompiler take its other options from a fresh options object, which can
+    # change its output beyond the limits; a reader of decompile.json can see which kind of run it was.
+    budget['other_options_reset'] = any(budget[k] != v for k, v in BUDGET_DEFAULTS.items())
+    request = {'all': args.decompile_all, 'budget': budget, 'names': names, 'glob': globs,
                'addresses': addresses, 'ranges': ranges, 'components': args.decompile_component,
                'timeout': args.decompile_timeout,
                'types': types_spec(args.types, relocatable) if args.types else None}
@@ -463,7 +480,10 @@ def prepare(argv):
         stage.mkdir()
         image = stage / obj.name
         image.write_bytes(obj.read_bytes()[args.header:])
-    lines = ['set -u', 'JOB=%s' % shlex.quote(str(job))]
+    lines = ['set -u', 'JOB=%s' % shlex.quote(str(job)),
+             # The scripts that decompile before the export (IA64Signatures) read the same limits.
+             'export RE_DECOMPILE_BUDGET=%d,%d,%d' % (budget['max_instructions'], budget['max_payload_mb'],
+                                                       budget['max_jumptable_entries'])]
     heap = args.heap or (heap_for(obj.stat().st_size) if flat else None)
     if heap:
         lines.append('export GHIDRA_HEADLESS_MAXMEM=%s' % heap)
@@ -636,11 +656,16 @@ def finish(argv):
         document = {
             'image_sha256': plan['image_sha256'],
             'tool': 'ghidra ' + (version.group(1) if version else '(version not reported)'),
+            'budget': json.loads((job / 'export.json').read_text())['budget'],
             'language': plan['language'], 'compiler_spec_requested': plan['compiler_spec_requested'],
             'object': plan['object_path'], 'evidence': EVIDENCE, 'types': types, 'functions': functions}
         out = job / 'decompile.json'
         out.write_text(json.dumps(document, indent=1) + '\n', encoding='utf-8')
         done = sum(1 for f in functions if f.get('complete'))
+        ceiling = sum(1 for f in functions if (f.get('failure') or {}).get('reason') == 'ceiling')
+        if ceiling:
+            print('ghidra-export: %d functions hit the decompile time ceiling; whether they decompile depends on '
+                  'host load (raise --decompile-timeout)' % ceiling, file=sys.stderr)
         shown = os.path.relpath(out)
         print('ghidra-export: exported %d/%d functions to %s' % (done, len(functions), shown), file=sys.stderr)
         for note in types.get('notes', []):

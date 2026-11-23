@@ -61,21 +61,32 @@ public class IA64Signatures extends GhidraScript {
 				order.add(f);
 			}
 		}
-		DecompInterface d = new DecompInterface();
-		d.openProgram(currentProgram);
+		ReDecompBudget budget = ReDecompBudget.fromEnvironment();
+		DecompInterface d = budget.open(currentProgram);
 		int done = 0;
+		int ceiling = 0;
 		for (Function f : order) {
 			monitor.checkCancelled();
 			if (f.isThunk() || f.isExternal() || f.getSignatureSource() != SourceType.DEFAULT) {
 				continue;
 			}
-			DecompileResults r = d.decompileFunction(f, 60, monitor);
-			if (r.decompileCompleted() && commit(f, r.getHighFunction())) {
+			// A parameter list comes only from a decompile that finished, so a function the work limits stop
+			// keeps its default signature however busy the host is; one that hits the time ceiling is counted.
+			ReDecompBudget.Result r = budget.run(d, f, 60, monitor);
+			if (r.ceiling()) {
+				ceiling++;
+			}
+			if (!r.failed() && commit(f, r.raw.getHighFunction())) {
 				done++;
 			}
 		}
-		d.dispose();
+		if (d != null) {
+			d.dispose();
+		}
 		println(String.format("IA64Signatures: %d of %d functions", done, order.size()));
+		if (ceiling > 0) {
+			println(String.format("IA64Signatures: %d functions hit the decompile time ceiling", ceiling));
+		}
 	}
 
 	// Callees before callers, so a caller's decompilation already sees them; a

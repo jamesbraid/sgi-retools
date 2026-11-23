@@ -45,7 +45,6 @@ import com.google.gson.JsonParser;
 
 import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
 import ghidra.app.decompiler.DecompInterface;
-import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.script.GhidraScript;
 import ghidra.app.util.cparser.C.CParser;
 import ghidra.program.model.address.Address;
@@ -60,10 +59,6 @@ import ghidra.program.model.symbol.Symbol;
 
 public class ReDecompileExport extends GhidraScript {
     private static final CategoryPath CATEGORY = new CategoryPath("/re");
-    // The decompiler reports what it could not trust as block comments in the
-    // C it prints. These are the shapes it uses.
-    private static final Pattern WARNING = Pattern.compile(
-        "/\\*\\s*((?:WARNING|Warning|Unable|Could not|Bad instruction|Control flow|Removing unreachable|Restart)[^*]*(?:\\*(?!/)[^*]*)*)\\*/");
 
     private static final int RETRY_TIMEOUT_FACTOR = 4;
 
@@ -366,6 +361,15 @@ public class ReDecompileExport extends GhidraScript {
 
     // ---- export ----------------------------------------------------------
 
+    private ReDecompBudget budget;
+
+    private static Map<String, Object> failureRow(String reason, String message) {
+        Map<String, Object> failure = new LinkedHashMap<>();
+        failure.put("reason", reason);
+        failure.put("message", message);
+        return failure;
+    }
+
     private Map<String, Object> record(DecompInterface engine, Function function, int timeout) {
         Map<String, Object> row = new LinkedHashMap<>();
         Symbol symbol = function.getSymbol();
@@ -377,28 +381,25 @@ public class ReDecompileExport extends GhidraScript {
         row.put("signature", function.getPrototypeString(false, false));
         row.put("calling_convention", function.getCallingConventionName());
         long start = System.nanoTime();
-        DecompileResults result = engine.decompileFunction(function, timeout, monitor);
-        if (result != null && result.isTimedOut()) {
+        ReDecompBudget.Result result = budget.run(engine, function, timeout, monitor);
+        if (result.ceiling()) {
             // A huge routine is slow, not undecompilable: __glCoGenerateNoXformHandler (17 KB) takes 121 s.
-            result = engine.decompileFunction(function, timeout * RETRY_TIMEOUT_FACTOR, monitor);
+            result = budget.run(engine, function, timeout * RETRY_TIMEOUT_FACTOR, monitor);
             row.put("timeout_retried_s", timeout * RETRY_TIMEOUT_FACTOR);
         }
         row.put("decompile_ms", (System.nanoTime() - start) / 1_000_000);
-        boolean complete = result != null && result.decompileCompleted()
-            && result.getDecompiledFunction() != null;
-        row.put("complete", complete);
-        List<String> warnings = new ArrayList<>();
-        if (complete) {
-            String c = result.getDecompiledFunction().getC();
-            row.put("c", c);
-            Matcher matcher = WARNING.matcher(c);
-            while (matcher.find()) {
-                warnings.add(matcher.group(1).trim().replaceAll("\\s+", " "));
-            }
+        row.put("complete", !result.failed());
+        row.put("decompile_status", result.status);
+        List<String> warnings = new ArrayList<>(result.warnings);
+        if (result.failed()) {
+            row.put("error", result.ceiling() ? "timeout" : result.message);
+            Map<String, Object> failure = new LinkedHashMap<>();
+            failure.put("reason", result.reason);
+            failure.put("message", result.message);
+            row.put("failure", failure);
         }
         else {
-            row.put("error", result == null ? "decompiler did not open program"
-                : result.isTimedOut() ? "timeout" : String.valueOf(result.getErrorMessage()));
+            row.put("c", result.c());
         }
         row.put("warnings", warnings);
         return row;
@@ -513,8 +514,12 @@ public class ReDecompileExport extends GhidraScript {
                 }
             }
         }
-        DecompInterface engine = new DecompInterface();
-        boolean opened = engine.openProgram(currentProgram);
+        budget = request.has("budget") ? new ReDecompBudget(
+            request.getAsJsonObject("budget").get("max_instructions").getAsInt(),
+            request.getAsJsonObject("budget").get("max_payload_mb").getAsInt(),
+            request.getAsJsonObject("budget").get("max_jumptable_entries").getAsInt()) : ReDecompBudget.fromEnvironment();
+        DecompInterface engine = budget.open(currentProgram);
+        boolean opened = engine != null;
         int done = 0;
         try (PrintWriter out = writer(directory.resolve("functions.jsonl"))) {
             for (Function function : chosen) {
@@ -533,6 +538,8 @@ public class ReDecompileExport extends GhidraScript {
                         row.put("name", function.getName());
                         row.put("address", hex(function.getEntryPoint()));
                         row.put("complete", false);
+                        row.put("decompile_status", "failed");
+                        row.put("failure", failureRow("error", error.toString()));
                         row.put("error", error.toString());
                         row.put("warnings", new ArrayList<String>());
                     }
@@ -542,6 +549,8 @@ public class ReDecompileExport extends GhidraScript {
                     row.put("name", function.getName());
                     row.put("address", hex(function.getEntryPoint()));
                     row.put("complete", false);
+                    row.put("decompile_status", "failed");
+                    row.put("failure", failureRow("error", "decompiler did not open program"));
                     row.put("error", "decompiler did not open program");
                     row.put("warnings", new ArrayList<String>());
                 }
@@ -556,7 +565,9 @@ public class ReDecompileExport extends GhidraScript {
             }
         }
         finally {
-            engine.dispose();
+            if (engine != null) {
+                engine.dispose();
+            }
         }
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("structs", structsMade);
