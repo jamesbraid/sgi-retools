@@ -45,6 +45,18 @@ RUN curl -fsSL -o /tmp/unshieldv3.tar.gz https://github.com/wfr/unshieldv3/archi
     done \
  && test -n "$(find /tmp/ut -type f)"
 
+# m2c has no releases (the PyPI m2c is another program): take the techomancer/m2c fork at the commit the
+# workspaces pin. If GitHub regenerates its tarballs the sha256 fails the build closed; update the pin then.
+FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d AS m2c
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL -o /tmp/m2c.tar.gz https://github.com/techomancer/m2c/archive/9dc1bd4bcd96fc343274df2799d18e287d29fb71.tar.gz \
+ && echo '5e690478f97fa53944b5acd982949ea157ed6f9da3cff7ae40c5cf2df9c6c4db  /tmp/m2c.tar.gz' | sha256sum -c - \
+ && mkdir /opt/m2c \
+ && tar -C /opt/m2c --strip-components=1 -xzf /tmp/m2c.tar.gz \
+ && echo 9dc1bd4bcd96fc343274df2799d18e287d29fb71 > /opt/m2c/COMMIT
+
 FROM docker.io/library/debian:trixie-slim@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d
 
 # binutils-mips64-linux-gnuabi64 (2.44) gives mips64-linux-gnuabi64-objdump,
@@ -80,6 +92,7 @@ RUN apt-get update \
 # drivers.
 RUN python3 -m pip install --no-cache-dir --break-system-packages \
       pyelftools==0.32 \
+      rabbitizer==1.16.2 \
       spimdisasm==1.42.4 \
       capstone==5.0.6 \
       unicorn==2.1.4 \
@@ -96,6 +109,10 @@ RUN ia64-linux-gnu-objdump -i | grep -q ia64
 COPY --from=unshieldv3 /tmp/ub/unshieldv3 /usr/local/bin/
 # unshieldv3 help prints usage and exits 1.
 RUN unshieldv3 help 2>&1 | grep -q '^usage'
+
+COPY --from=m2c /opt/m2c /opt/m2c
+RUN printf '#!/bin/sh\nexec python3 /opt/m2c/m2c.py "$@"\n' > /usr/local/bin/m2c && chmod +x /usr/local/bin/m2c \
+ && m2c --help >/dev/null
 
 # Fail the build if an extractor is missing, not the first time someone unpacks a driver.
 RUN 7z i >/dev/null && unrar-free --version >/dev/null && unshield -V >/dev/null && cabextract --version >/dev/null \

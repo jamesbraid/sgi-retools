@@ -164,6 +164,10 @@ parameters and return each function's body shows, callees first), so a call pass
 arguments. `ghidra/processors/ia64/tests/DecompileAt.java` is the test helper that makes and decompiles
 functions at addresses in a small flat image; it is not part of the export.
 
+## m2c on a flat PROM segment
+
+The toolchain image carries m2c (the `techomancer/m2c` fork at the commit crime, kona and odsy pin, as `m2c`), spimdisasm 1.42.4 and rabbitizer 1.16.2. `tools/m2c_flat.py --prom X.prom.json --code X.code.json --segment NAME` decompiles each function of a promkit segment in its own m2c process. It drives spimdisasm's Python API, because the command line misplaces the data of a segment whose regions do not run at their offsets: one text section per function, its jump tables as read-only sections with a `jlabel` at each target (m2c refuses a `jr` without them), and every callee named from the code file. A branch m2c rejects fails that function only, and a CPU limit per process (`--cpu-seconds`) stops a runaway one. The assembly and C go under `.cache/m2c/<image sha256 prefix>/<segment>/` (the tool refuses an `--out` inside a work tree where git does not ignore it); only `X.m2c-status.json` leaves, with per function `complete`, `partial` (an `M2C_ERROR` or a read of an unset register) or `failed`, and no C. m2c output is navigation, not evidence. `tools/test_m2c_flat.py` checks it on a synthetic MIPS segment: `tools/re-run python3 retools/tools/test_m2c_flat.py`.
+
 ## SN2 PROM (IA-64) in Ghidra
 
 The SGI Altix and Prism system firmware is an IA-64 flash image. The Ghidra image carries the IA-64
