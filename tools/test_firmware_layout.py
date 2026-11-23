@@ -70,6 +70,15 @@ class Layout(unittest.TestCase):
         seg = fl.firmware_segments(CONFIG["binaries"][2], "fw/l2.bin", l2_container(PPC_CODE, b"kernel"))
         self.assertEqual(seg, [("flash", PPC_CODE, L2_LOAD), ("kernel", b"kernel", KERNEL_LOAD)])
 
+    def test_a_prom_image_gives_its_segments_by_name_and_load_address(self):
+        sys.path.insert(0, os.path.join(HERE, "prom", "tests"))
+        import fixtures
+        group = {"layout": "sgi-prom", "arch": "mips", "paths": ["fw/*.image"]}
+        with tempfile.TemporaryDirectory() as root:
+            write_root(root, {"fw/ip32prom.image": fixtures.installer(fixtures.o2_flash())})
+            arch, body, load, _g = fl.segment_at({"binaries": [group]}, root, "fw/ip32prom.image(firmware)")
+        self.assertEqual((arch, load, body[8:12]), ("mips", 0x81000000, b"SHDR"))
+
     def test_keys_split_into_path_and_member(self):
         self.assertEqual(fl.split_segment_key("a/l1.bin(l1#2)"), ("a/l1.bin", "l1#2"))
         self.assertEqual(fl.split_segment_key("a/l1.bin:l1#2"), ("a/l1.bin", "l1#2"))

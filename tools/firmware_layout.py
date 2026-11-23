@@ -24,11 +24,15 @@ def _num(s):
 def firmware_segments(g, rel, data):
     """[(member, body, load address)] for one file of a group that names a `layout`: the code a controller
     runs, cut out of its container. `flat` is a file mapped at the group's `load` from its `offset`; the
-    sysco layouts split the controllers' ESTFBINR images the way sysco's firmware tables do."""
+    sysco layouts split the controllers' ESTFBINR images the way sysco's firmware tables do; `sgi-prom` takes the
+    segments of a PROM image from tools/prom (the members are its segment names, so `ip32prom.image(firmware)`)."""
     layout = g['layout']
     if layout == 'flat':
         off = _num(g.get('offset', 0))
         return [('', data[off:], _num(g['load']))] if off < len(data) else []
+    if layout == 'sgi-prom':
+        from prom import analyze
+        return [(s.name, s.data, s.load) for s in analyze(data).segments if s.load is not None]
     if data[:8] != b'ESTFBINR':
         return []
     import zlib
