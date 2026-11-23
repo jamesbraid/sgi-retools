@@ -49,6 +49,11 @@ Options (after OBJECT, a path inside the workspace):
                                           named GLOB, TYPE a type already in the program such as
                                           "__GLCOcontextRec *"; repeatable. Rules apply in the order
                                           given, calling conventions first
+  --hand-functions FILE                   a JSON list of {"entry": "0x..", "end": "0x..", "name": ".."}
+                                          (end exclusive, machine addresses): create each function with
+                                          exactly that body before analysis, and after it put back any body
+                                          analysis moved, dropping an automatic function that overlaps one
+                                          (ghidra/scripts/ReHandFunctions.java)
   --pre-script FILE  --post-script FILE   run an extra Ghidra script (repeatable, in order): pre-scripts
                                           after the importers of --dbg, --pdb and --mdebug and before
                                           analysis, post-scripts after analysis and the options above
@@ -149,6 +154,7 @@ WIDE_WINDOW = 0xc000000000000000
 PLAIN = re.compile(r'[A-Za-z0-9._-]+')
 # Ghidra 12.1.3's DecompileOptions.SUGGESTED_* limits; ghidra/scripts/ReDecompBudget.java reads the same.
 BUDGET_DEFAULTS = {'max_instructions': 100000, 'max_payload_mb': 50, 'max_jumptable_entries': 1024}
+HAND_NAME = re.compile(r'[A-Za-z0-9._$-]+')
 RANGE = re.compile(r'@0x[0-9a-fA-F]+-0x[0-9a-fA-F]+')
 
 
@@ -284,6 +290,7 @@ def parser():
     p.add_argument('--callconv', action='append', default=[], metavar='CONV:GLOB[,GLOB]')
     p.add_argument('--callconv-file', metavar='FILE')
     p.add_argument('--param-type', action='append', default=[], metavar='GLOB:INDEX:TYPE')
+    p.add_argument('--hand-functions', metavar='FILE')
     p.add_argument('--pre-script', action='append', default=[], metavar='FILE')
     p.add_argument('--post-script', action='append', default=[], metavar='FILE')
     p.add_argument('--bsim-db', metavar='NAME')
@@ -345,6 +352,30 @@ def extra_scripts(files, option):
     return paths
 
 
+def hand_functions(path):
+    """The --hand-functions list, checked: each entry below its end, no two bodies overlapping."""
+    try:
+        items = json.loads(pathlib.Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError) as error:
+        die('cannot read --hand-functions %s: %s' % (path, error))
+    if not isinstance(items, list):
+        die('--hand-functions wants a JSON list')
+    spans = []
+    for item in items:
+        try:
+            entry, end, name = int(item['entry'], 16), int(item['end'], 16), item['name']
+        except (KeyError, TypeError, ValueError):
+            die('--hand-functions: each item is {"entry": "0x..", "end": "0x..", "name": ".."}, got %r' % (item,))
+        if not entry < end or not isinstance(name, str) or not HAND_NAME.fullmatch(name):
+            die('--hand-functions: %r is not a function body with a name of letters, digits and . _ $ -' % (item,))
+        spans.append((entry, end, name))
+    spans.sort()
+    for (a, b, n), (c, d, m) in zip(spans, spans[1:]):
+        if c < b:
+            die('--hand-functions: %s and %s overlap' % (n, m))
+    return spans
+
+
 def heap_for(size):
     """The headless heap for a flat image: 2G plus 1G per MiB, from 2G to 14G."""
     return '%dG' % min(14, max(2, 2 + -(-size // (1 << 20))))
@@ -387,6 +418,7 @@ def prepare(argv):
     if args.heap and not re.fullmatch(r'[1-9][0-9]*[MG]', args.heap):
         die('--heap is a size such as 14G or 4096M')
     rules = retype_rules(args)
+    hand = hand_functions(args.hand_functions) if args.hand_functions else None
     pre_scripts = extra_scripts(args.pre_script, '--pre-script')
     post_scripts = extra_scripts(args.post_script, '--post-script')
     names = [s.name for s in pre_scripts + post_scripts]
@@ -541,8 +573,15 @@ def prepare(argv):
             if not path.is_file():
                 die('no debug file %s' % flag)
             argv += ['-preScript', script, str(path)]
+    if hand:
+        window = flat['window'] if flat else 0
+        (job / 'hand-functions.json').write_text(json.dumps(
+            [{'entry': '0x%x' % (a + window), 'end': '0x%x' % (b + window), 'name': n} for a, b, n in hand]) + '\n')
+        argv += ['-preScript', 'ReHandFunctions.java', str(job / 'hand-functions.json')]
     for script in pre_scripts:
         argv += ['-preScript', script.name]
+    if hand:
+        argv += ['-postScript', 'ReHandFunctions.java', str(job / 'hand-functions.json'), 'restore']
     if rules:
         (job / 'retype.tsv').write_text('\n'.join(rules) + '\n')
         argv += ['-postScript', 'ReFunctionTypes.java', str(job / 'retype.tsv')]
@@ -578,7 +617,8 @@ def prepare(argv):
         'compiler_spec_requested': spec, 'relocatable': relocatable, 'exporting': exporting,
         'bsim': bool(args.bsim_db), 'mdebug_seeds': len(seeds), 'object_path': args.object,
         'flat': flat, 'dbg': args.dbg, 'pdb': args.pdb, 'returning': returning, 'retype_rules': rules,
-        'pre_scripts': [str(s) for s in pre_scripts], 'post_scripts': [str(s) for s in post_scripts]}, indent=1) + '\n')
+        'pre_scripts': [str(s) for s in pre_scripts], 'post_scripts': [str(s) for s in post_scripts],
+        'hand_functions': len(hand or [])}, indent=1) + '\n')
     print('ghidra-export: %s (%s, %d .mdebug names seeded)'
           % (args.object, language or 'language from the %s header' % header_kind, len(seeds)),
           file=sys.stderr)
@@ -618,7 +658,7 @@ def finish(argv):
     text = headless.read_text(errors='replace') if headless.is_file() else ''
     rc = int((job / 'rc').read_text()) if (job / 'rc').is_file() else 1
     # What the option scripts print, and what the user's own scripts print.
-    reported = ['ReDbgImport.java> ', 'RePdbImport.java> ', 'ReReturning.java> ', 'ReFunctionTypes.java> ']
+    reported = ['ReHandFunctions.java> ', 'ReDbgImport.java> ', 'RePdbImport.java> ', 'ReReturning.java> ', 'ReFunctionTypes.java> ']
     reported += ['%s> ' % pathlib.Path(s).name for s in plan.get('pre_scripts', []) + plan.get('post_scripts', [])]
     for line in text.splitlines():
         if 're-' in line and ('re-bsim:' in line or 're-decompile-export:' in line or 're-symbols:' in line or 're-gp:' in line):
@@ -627,6 +667,10 @@ def finish(argv):
             print('ghidra-export: ' + line.split('> ', 1)[-1], file=sys.stderr)
     if rc != 0:
         die('Ghidra exited %d; see %s' % (rc, headless))
+    hand = plan.get('hand_functions', 0)
+    if hand and len(re.findall(r'ReHandFunctions: %d functions' % hand, text)) < 2:
+        die('--hand-functions: ReHandFunctions did not report all %d functions before and after analysis; see %s'
+            % (hand, headless))
     if plan['bsim'] and 're-bsim: ' not in text:
         errors = [l for l in text.splitlines() if 'ERROR' in l and 'DWARF' not in l]
         die('the BSim step failed and nothing was added to the database'

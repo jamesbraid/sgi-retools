@@ -64,6 +64,7 @@ Each script has its use in the opening comment. Run inside an image that has Ghi
 | `FindWindowStores.java` | post-script | lists calls of a store helper with the folded base-plus-offset address, or with helper `-` every load and store with its base tag (`field`, `chain`, `window`), base expression and offset. Access rows end with `physical`, `op` (`load`, `store`, `rmw`), `addressing` (`absolute`, `base+offset`) and `load_site`, from `ReAccessWalk` |
 | `MarkVolatileWindows.java` | post-script, before the decompile script | declares address ranges volatile so the decompiler prints every store to a command window at a fixed address |
 | `DumpCallEdges.java` | post-script | dumps call edges and unresolved indirect calls. With a second argument `sites`, one row per call site instead, with `site`, `target` and `resolved_by` after the four columns, from `ReCallWalk` |
+| `ReHandFunctions.java` | pre-script, and post-script with `restore` | creates functions with exactly the bodies in a JSON list, so analysis cannot merge or split them; after analysis it puts back any body that moved and drops an automatic function that overlaps one. `--ghidra-export --hand-functions FILE` runs both |
 | `ApplyStruct.java` | post-script, before the decompile script | gives functions a typed first parameter from a C header |
 
 How the two IRIX scripts decide.

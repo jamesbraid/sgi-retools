@@ -22,7 +22,7 @@ python3 $T/mips_synthetic.py write "$out/in"
 python3 ghidra/processors/ia64/tests/synthetic.py write-walk "$out/in"
 # The scripts under test, with the check's own scripts beside them: the helper classes are only visible to
 # scripts in their own directory, and the rest of tests/ needs classes that are not on the script path.
-cp ghidra/scripts/*.java $T/FixtureSetup.java $T/WalkDump.java $T/BudgetProbe.java "$out/scripts"
+cp ghidra/scripts/*.java $T/FixtureSetup.java $T/WalkDump.java $T/BudgetProbe.java $T/HandProbe.java "$out/scripts"
 
 # One headless run per fixture: the walks, then the scripts whose output is compared with a golden or a walk.
 run='proj=$(mktemp -d); cd /work
@@ -45,6 +45,15 @@ run='proj=$(mktemp -d); cd /work
             -postScript FixtureSetup.java in/mips-functions.tsv -postScript BudgetProbe.java /work/budget$n.tsv \
             -deleteProject > /work/headless-budget$n.txt 2>&1
     done
+    # Hand functions: set before analysis, and put back after it.
+    m="-import in/mips.bin -loader BinaryLoader -loader-baseAddr 0xbfc00000 -processor MIPS:BE:64:64-32addr -noanalysis -scriptPath /work/scripts"
+    analyzeHeadless "$proj" hpre $m -preScript ReHandFunctions.java in/hand-pair.json \
+        -postScript HandProbe.java dump pre /work/hand.tsv -deleteProject > /work/headless-hand-pre.txt 2>&1
+    analyzeHeadless "$proj" hpost $m -postScript HandProbe.java auto -postScript HandProbe.java dump merged /work/hand.tsv \
+        -postScript ReHandFunctions.java in/hand-pair.json restore -postScript HandProbe.java dump restored /work/hand.tsv \
+        -deleteProject > /work/headless-hand-post.txt 2>&1
+    analyzeHeadless "$proj" hdrop $m -postScript HandProbe.java auto -postScript ReHandFunctions.java in/hand-drop.json restore \
+        -postScript HandProbe.java dump drop /work/hand.tsv -deleteProject > /work/headless-hand-drop.txt 2>&1
     go ia64 0x80100 FUN_ram_00080100 in/ia64.bin -loader BinaryLoader -loader-baseAddr 0x80000 -processor IA64:LE:64:default'
 cid=$($engine create -w /work -e HOME=/tmp "$tag" bash -c "$run")
 trap '$engine rm -f "$cid" >/dev/null 2>&1' EXIT
@@ -52,7 +61,7 @@ $engine cp "$out/in" "$cid:/work/in"
 $engine cp "$out/scripts" "$cid:/work/scripts"
 $engine start -a "$cid" >/dev/null 2>&1 || true
 for f in mips-calls.tsv mips-accesses.tsv mips-edges.tsv mips-sites.tsv mips-stores.tsv mips-helper.tsv headless-mips.txt \
-         ia64-calls.tsv ia64-accesses.tsv ia64-edges.tsv ia64-sites.tsv ia64-stores.tsv ia64-helper.tsv headless-ia64.txt budget1.tsv budget2.tsv; do
+         ia64-calls.tsv ia64-accesses.tsv ia64-edges.tsv ia64-sites.tsv ia64-stores.tsv ia64-helper.tsv headless-ia64.txt budget1.tsv budget2.tsv hand.tsv headless-hand-drop.txt; do
     $engine cp "$cid:/work/$f" "$out/$f" || { echo "FAIL: Ghidra wrote no $f"; exit 1; }
 done
 cp "$out"/in/*expected-*.tsv "$out/"
@@ -60,6 +69,7 @@ status=0
 python3 $T/mips_synthetic.py check-walks "$out" mips- || status=1
 python3 $T/mips_synthetic.py check-walks "$out" ia64- || status=1
 python3 $T/mips_synthetic.py check-budget "$out" || status=1
+python3 $T/mips_synthetic.py check-hand "$out" || status=1
 for p in mips ia64; do
     python3 $T/mips_synthetic.py check-golden "$out" $T/golden $p || status=1
     python3 $T/mips_synthetic.py check-sites "$out" $p || status=1

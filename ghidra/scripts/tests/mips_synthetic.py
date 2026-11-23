@@ -9,6 +9,7 @@
                                          (DIR/P-edges.tsv, -stores.tsv, -helper.tsv) with the golden ones taken
                                          before the walks were added: edges and helper rows equal, access rows
                                          equal in their first ten columns and four columns longer
+  mips_synthetic.py check-hand DIR       check DIR/hand.tsv, what HandProbe.java saw around ReHandFunctions.java
   mips_synthetic.py check-sites DIR P    compare DumpCallEdges' sites rows (DIR/P-sites.tsv) with DIR/P-expected-calls.tsv
 
 No byte comes from an SGI image. The image is flat, loaded at BASE as MIPS:BE:64:64-32addr, and read-only
@@ -265,7 +266,43 @@ def access_rows(im):
                   for s, f, a, w, o, ad, b, ls in im.accesses)
 
 
+# The no-return pair at BASE+0x400: Ghidra merges it into one function; a curator's list splits it.
+PAIR = [{'entry': '0x%x' % (BASE + 0x400), 'end': '0x%x' % (BASE + 0x410), 'name': 'hand_a'},
+        {'entry': '0x%x' % (BASE + 0x410), 'end': '0x%x' % (BASE + 0x420), 'name': 'hand_b'}]
+DROP = PAIR[1:]
+
+
+def write_hand(out):
+    import json
+    for name, data in (('hand-pair.json', PAIR), ('hand-drop.json', DROP)):
+        with open(os.path.join(out, name), 'w') as f:
+            json.dump(data, f)
+
+
+def check_hand(out):
+    def rows(name):
+        return [tuple(l.split('\t')[1:]) for l in open(os.path.join(out, 'hand.tsv')).read().splitlines()
+                if l.split('\t')[0] == name]
+    pair = [('0x%x' % (BASE + 0x400), '0x%x' % (BASE + 0x410), 'hand_a'), ('0x%x' % (BASE + 0x410), '0x%x' % (BASE + 0x420), 'hand_b')]
+    want = {'pre': pair, 'restored': pair,
+            'merged': [('0x%x' % (BASE + 0x400), '0x%x' % (BASE + 0x420), 'FUN_bfc00400')],
+            'drop': [pair[1]]}
+    bad = 0
+    for name, w in want.items():
+        if rows(name) != w:
+            bad = 1
+            print('FAIL hand %s: got %s, want %s' % (name, rows(name), w))
+    log = open(os.path.join(out, 'headless-hand-drop.txt')).read()
+    if 'ReHandFunctions: dropped FUN_bfc00400' not in log or '1 functions, 1 restored, 1 dropped' not in log:
+        bad = 1
+        print('FAIL hand-drop did not report the overlapping automatic function')
+    if not bad:
+        print('PASS hand functions: set before analysis, restored after, an overlapping automatic one dropped')
+    return bad
+
+
 def write(out):
+    write_hand(out)
     im = build()
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, 'mips.bin'), 'wb') as f:
@@ -378,6 +415,8 @@ def main(argv):
     if argv[1] == 'write':
         write(argv[2])
         return 0
+    if argv[1] == 'check-hand':
+        return check_hand(argv[2])
     if argv[1] == 'check-budget':
         return check_budget(argv[2])
     if argv[1] == 'check-golden':

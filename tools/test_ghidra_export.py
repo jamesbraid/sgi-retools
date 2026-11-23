@@ -278,6 +278,62 @@ class PlanLanguage(unittest.TestCase):
         self.assertEqual([f['decompile_status'] for f in out['functions']], ['complete', 'failed'])
         self.assertIn('1 functions hit the decompile time ceiling', err.getvalue())
 
+    def test_hand_function_names_are_checked(self):
+        for name in ('a b', 'x;y', '', 'a\nb', "a'b", 'a/b'):
+            with tempfile.TemporaryDirectory() as d:
+                lst = os.path.join(d, 'hand.json')
+                json.dump([{'entry': '0x10', 'end': '0x20', 'name': name}], open(lst, 'w'))
+                with self.assertRaises(SystemExit, msg=repr(name)):
+                    self.prepare_pe('--hand-functions', lst)
+
+    def test_finish_fails_when_the_hand_script_did_not_report(self):
+        for report, ok in ((2, True), (1, False), (0, False)):
+            with tempfile.TemporaryDirectory() as d:
+                job = os.path.join(d, 'job')
+                os.mkdir(job)
+                json.dump({'object': 'o', 'image_sha256': 'x', 'language': 'l', 'compiler_spec_requested': None,
+                           'bsim': False, 'exporting': False, 'object_path': 'o', 'hand_functions': 3},
+                          open(os.path.join(job, 'plan.json'), 'w'))
+                open(os.path.join(job, 'rc'), 'w').write('0')
+                open(os.path.join(job, 'headless.txt'), 'w').write(
+                    'ReHandFunctions.java> ReHandFunctions: 3 functions, 0 restored, 0 dropped\n' * report)
+                with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                    if ok:
+                        ge.finish(['--job', job])
+                    else:
+                        with self.assertRaises(SystemExit):
+                            ge.finish(['--job', job])
+
+    def test_hand_functions_are_set_before_analysis_and_restored_after(self):
+        with tempfile.TemporaryDirectory() as d:
+            lst = os.path.join(d, 'hand.json')
+            with open(lst, 'w') as f:
+                json.dump([{'entry': '0x10', 'end': '0x20', 'name': 'a'}, {'entry': '0x20', 'end': '0x30', 'name': 'b'}], f)
+            script, plan, _ = self.prepare_pe('--hand-functions', lst)
+        self.assertLess(script.index('-preScript ReHandFunctions.java'), script.index('-postScript ReHandFunctions.java'))
+        self.assertIn('hand-functions.json restore', script)
+        self.assertEqual(plan['hand_functions'], 2)
+
+    def test_hand_functions_list_is_checked(self):
+        bad = ['{}', '[{"entry": "0x20", "end": "0x10", "name": "a"}]', '[{"entry": "0x10", "end": "0x20"}]',
+               '[{"entry": "0x10", "end": "0x28", "name": "a"}, {"entry": "0x20", "end": "0x30", "name": "b"}]']
+        for text in bad:
+            with tempfile.TemporaryDirectory() as d:
+                lst = os.path.join(d, 'hand.json')
+                open(lst, 'w').write(text)
+                with self.assertRaises(SystemExit, msg=text):
+                    self.prepare_pe('--hand-functions', lst)
+
+    def test_hand_functions_move_into_the_window_of_a_flat_image(self):
+        with tempfile.TemporaryDirectory() as d:
+            lst, obj, job = os.path.join(d, 'hand.json'), os.path.join(d, 'prom.bin'), os.path.join(d, 'job')
+            os.mkdir(job)
+            open(lst, 'w').write('[{"entry": "0x1fc00010", "end": "0x1fc00020", "name": "a"}]')
+            open(obj, 'wb').write(bytes(64))
+            ge.prepare(['--job', job, '--flat', '--load', '0x1fc00000', '--decompile-all', '--hand-functions', lst, obj])
+            moved = json.load(open(os.path.join(job, 'hand-functions.json')))
+        self.assertEqual(moved, [{'entry': '0xc00000001fc00010', 'end': '0xc00000001fc00020', 'name': 'a'}])
+
     def test_mips_elf_is_unchanged(self):
         script = self.plan(elf32(ge.EM_MIPS, '>'))
         self.assertNotIn('-processor', script)
