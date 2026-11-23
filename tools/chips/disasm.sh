@@ -23,7 +23,7 @@ for i in c['images']:
             secs = ' '.join('-j %s' % x for x in i.get('lit_sections', ['.lit8', '.srdata']))
             print("mips64-linux-gnuabi64-objdump -s %s %s > %s" % (secs, i['path'], i['literals']))
     elif i['kind'] == 'promgen64':
-        print("python3 retools/tools/chips/promgen64.py %s work/prom %s" % (i['path'], i['label']))
+        print("python3 retools/tools/prom/promkit unpack %s --out work/prom --label %s" % (i['path'], i['label']))
         print("mips64-linux-gnuabi64-objdump -D -b binary -m %s -EB --adjust-vma=%s -w -M no-aliases,gpr-names=numeric --no-show-raw-insn work/prom/%s.%s.bin > %s"
               % (i.get('arch', 'mips:isa64'), i['vma'], i['label'], i['segment'], out))
     elif i['kind'] == 'raw':

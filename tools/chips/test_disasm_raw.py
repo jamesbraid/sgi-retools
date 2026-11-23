@@ -16,7 +16,7 @@ def commands(image):
     """The disassembly command disasm.sh writes for one raw image (a stub runner prints it instead of running it)."""
     with tempfile.TemporaryDirectory() as d:
         cfg = os.path.join(d, 'c.json')
-        json.dump({'images': [dict(label='t', dis='work/dis/t.s', path='t.bin', kind='raw', arch='mips:isa64', **image)]},
+        json.dump({'images': [dict(dict(label='t', dis='work/dis/t.s', path='t.bin', kind='raw', arch='mips:isa64'), **image)]},
                   open(cfg, 'w'))
         rr = os.path.join(d, 'rr')
         open(rr, 'w').write('#!/bin/sh\ncat work/dis/.commands.sh\n')
@@ -35,6 +35,13 @@ class RawKind(unittest.TestCase):
     def test_segment(self):
         out = commands(dict(vma='0x81000000', offset='0x9348', length=298608))
         self.assertIn('--adjust-vma=0x80ff6cb8 --start-address=0x81000000 --stop-address=0x81048e70 ', out)
+
+
+class Promgen64Kind(unittest.TestCase):
+    def test_segments_come_from_promkit_under_the_names_the_disassembly_reads(self):
+        out = commands(dict(kind='promgen64', vma='0xc00000001fc00000', label='ip35', segment='ip35prom'))
+        self.assertIn('prom/promkit unpack t.bin --out work/prom --label ip35\n', out)
+        self.assertIn('work/prom/ip35.ip35prom.bin > work/dis/t.s', out)
 
 
 if __name__ == '__main__':
