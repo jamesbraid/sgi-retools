@@ -102,7 +102,7 @@ def _shared_enum_fields(u, en):
 
 
 def gen_rust(u, src):
-    out = ["// " + banner(src, "", "").strip(), "// " + one_line(u.get("title", "")), "#![allow(dead_code)]", ""]
+    out = ["// @" + banner(src, "", "").strip(), "// " + one_line(u.get("title", "")), "#![allow(dead_code)]", RUSTFMT_SKIP, ""]
     if u["enums"]:
         out.append("pub mod enums {")
         for en, e in u["enums"].items():
@@ -149,6 +149,7 @@ def gen_rust(u, src):
     return "\n".join(out) + "\n"
 
 
+RUSTFMT_SKIP = "#![cfg_attr(rustfmt, rustfmt_skip)]"      # module-level skip that stable rustfmt honours
 DEFAULT_CRATE = "hwdefs"
 
 
@@ -163,4 +164,4 @@ def gen_cargo(name, label):
 
 
 def gen_lib(unit_names, label):
-    return "// %s\n#![no_std]\n%s" % (banner(label, "", "").strip(), "".join("pub mod %s;\n" % n for n in sorted(unit_names)))
+    return "// @%s\n#![no_std]\n%s\n%s" % (banner(label, "", "").strip(), RUSTFMT_SKIP, "".join("pub mod %s;\n" % n for n in sorted(unit_names)))

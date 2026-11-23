@@ -11,6 +11,7 @@ from testkit import RepoTest, which  # noqa: E402
 
 RUSTC = which("rustc")
 CLIPPY = which("clippy-driver")
+RUSTFMT = which("rustfmt")
 
 
 class GenRustTest(RepoTest):
@@ -58,6 +59,17 @@ class GenRustTest(RepoTest):
         text = gen_rust.gen_rust(self.unit(), "defs/uart.toml")
         self.assertIn("#[allow(clippy::module_inception)]\npub mod ctl {", text)
         self.assertEqual(text.count("module_inception"), 1)
+
+    def test_files_are_marked_generated_and_unformatted(self):
+        for text in (gen_rust.gen_rust(self.unit(), "defs/uart.toml"), gen_rust.gen_lib(["uart"], "defs/")):
+            self.assertTrue(text.startswith("// @generated from defs/"), text[:60])
+            self.assertIn("\n#![cfg_attr(rustfmt, rustfmt_skip)]\n", text)
+
+    @unittest.skipUnless(RUSTFMT, "no rustfmt on this host; run in the rust container")
+    def test_rustfmt_leaves_the_crate_alone(self):
+        self.build()
+        r = subprocess.run([RUSTFMT, "--check", "--edition", "2021", self.path("crate/src/lib.rs")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout)
 
     def test_labels_that_reduce_to_one_variant_get_a_suffix(self):
         v = gen_rust.variants({"k9_6": {"value": 3}, "k96": {"value": 7}, "k8": {"value": 6}})
