@@ -37,6 +37,10 @@ jobs:
         run: python3 tools/test_envscan.py
       - name: Run the Ghidra export planner tests
         run: python3 tools/test_ghidra_export.py
+      - name: Run the m2c extractor tests (they skip without m2c; the toolchain workflow runs them in the image)
+        run: python3 tools/test_m2c_flat.py
+      - name: Check the MIPS fixture generator
+        run: python3 ghidra/scripts/tests/mips_synthetic.py
       - name: Run the fact check tests
         run: python3 tools/test_fact_check.py
       - name: Run the i960 disassembler tests

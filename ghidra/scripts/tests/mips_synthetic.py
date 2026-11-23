@@ -10,7 +10,8 @@
                                          before the walks were added: edges and helper rows equal, access rows
                                          equal in their first ten columns and four columns longer
   mips_synthetic.py check-hand DIR       check DIR/hand.tsv, what HandProbe.java saw around ReHandFunctions.java
-  mips_synthetic.py check-names FILE     every identifier in the export's C is known or on the decompiler list
+  mips_synthetic.py check-twice A B      two runs' result files are identical, but for the export's timings
+  mips_synthetic.py check-names FILE...  every identifier in the export's C is known or on the decompiler list
   mips_synthetic.py check-sites DIR P    compare DumpCallEdges' sites rows (DIR/P-sites.tsv) with DIR/P-expected-calls.tsv
 
 No byte comes from an SGI image. The image is flat, loaded at BASE as MIPS:BE:64:64-32addr, and read-only
@@ -408,13 +409,13 @@ GHIDRA_WORDS = {'void', 'int', 'uint', 'long', 'ulong', 'char', 'uchar', 'short'
                 'NULL', 'sizeof', 'halt_baddata'}
 
 
-def check_names(path):
+def check_names(*paths):
     """Every identifier in Ghidra's C for the fixture is a function of the fixture, a keyword or type, or on the
     decompiler identifier list. A Ghidra release that invents another kind of name fails here."""
     import json
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'tools'))
     import leakcheck
-    rows = [json.loads(l) for l in open(path) if l.strip()]
+    rows = [json.loads(l) for path in paths for l in open(path) if l.strip()]
     known = GHIDRA_WORDS | {r['name'] for r in rows}
     bad = 0
     for r in rows:
@@ -424,6 +425,33 @@ def check_names(path):
             print('FAIL %s: identifiers neither known nor on the decompiler list: %s' % (r['name'], extra))
     if not bad:
         print('PASS ghidra names: %d functions, every identifier known or on the list' % len(rows))
+    return bad
+
+
+TIMINGS = ('decompile_ms', 'timeout_retried_s')
+
+
+def check_twice(first, second):
+    """The two runs wrote the same files, byte for byte, but for the export's timings. The headless logs and the
+    scratch listings are not results. Any other difference fails; the comparison is never widened."""
+    import json
+    bad = 0
+    names = sorted(os.path.relpath(os.path.join(d, f), first) for d, _, fs in os.walk(first) for f in fs
+                   if not f.startswith('headless'))
+    for name in names:
+        a, b = open(os.path.join(first, name), 'rb').read(), open(os.path.join(second, name), 'rb').read()
+        if name.endswith('.jsonl'):
+            def strip(data):
+                rows = [json.loads(l) for l in data.decode().splitlines() if l.strip()]
+                return [{k: v for k, v in r.items() if k not in TIMINGS} for r in rows]
+            same = strip(a) == strip(b)
+        else:
+            same = a == b
+        if not same:
+            bad = 1
+            print('FAIL two runs differ in %s' % name)
+    if not bad:
+        print('PASS run twice: %d result files identical (export timings aside)' % len(names))
     return bad
 
 
@@ -442,8 +470,10 @@ def main(argv):
     if argv[1] == 'write':
         write(argv[2])
         return 0
+    if argv[1] == 'check-twice':
+        return check_twice(argv[2], argv[3])
     if argv[1] == 'check-names':
-        return check_names(argv[2])
+        return check_names(*argv[2:])
     if argv[1] == 'check-hand':
         return check_hand(argv[2])
     if argv[1] == 'check-budget':

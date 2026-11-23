@@ -1,23 +1,36 @@
 # The IA-64 processor and SN2 PROM import checks that need no firmware: builds the Ghidra image
 # and runs the synthetic checks in it (ghidra/processors/ia64/tests/ci.sh). The checks against
 # a real PROM stay hand-run, because the firmware is not in this repository.
+# The last step runs the shared scripts (call and access walks, the decompile budget, hand functions, the
+# DumpCallEdges and FindWindowStores goldens) on synthetic MIPS and IA-64 images, twice, and requires
+# the two runs to agree (ghidra/scripts/tests/re-scripts-check.sh), in the same job so the image builds once.
 name: ghidra-check
 on:
   push:
     paths:
       - ghidra/**
       - tools/Containerfile.ghidra
+      - tools/prom/**
+      - tools/ghidra-export.py
+      - tools/re-run
+      - tools/leakcheck.py
+      - tools/decompiler-identifiers.txt
       - .forgejo/workflows/ghidra-check.yml
   pull_request:
     paths:
       - ghidra/**
       - tools/Containerfile.ghidra
+      - tools/prom/**
+      - tools/ghidra-export.py
+      - tools/re-run
+      - tools/leakcheck.py
+      - tools/decompiler-identifiers.txt
       - .forgejo/workflows/ghidra-check.yml
 
 jobs:
   ia64:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - name: Check out the repository
         uses: https://code.forgejo.org/actions/checkout@v4
@@ -29,3 +42,7 @@ jobs:
         env:
           ENGINE: docker
         run: sh ghidra/scripts/tests/dbg-check.sh
+      - name: Run the shared scripts on the synthetic images, twice
+        env:
+          ENGINE: docker
+        run: sh ghidra/scripts/tests/re-scripts-check.sh

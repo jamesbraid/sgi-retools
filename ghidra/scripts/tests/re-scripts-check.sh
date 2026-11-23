@@ -58,25 +58,38 @@ run='proj=$(mktemp -d); cd /work
     mkdir -p /work/export && echo '"'"'{"all": true, "names": [], "glob": [], "addresses": [], "timeout": 60}'"'"' > /work/export/export.json
     analyzeHeadless "$proj" export $m -postScript FixtureSetup.java in/mips-functions.tsv \
         -postScript ReDecompileExport.java /work/export -deleteProject > /work/headless-export.txt 2>&1
-    go ia64 0x80100 FUN_ram_00080100 in/ia64.bin -loader BinaryLoader -loader-baseAddr 0x80000 -processor IA64:LE:64:default'
-cid=$($engine create -w /work -e HOME=/tmp "$tag" bash -c "$run")
-trap '$engine rm -f "$cid" >/dev/null 2>&1' EXIT
-$engine cp "$out/in" "$cid:/work/in"
-$engine cp "$out/scripts" "$cid:/work/scripts"
-$engine start -a "$cid" >/dev/null 2>&1 || true
-for f in mips-calls.tsv mips-accesses.tsv mips-edges.tsv mips-sites.tsv mips-stores.tsv mips-helper.tsv headless-mips.txt \
-         ia64-calls.tsv ia64-accesses.tsv ia64-edges.tsv ia64-sites.tsv ia64-stores.tsv ia64-helper.tsv headless-ia64.txt budget1.tsv budget2.tsv hand.tsv headless-hand-drop.txt export/functions.jsonl; do
-    $engine cp "$cid:/work/$f" "$out/$f" || { echo "FAIL: Ghidra wrote no $f"; exit 1; }
-done
+    go ia64 0x80100 FUN_ram_00080100 in/ia64.bin -loader BinaryLoader -loader-baseAddr 0x80000 -processor IA64:LE:64:default
+    mkdir -p /work/export-ia64 && cp /work/export/export.json /work/export-ia64/
+    analyzeHeadless "$proj" exportia -import in/ia64.bin -loader BinaryLoader -loader-baseAddr 0x80000 -processor IA64:LE:64:default \
+        -noanalysis -scriptPath /work/scripts -postScript FixtureSetup.java in/ia64-functions.tsv \
+        -postScript ReDecompileExport.java /work/export-ia64 -deleteProject > /work/headless-export-ia64.txt 2>&1'
+# Everything runs twice, each time in a fresh container and Ghidra project, and the two runs must agree.
+one() {  # one DIR
+    mkdir -p "$1/export" "$1/export-ia64"
+    cid=$($engine create -w /work -e HOME=/tmp "$tag" bash -c "$run")
+    $engine cp "$out/in" "$cid:/work/in"
+    $engine cp "$out/scripts" "$cid:/work/scripts"
+    $engine start -a "$cid" >/dev/null 2>&1 || true
+    for f in mips-calls.tsv mips-accesses.tsv mips-edges.tsv mips-sites.tsv mips-stores.tsv mips-helper.tsv headless-mips.txt \
+             ia64-calls.tsv ia64-accesses.tsv ia64-edges.tsv ia64-sites.tsv ia64-stores.tsv ia64-helper.tsv headless-ia64.txt \
+             budget1.tsv budget2.tsv hand.tsv headless-hand-drop.txt export/functions.jsonl export-ia64/functions.jsonl; do
+        $engine cp "$cid:/work/$f" "$1/$f" || { echo "FAIL: Ghidra wrote no $f"; $engine rm -f "$cid" >/dev/null 2>&1; exit 1; }
+    done
+    $engine rm -f "$cid" >/dev/null 2>&1
+}
+one "$out/run1"
+one "$out/run2"
+cp -r "$out/run1/." "$out/"
 cp "$out"/in/*expected-*.tsv "$out/"
 status=0
 python3 $T/mips_synthetic.py check-walks "$out" mips- || status=1
 python3 $T/mips_synthetic.py check-walks "$out" ia64- || status=1
 python3 $T/mips_synthetic.py check-budget "$out" || status=1
 python3 $T/mips_synthetic.py check-hand "$out" || status=1
-python3 $T/mips_synthetic.py check-names "$out/export/functions.jsonl" || status=1
+python3 $T/mips_synthetic.py check-names "$out/export/functions.jsonl" "$out/export-ia64/functions.jsonl" || status=1
 for p in mips ia64; do
     python3 $T/mips_synthetic.py check-golden "$out" $T/golden $p || status=1
     python3 $T/mips_synthetic.py check-sites "$out" $p || status=1
 done
+python3 $T/mips_synthetic.py check-twice "$out/run1" "$out/run2" || status=1
 exit $status

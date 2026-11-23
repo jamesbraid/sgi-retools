@@ -1,0 +1,44 @@
+# The toolchain image and what it carries: builds tools/Containerfile and runs the m2c extractor's tests in it
+# (m2c, spimdisasm and rabbitizer are not in re-check's plain Debian container, so test_m2c_flat.py skips
+# there). Its own workflow, so a change that touches none of these files does not build the image.
+name: toolchain-check
+on:
+  push:
+    paths:
+      - tools/Containerfile
+      - tools/m2c_flat.py
+      - tools/test_m2c_flat.py
+      - tools/prom/**
+      - tools/leakcheck.py
+      - tools/decompiler-identifiers.txt
+      - ghidra/scripts/tests/mips_synthetic.py
+      - .forgejo/workflows/toolchain-check.yml
+  pull_request:
+    paths:
+      - tools/Containerfile
+      - tools/m2c_flat.py
+      - tools/test_m2c_flat.py
+      - tools/prom/**
+      - tools/leakcheck.py
+      - tools/decompiler-identifiers.txt
+      - ghidra/scripts/tests/mips_synthetic.py
+      - .forgejo/workflows/toolchain-check.yml
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: https://code.forgejo.org/actions/checkout@v4
+      - name: Build the toolchain image
+        run: docker build -q -t re-toolchain:ci -f tools/Containerfile .
+      - name: Run the m2c extractor tests in it
+        # Files are copied in, not bind-mounted: a CI job that is itself a container reaches the engine's host.
+        run: |
+          cid=$(docker create -w /work -e M2C_REQUIRED=1 -e HOME=/tmp re-toolchain:ci python3 tools/test_m2c_flat.py)
+          docker cp . "$cid:/work"
+          status=0
+          docker start -a "$cid" || status=$?
+          docker rm -f "$cid" >/dev/null
+          exit $status
