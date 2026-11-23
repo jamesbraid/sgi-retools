@@ -219,6 +219,11 @@ class Ip32Code(unittest.TestCase):
             return f.read()
 
 
+def read_bytes(path):
+    with open(path, 'rb') as f:
+        return f.read()
+
+
 def pen_glyph(seed, w, h):
     """A w by h glyph of rows (bottom first) from a fixed pattern, never all clear."""
     return [[(x * 7 + y * 3 + seed) % 3 == 0 or (x, y) == (0, 0) for x in range(w)] for y in range(h)]
@@ -425,13 +430,13 @@ class Ip32Icons(unittest.TestCase):
 
     def test_layers_paint_in_order_with_y_measured_up_from_the_bottom(self):
         doc = self.run_icons()
-        w, h, _, px = png.decode(open(os.path.join(self.dir, doc['icons'][0]['composite']), 'rb').read())
+        w, h, _, px = png.decode(read_bytes(os.path.join(self.dir, doc['icons'][0]['composite'])))
         pix = lambda x, y_down: px[(y_down * w + x) * 4:][:4]
         red, ramp = b'\xff\0\x09\xff', bytes([95, 95, 143, 255])
         # layer 1 sits at y = 1 from the bottom of a 5-row icon, so its rows are image rows 2 and 3; its (1, 0) pixel is clear
         self.assertEqual([pix(1, 3), pix(2, 3), pix(1, 2), pix(2, 2)], [ramp, ramp, ramp, red])
         self.assertEqual(pix(0, 0), red)
-        lw, lh, _, lpx = png.decode(open(os.path.join(self.dir, doc['icons'][0]['layers'][1]['file']), 'rb').read())
+        lw, lh, _, lpx = png.decode(read_bytes(os.path.join(self.dir, doc['icons'][0]['layers'][1]['file'])))
         self.assertEqual((lw, lh, lpx), (2, 2, b'\xff\xff\0\0\xff\xff\xff\xff'))
 
     def test_an_icon_the_code_never_uses_is_refused(self):
@@ -459,7 +464,7 @@ class Ip32Logo(unittest.TestCase):
 
     def test_the_logo_decodes_from_the_words_after_it_with_the_twelve_zero_start(self):
         f = self.run_logo()
-        w, h, _, px = png.decode(open(os.path.join(self.dir, 'assets/logo.png'), 'rb').read())
+        w, h, _, px = png.decode(read_bytes(os.path.join(self.dir, 'assets/logo.png')))
         self.assertEqual((w, h), (LOGO_W, LOGO_H))
         want = self.rows()[::-1]                       # the PNG is top row first; the data is bottom row first
         self.assertEqual([[px[(y * w + x) * 2 + 1] // 255 for x in range(w)] for y in (0, 100, 236)], [want[0], want[100], want[236]])
@@ -472,6 +477,70 @@ class Ip32Logo(unittest.TestCase):
     def test_no_width_and_height_words_means_no_logo(self):
         with self.assertRaises(AssetError):
             self.run_logo(anchor=False)
+
+
+COUNTS = (7, 5, 6, 6, 5, 5, 4, 5, 7, 7, 7)
+
+
+class Ip32Tunes(unittest.TestCase):
+    """Eleven tunes of 64 voices: the play routine bounds its jump table at 11, each stub loads an array, a voice
+    count, a total length and a scratch size, and every stub but the last branches to the common path."""
+
+    def voice(self, tune, v):
+        return (100 + tune, 88200, 6000 * v, 1.5, 0.25, 0.5, 0.5, 0.75)
+
+    def build(self, scratch=lambda k: 90 + k, total_delta=0):
+        stub_len = [8] * 10 + [6]
+        play = 6
+        text_len = play + sum(stub_len) + 3
+        table = 0x81000000 + 4 * text_len
+        data_addr = table + 44
+        arrays, at = [], data_addr
+        for n in COUNTS:
+            arrays.append(at)
+            at += 32 * n
+        stubs, pc = [], 0x81000000 + 4 * play
+        for n in stub_len:
+            stubs.append(pc)
+            pc += 4 * n
+        common = pc
+
+        def code(_):
+            w = [fx.sltiu(1, 16, 11), fx.sll(24, 16, 2), fx.lui(1, table >> 16), fx.addu(1, 1, 24), fx.lw(24, table & 0xffff, 1),
+                 fx.JR_RA]
+            for k in range(11):
+                total = 6000 * (COUNTS[k] - 1) + 88200 + total_delta
+                w += li32(16, arrays[k]) + [fx.addiu(17, 0, COUNTS[k])] + li32(23, total) + [fx.addiu(18, 0, scratch(k))]
+                if k < 10:
+                    w += [fx.beq(0, 0, (common - (stubs[k] + 4 * 6 + 4)) // 4), fx.NOP]
+            return w + [fx.NOP, fx.JR_RA, fx.NOP]
+        rodata = struct.pack('>11I', *stubs)
+        data = b''.join(struct.pack('>3I5f', *self.voice(k, v)) for k in range(11) for v in range(COUNTS[k]))
+        return fx.asset_segment(code(0), rodata=rodata, data=data)
+
+    def run_tunes(self, **kw):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+        ip32.tunes(ip32.Reader(self.build(**kw)), self.dir)
+        with open(os.path.join(self.dir, 'assets/tunes.json')) as f:
+            return json.load(f)
+
+    def test_eleven_tunes_of_sixty_four_voices_with_named_fields(self):
+        doc = self.run_tunes()
+        self.assertEqual([t['voice_count'] for t in doc['tunes']], list(COUNTS))
+        self.assertEqual(sum(len(t['voices']) for t in doc['tunes']), 64)
+        self.assertEqual(doc['tunes'][2]['voices'][3], dict(zip(
+            [f['name'] for f in doc['voice_fields']], self.voice(2, 3))))
+        self.assertEqual([t['scratch_size'] for t in doc['tunes']][:2], [90, 91])
+        self.assertTrue(doc['unknown'])
+
+    def test_a_total_that_is_not_the_last_voice_start_plus_length_is_refused(self):
+        with self.assertRaises(AssetError):
+            self.run_tunes(total_delta=1)
+
+    def test_arrays_that_do_not_tile_by_either_small_count_are_refused(self):
+        with self.assertRaises(AssetError):
+            self.run_tunes(scratch=lambda k: COUNTS[k])         # both small registers now agree: the choice is ambiguous
 
 
 if __name__ == '__main__':

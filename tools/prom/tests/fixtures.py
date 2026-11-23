@@ -203,6 +203,14 @@ def mips(*words):
     return struct.pack('>%dI' % len(words), *words)
 
 
+def sltiu(rt, rs, imm):
+    return 0x2c000000 | rs << 21 | rt << 16 | imm & 0xffff
+
+
+def beq(rs, rt, off):
+    return 0x10000000 | rs << 21 | rt << 16 | off & 0xffff
+
+
 def sh(rt, off, rs):
     return 0xa4000000 | rs << 21 | rt << 16 | off & 0xffff
 

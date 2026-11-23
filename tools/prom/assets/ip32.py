@@ -495,3 +495,107 @@ def logo(r, out):
     addr = lo + start
     r.add(out, 'logo', 'logo', 'assets/logo.png', png.mask_png([list(row) for row in rows[::-1]]), addr, 'inferred',
           format='png mask', details={'width': w, 'height': h, 'encoded_length': used, 'anchor': '0x%x' % (lo + a)})
+
+
+TUNES, VOICE_BYTES = 11, 32
+VOICE_FIELDS = (('delay_line_length', 'samples; also the number of noise samples the voice starts with'),
+                ('sample_count', 'samples the voice renders'),
+                ('start_offset', 'where the voice starts in the mix buffer, in 4-byte units'),
+                ('excitation_peak', 'level the initial noise burst is scaled to (float)'),
+                ('loss_factor', 'applied each time round the delay line (float)'),
+                ('weight_previous', 'weight of the previous delay-line sample in the two-tap average (float)'),
+                ('weight_current', 'weight of the current delay-line sample in the two-tap average (float)'),
+                ('allpass_coefficient', 'first-order all-pass section in the loop, for fractional-delay tuning (float)'))
+SOUND_UNKNOWN = ('output sample rate (44100 Hz is plausible from 88200-sample voices lasting two seconds: inferred)',
+                 'final conversion to the audio ring format',
+                 'whether start_offset and the buffer size count samples or words (the renderer steps 8 bytes a sample but '
+                 'offsets by 4 bytes a unit)',
+                 'the first noise seed: it is stale stack contents carried from voice to voice, so the noise is not '
+                 'reproducible from the image')
+
+
+def find_tune_table(r):
+    """The jump table the play routine indexes: a `sltiu x, y, 11` bound, then lui, addu and a load off the same
+    register. Returns its address and the 11 stub addresses."""
+    found = {}
+    for i, c in enumerate(r.code):
+        if c.op == 0xb and c.imm == TUNES:
+            window = r.code[i + 1:i + 10]
+            for j, lu in enumerate(window):
+                if lu.op == 0xf:
+                    for ld in window[j + 1:]:
+                        if ld.op == 0x23 and ld.rs == lu.rt:
+                            table = (lu.uimm << 16) + ld.imm
+                            try:
+                                stubs = struct.unpack('>11I', r.fw.read(table, 4 * TUNES))
+                            except AssetError:
+                                continue
+                            lo, hi = r.fw.region('text')
+                            if all(lo <= s < hi and not s & 3 for s in stubs):
+                                found[table] = stubs
+    return r.only('tune jump table', found)
+
+
+def common_path(r, stubs):
+    """Where the stubs join the shared play path: the one target of their unconditional branches (the last stub
+    falls into it)."""
+    targets = set()
+    for s in stubs:
+        for c in r.code[(s - r.base) // 4:][:12]:
+            if c.op == 4 and c.rs == c.rt == 0:
+                targets.add(c.pc + 4 + 4 * c.imm)
+                break
+    if len(targets) != 1:
+        raise AssetError('tune stubs branch to %d different places, expected one' % len(targets))
+    return targets.pop()
+
+
+def stub_values(r, stub, common):
+    """The registers a tune stub sets before it reaches the common play path."""
+    m = r.machine()
+    before = list(m.r)
+    try:
+        m.run(stub, stop_at=common)
+    except Unknown as e:
+        raise AssetError('tune stub at %#x: %s' % (stub, e))
+    return {n: v for n, v in enumerate(m.r) if v is not None and v != before[n] and n not in (0, 29)}
+
+
+def tunes(r, out):
+    table, stubs = find_tune_table(r)
+    common = common_path(r, stubs)
+    rows = []
+    for k, stub in enumerate(stubs):
+        regs = stub_values(r, stub, common)
+        ptr = [n for n, v in regs.items() if r.fw.in_data(v, VOICE_BYTES)]
+        big = [n for n, v in regs.items() if 0x10000 <= v < 0x1000000 and n not in ptr]
+        small = sorted(n for n, v in regs.items() if v < 0x10000 and n not in ptr)
+        if len(ptr) != 1 or len(big) != 1 or len(small) != 2:
+            raise AssetError('tune %d stub sets %d pointers, %d lengths and %d counts' % (k, len(ptr), len(big), len(small)))
+        rows.append((regs[ptr[0]], regs[big[0]], [regs[n] for n in small], small))
+    order = sorted(range(TUNES), key=lambda k: rows[k][0])
+    picks = [p for p in (0, 1) if all(rows[a][0] + VOICE_BYTES * rows[a][2][p] == rows[b][0] for a, b in zip(order, order[1:]))]
+    if len(picks) != 1 or sum(row[2][picks[0]] for row in rows) != 64:
+        raise AssetError('tune arrays do not tile into 64 voices with one of the two small counts')
+    sizes = picks[0]         # the voice count is whichever small register makes the arrays tile
+    listing = []
+    for k, (array, total, small, _) in enumerate(rows):
+        count = small[sizes]
+        raw = r.fw.read(array, VOICE_BYTES * count)
+        voices = []
+        for v in range(count):
+            w = struct.unpack_from('>3I5f', raw, VOICE_BYTES * v)
+            voices.append({name: value for (name, _), value in zip(VOICE_FIELDS, w)})
+        last = voices[-1]
+        if last['start_offset'] + last['sample_count'] != total:
+            raise AssetError('tune %d: total length %#x is not its last voice start plus length' % (k, total))
+        listing.append({'tune': k, 'stub': '0x%x' % stubs[k], 'array_address': '0x%x' % array, 'voice_count': count,
+                        'total_length': total, 'scratch_size': small[1 - sizes], 'voices': voices})
+    doc = {'format': 'promkit-tunes', 'version': 1, 'jump_table': '0x%x' % table, 'voice_bytes': VOICE_BYTES,
+           'voice_fields': [{'word': n, 'name': name, 'meaning': meaning} for n, (name, meaning) in enumerate(VOICE_FIELDS)],
+           'synthesis': 'plucked string (Karplus-Strong style): a delay line of delay_line_length samples filled with noise '
+                        'scaled to excitation_peak, then per output sample f = (weight_current * x + weight_previous * '
+                        'x_prev) * loss_factor, passed through the all-pass y = c * f + f_prev - c * y_prev; the oldest '
+                        'sample is added to the mix',
+           'unknown': list(SOUND_UNKNOWN), 'tunes': listing}
+    r.add(out, 'audio', 'tune and voice descriptors', 'assets/tunes.json', dumps(doc), table, 'established')

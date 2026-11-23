@@ -144,11 +144,13 @@ class Machine:
             self.put(n, None)
         self.put(2, 0)
 
-    def run(self, start, stop_at_jump=False):
-        """Execute from the address start to the routine's `jr ra` (or, with stop_at_jump, its first unconditional
-        branch). Raises Unknown when it cannot follow the code."""
+    def run(self, start, stop_at=None):
+        """Execute from the address start to the routine's `jr ra`, or until the next instruction to run is at
+        stop_at. Raises Unknown when it cannot follow the code."""
         pc = start
         for _ in range(STEP_LIMIT):
+            if pc == stop_at:
+                return
             c = self.fetch(pc)
             nxt = pc + 4
             kind = None
@@ -165,7 +167,6 @@ class Machine:
                 taken = (a == b) == (c.op in (4, 0x14))
                 kind, dest = 'branch', pc + 4 + 4 * c.imm
                 likely = c.op in (0x14, 0x15)
-                uncond = c.op == 4 and c.rs == c.rt
             if kind is None:
                 if c.op in (0x23, 0x2b, 0x29, 0x28, 0x21, 0x25, 0x20, 0x24):
                     self.memory(c)
@@ -177,8 +178,6 @@ class Machine:
             if kind == 'branch':
                 if taken or not likely:
                     self.step(delay)
-                if taken and stop_at_jump and uncond:
-                    return
                 pc = dest if taken else pc + 8
                 continue
             if kind == 'jr' and c.rs == 31:
