@@ -10,6 +10,7 @@
                                          before the walks were added: edges and helper rows equal, access rows
                                          equal in their first ten columns and four columns longer
   mips_synthetic.py check-hand DIR       check DIR/hand.tsv, what HandProbe.java saw around ReHandFunctions.java
+  mips_synthetic.py check-names FILE     every identifier in the export's C is known or on the decompiler list
   mips_synthetic.py check-sites DIR P    compare DumpCallEdges' sites rows (DIR/P-sites.tsv) with DIR/P-expected-calls.tsv
 
 No byte comes from an SGI image. The image is flat, loaded at BASE as MIPS:BE:64:64-32addr, and read-only
@@ -400,6 +401,32 @@ def check_budget(out):
     return bad
 
 
+# What Ghidra's C holds besides the program's own names: types, keywords and the invented names the list covers.
+GHIDRA_WORDS = {'void', 'int', 'uint', 'long', 'ulong', 'char', 'uchar', 'short', 'ushort', 'byte', 'undefined', 'undefined1',
+                'undefined2', 'undefined4', 'undefined8', 'longlong', 'ulonglong', 'code', 'bool', 'if', 'else', 'return',
+                'while', 'do', 'for', 'switch', 'case', 'default', 'break', 'goto', 'struct', 'union', 'unsigned', 'WARNING',
+                'NULL', 'sizeof', 'halt_baddata'}
+
+
+def check_names(path):
+    """Every identifier in Ghidra's C for the fixture is a function of the fixture, a keyword or type, or on the
+    decompiler identifier list. A Ghidra release that invents another kind of name fails here."""
+    import json
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'tools'))
+    import leakcheck
+    rows = [json.loads(l) for l in open(path) if l.strip()]
+    known = GHIDRA_WORDS | {r['name'] for r in rows}
+    bad = 0
+    for r in rows:
+        extra = leakcheck.unmatched_identifiers(r.get('c', ''), known)
+        if extra:
+            bad = 1
+            print('FAIL %s: identifiers neither known nor on the decompiler list: %s' % (r['name'], extra))
+    if not bad:
+        print('PASS ghidra names: %d functions, every identifier known or on the list' % len(rows))
+    return bad
+
+
 def selfcheck():
     im = build()
     assert len(im.words) * 4 < SIZE and max(im.words) - BASE < SIZE
@@ -415,6 +442,8 @@ def main(argv):
     if argv[1] == 'write':
         write(argv[2])
         return 0
+    if argv[1] == 'check-names':
+        return check_names(argv[2])
     if argv[1] == 'check-hand':
         return check_hand(argv[2])
     if argv[1] == 'check-budget':

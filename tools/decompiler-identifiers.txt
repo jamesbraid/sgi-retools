@@ -1,0 +1,31 @@
+# Names that m2c, spimdisasm and Ghidra invent: LABEL<TAB>REGEX per line, '#' for comments.
+# `leakcheck.py --decompiler-names` fails on any of them; it is off by default because crime, kona, odsy and gr4
+# commit m2c trees on purpose. Counts, sources and what was left out: the commit that added this file.
+m2c temp	\btemp_[a-z][a-z0-9]{0,3}(_\d+)?\b
+m2c var	\bvar_(v|a|t|s|f)[0-9a-z]*(_\d+)?\b
+m2c unknown	\bunk_?[0-9A-F]+\b
+m2c stack slot	\bsp[0-9A-F]*[0-9][0-9A-F]*\b
+m2c macro	\bM2C_[A-Z0-9_]+\b
+m2c unknown stack slot	\bunksp[0-9A-F]+\b
+m2c unset register	Read from unset register
+m2c saved register	\bsaved_reg_\w+
+m2c phi	\bphi_\w+
+m2c failure	Decompilation failure in function
+spimdisasm symbol	\b(func|D|jtbl|T)_[0-9A-F]{8}\b
+spimdisasm label	\.L[0-9A-F]{8}\b
+spimdisasm directive	\b(glabel|jlabel|dlabel|alabel|endlabel|enddlabel|nonmatching)\b
+m2c subroutine argument	\bsubroutine_arg\d+\b
+ghidra default name	(?<![A-Za-z0-9])(?:FUN|DAT|LAB|PTR|SUB|switchD)_(?:[a-z]+_)?[0-9a-f]{4,16}\b
+ghidra case label	(?<![A-Za-z0-9])caseD_[0-9a-f]+\b
+ghidra variable	(?<![A-Za-z0-9])p*[a-z]{1,3}Var\d+\b
+ghidra parameter	(?<![A-Za-z0-9])param_\d+\b
+ghidra local	(?<![A-Za-z0-9])local_(?:res)?[0-9a-f]+\b
+ghidra stack variable	(?<![A-Za-z0-9])(?:[a-z]{1,4}Stack_|in_stack_)[0-9a-f]+\b
+ghidra extra output	(?<![A-Za-z0-9])extraout_\w+
+ghidra unaffected	(?<![A-Za-z0-9])unaff_\w+
+ghidra input register	(?<![A-Za-z0-9])in_(?:v[01]|a[0-7]|t[0-9]|s[0-8]|gp|sp|ra|r\d+)(?:_hi|_lo)?\b
+ghidra size cast	(?<![A-Za-z0-9])(?:CONCAT|ZEXT|SEXT|SUB)\d{2}\b
+ghidra bad data	(?<![A-Za-z0-9])halt_baddata\b
+ghidra string label	(?<![A-Za-z0-9])s_\w+_[0-9a-f]{8}\b
+ghidra unknown data	(?<![A-Za-z0-9])_?UNK_[0-9a-f]{4,16}\b
+ghidra typed memory	(?<![A-Za-z0-9])[a-z]{0,2}Ram[0-9a-f]{4,16}\b

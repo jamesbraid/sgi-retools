@@ -16,7 +16,7 @@ tag=${IMAGE:-re-ghidra:ci}
 out=${1:-.cache/re-scripts-check}
 T=ghidra/scripts/tests
 rm -rf "$out"
-mkdir -p "$out/in" "$out/scripts"
+mkdir -p "$out/in" "$out/scripts" "$out/export"
 python3 $T/mips_synthetic.py
 python3 $T/mips_synthetic.py write "$out/in"
 python3 ghidra/processors/ia64/tests/synthetic.py write-walk "$out/in"
@@ -54,6 +54,10 @@ run='proj=$(mktemp -d); cd /work
         -deleteProject > /work/headless-hand-post.txt 2>&1
     analyzeHeadless "$proj" hdrop $m -postScript HandProbe.java auto -postScript ReHandFunctions.java in/hand-drop.json restore \
         -postScript HandProbe.java dump drop /work/hand.tsv -deleteProject > /work/headless-hand-drop.txt 2>&1
+    # The export itself, for the identifier check: every function of the MIPS fixture.
+    mkdir -p /work/export && echo '"'"'{"all": true, "names": [], "glob": [], "addresses": [], "timeout": 60}'"'"' > /work/export/export.json
+    analyzeHeadless "$proj" export $m -postScript FixtureSetup.java in/mips-functions.tsv \
+        -postScript ReDecompileExport.java /work/export -deleteProject > /work/headless-export.txt 2>&1
     go ia64 0x80100 FUN_ram_00080100 in/ia64.bin -loader BinaryLoader -loader-baseAddr 0x80000 -processor IA64:LE:64:default'
 cid=$($engine create -w /work -e HOME=/tmp "$tag" bash -c "$run")
 trap '$engine rm -f "$cid" >/dev/null 2>&1' EXIT
@@ -61,7 +65,7 @@ $engine cp "$out/in" "$cid:/work/in"
 $engine cp "$out/scripts" "$cid:/work/scripts"
 $engine start -a "$cid" >/dev/null 2>&1 || true
 for f in mips-calls.tsv mips-accesses.tsv mips-edges.tsv mips-sites.tsv mips-stores.tsv mips-helper.tsv headless-mips.txt \
-         ia64-calls.tsv ia64-accesses.tsv ia64-edges.tsv ia64-sites.tsv ia64-stores.tsv ia64-helper.tsv headless-ia64.txt budget1.tsv budget2.tsv hand.tsv headless-hand-drop.txt; do
+         ia64-calls.tsv ia64-accesses.tsv ia64-edges.tsv ia64-sites.tsv ia64-stores.tsv ia64-helper.tsv headless-ia64.txt budget1.tsv budget2.tsv hand.tsv headless-hand-drop.txt export/functions.jsonl; do
     $engine cp "$cid:/work/$f" "$out/$f" || { echo "FAIL: Ghidra wrote no $f"; exit 1; }
 done
 cp "$out"/in/*expected-*.tsv "$out/"
@@ -70,6 +74,7 @@ python3 $T/mips_synthetic.py check-walks "$out" mips- || status=1
 python3 $T/mips_synthetic.py check-walks "$out" ia64- || status=1
 python3 $T/mips_synthetic.py check-budget "$out" || status=1
 python3 $T/mips_synthetic.py check-hand "$out" || status=1
+python3 $T/mips_synthetic.py check-names "$out/export/functions.jsonl" || status=1
 for p in mips ia64; do
     python3 $T/mips_synthetic.py check-golden "$out" $T/golden $p || status=1
     python3 $T/mips_synthetic.py check-sites "$out" $p || status=1

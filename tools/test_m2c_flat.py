@@ -17,7 +17,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', 'ghidra', 'scripts', 'tests'))
 import mips_synthetic as ms  # noqa: E402
 
+sys.path.insert(0, HERE)
+import leakcheck  # noqa: E402
+
 TOOL = os.path.join(HERE, 'm2c_flat.py')
+# What m2c prints that is neither a symbol of the input nor an invented name.
+C_WORDS = {'void', 'if', 'else', 'switch', 'case', 'default', 'return', 'break', 'goto', 'extern', 'while', 'for',
+           'do', 'continue', 's8', 'u8', 's16', 'u16', 's32', 'u32', 's64', 'u64', 'f32', 'f64', 'arg0', 'arg1', 'arg2',
+           'arg3', 'arg4', 'arg5', 'arg6', 'arg7', 'sizeof', 'unsigned', 'int', 'char', 'short', 'long', 'static'}
 SWITCH = ms.BASE + 0x300
 JT = ms.BASE + 0x900
 
@@ -154,6 +161,16 @@ class M2cFlat(unittest.TestCase):
                 self.assertEqual(m2c_flat.run_m2c('m2c', 'mips', 'x.s', 'f', 1)[:2], ('failed', want))
             finally:
                 subprocess.run = real
+
+    def test_every_identifier_in_the_output_is_known_or_on_the_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, 'out')
+            p, names = self.run_tool(d, out)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            known = C_WORDS | set(names.values())
+            for entry, name in names.items():
+                text = Path(out, 'c', '%08x.c' % entry).read_text()
+                self.assertEqual(leakcheck.unmatched_identifiers(text, known), [], name)
 
     def test_output_inside_an_unignored_work_tree_is_refused(self):
         with tempfile.TemporaryDirectory() as d:

@@ -3,6 +3,7 @@
 
   leakcheck.py                      every tracked text file and the HEAD commit message
   leakcheck.py --range A..B         what the commits A..B add (lines and messages)
+  leakcheck.py --decompiler-names   also fail on names m2c, spimdisasm and Ghidra invent
 
 Run it from the workspace root. Exit status: 0 clean, 1 hit (each printed as
 file:line or commit with the matched text), 2 tool error.
@@ -25,6 +26,10 @@ A term file holds one regular expression per line, matched case-insensitively, '
 denylist contributes every [[rules]] regex and honours its per-match
 allowlists; its path and commit allowlists cannot apply here. With none of
 these the check runs the built-in patterns and says so on stderr.
+
+--decompiler-names adds the patterns in tools/decompiler-identifiers.txt (next to this file, so a workspace
+reaches it through its retools submodule). It is off by default because some workspaces commit m2c trees on
+purpose. The denylist file itself is not checked.
 
 An exact string that is fine despite matching goes in the workspace's
 leak-allow.txt (tools/config/) as STRING<TAB>REASON; a line
@@ -52,7 +57,8 @@ BUILTIN = [
 ]
 # The checker and its tests spell out the patterns they look for.
 NEVER_CHECKED = ('.re-leak-terms', 'tools/config/leak-allow.txt',
-                 'tools/leakcheck.py', 'tools/test_leakcheck.py')
+                 'tools/leakcheck.py', 'tools/test_leakcheck.py', 'tools/decompiler-identifiers.txt')
+DECOMPILER_NAMES = os.path.join(HERE, 'decompiler-identifiers.txt')
 
 
 class ToolError(Exception):
@@ -128,6 +134,40 @@ def load_rules(top):
         print('leakcheck: no denylist or term list (DENYLIST, RE_LEAK_DENYLIST, .re-leak-terms); '
               'checking the built-in patterns only', file=sys.stderr)
     return rules
+
+
+def decompiler_rules(path=DECOMPILER_NAMES):
+    """The LABEL<TAB>REGEX rows of the decompiler identifier list."""
+    out = []
+    try:
+        with open(path, encoding='utf-8') as f:
+            for n, ln in enumerate(f, 1):
+                ln = ln.rstrip('\n')
+                if not ln.strip() or ln.startswith('#'):
+                    continue
+                label, tab, rx = ln.partition('\t')
+                if not tab or not rx:
+                    raise ToolError('%s:%d: want LABEL<TAB>REGEX' % (path, n))
+                out.append(('decompiler name (%s)' % label, compile_rx(rx, '%s:%d' % (path, n)), []))
+    except OSError as e:
+        raise ToolError('cannot read %s: %s' % (path, e.strerror))
+    return out
+
+
+def unmatched_identifiers(text, known):
+    """The identifiers in decompiler output that are neither in KNOWN (the input's own symbols and the C
+    words the decompiler prints) nor matched by a pattern in decompiler-identifiers.txt. A decompiler
+    release that invents a new kind of name shows up here, so the list is confirmed and not left to grow."""
+    rules = decompiler_rules()
+    for _, rx, _ in rules:      # a phrase the list names ("Read from unset register") is one thing
+        text = rx.sub(' ', text)
+    text = re.sub(r'/\*.*?\*/|//[^\n]*', ' ', text, flags=re.S)   # m2c's comments are prose
+    text = re.sub(r'\b(?:0[xX][0-9A-Fa-f]+|\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)[UuLlFf]*\b', ' ', text)
+    seen = []
+    for ident in re.findall(r'(?<!\$)[A-Za-z_.][A-Za-z0-9_.]*', text):   # $a0 is a register, not a name
+        if ident not in known and ident not in seen and not re.fullmatch(r'\d.*', ident):
+            seen.append(ident)
+    return seen
 
 
 def load_allow(top):
@@ -235,7 +275,11 @@ def check_range(top, rules, allow, rng):
 
 def main(argv):
     rng = None
+    names = False
     args = list(argv)
+    if '--decompiler-names' in args:
+        names = True
+        args.remove('--decompiler-names')
     if args and args[0] == '--range' and len(args) == 2:
         rng = args[1]
     elif args:
@@ -244,6 +288,8 @@ def main(argv):
     try:
         top = git('rev-parse', '--show-toplevel').decode().strip()
         rules, allow = load_rules(top), load_allow(top)
+        if names:
+            rules += decompiler_rules()
         if rng:
             hits = check_range(top, rules, allow, rng)
         else:

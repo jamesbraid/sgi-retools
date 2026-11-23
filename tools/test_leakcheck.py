@@ -226,6 +226,49 @@ class RangeTest(LeakTest):
         self.assertEqual(self.leak("--range", "%s..HEAD" % base).returncode, 0)
 
 
+class DecompilerNamesTest(LeakTest):
+    NAMES = ("temp_t0", "var_s1", "unksp1C", "M2C_ERROR(x)", "Read from unset register $a0", "FUN_80001000",
+             "local_20", "param_1", "iVar3", "jlabel .LBFC00330", "glabel foo", "jtbl_BFC00900", "sp14", "phi_t3", "UNK_bfc00900", "uRambf000030", "in_t2_hi", "FUN_ram_00080000",
+             "DAT_ram_00081000", "_DAT_80001000", "PTR_FUN_80001000", "thunk_FUN_80001000", "local_res8", "uStack_20",
+             "cStack_8", "in_stack_ffffffe0", "caseD_3", "ppppuVar1", "subroutine_arg4", "Ramc000000010000010")
+
+    def test_the_names_pass_unless_asked_for(self):
+        for name in self.NAMES:
+            self.write("a.c", "x = %s;\n" % name)
+            self.commit(name)
+            self.assertEqual(self.leak().returncode, 0, name)
+
+    def test_each_kind_of_invented_name_fails_when_asked_for(self):
+        for name in self.NAMES:
+            with self.subTest(name=name):
+                self.write("a.c", "x = %s;\n" % name)
+                self.commit(name)
+                r = self.leak("--decompiler-names")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("decompiler name (", r.stdout)
+
+    def test_ordinary_names_pass(self):
+        self.write("a.c", "int var_count = arg0 + temperature + params + local_count;\nswitch (sp) { }\n")
+        self.commit()
+        r = self.leak("--decompiler-names")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_range_mode_and_messages_are_checked(self):
+        self.write("a.c", "ok\n")
+        base = self.commit("base")
+        self.write("a.c", "ok\nx = temp_v0;\n")
+        self.commit("add")
+        self.assertEqual(self.leak("--decompiler-names", "--range", "%s..HEAD" % base).returncode, 1)
+        self.assertEqual(self.leak("--range", "%s..HEAD" % base).returncode, 0)
+
+    def test_the_list_file_is_well_formed(self):
+        with open(os.path.join(HERE, "decompiler-identifiers.txt")) as f:
+            rows = [l for l in f.read().splitlines() if l.strip() and not l.startswith("#")]
+        self.assertGreater(len(rows), 20)
+        for row in rows:
+            self.assertEqual(row.count("\t"), 1, row)
+
+
 class CiCheckTest(LeakTest):
     def ci(self):
         return subprocess.run([sys.executable, CI], cwd=self.root, env=self.env,
