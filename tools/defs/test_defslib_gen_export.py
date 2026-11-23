@@ -107,6 +107,37 @@ class ExportTest(RepoTest):
         self.assertIn("#define DATA_COUNT 16", text)
         self.assertNotIn("registerfields", text)     # the generated header must not name another header
 
+    def test_c_regfields_carries_every_constant(self):
+        self.enable()
+        self.edit("defs/uart.toml", "[constants]", '[constants]\nWINDOW = { value = 0x100, count = 4, stride = 8, grade = "unknown" }\n'
+                  'FAR = { value = 0x1ffffffff, grade = "inferred", macro = "UART_FAR_BASE" }')
+        text = self.render()["gen/c-regfields/uart.h"]
+        self.assertIn("#define UART_FIFO_DEPTH                              0x10u /* established */", text)
+        self.assertIn("(0x100u + (i) * 8)", text)
+        self.assertIn("#define UART_WINDOW_COUNT 4", text)
+        self.assertIn("/* inferred */\n#define UART_FAR_BASE                                0x1ffffffffull\n", text)     # the grade moved up: the line passed 80
+
+    def test_c_regfields_constant_named_like_a_register_is_an_error(self):
+        self.enable()
+        self.edit("defs/uart.toml", "[constants]", '[constants]\nCTL = { value = 1, grade = "unknown", macro = "CTL" }')
+        _files, errors = gen.render(loader.load_repo(self.root))
+        self.assertTrue([e for e in errors if "CTL" in e], errors)
+
+    def test_c_regfields_base_constant_replaces_a_zero_base(self):
+        self.enable()
+        self.edit("defs/check.toml", "base = 0x10", "base = 0")
+        self.edit("defs/uart.toml", "[constants]", '[constants]\nBASE = { value = 0xc6000000, grade = "established" }')
+        self.edit("defs/uart.toml", "offset = 0x10", "offset = 0")
+        text = self.render()["gen/c-regfields/uart.h"]
+        self.assertEqual(text.count("#define UART_BASE"), 1)
+        self.assertRegex(text, r"#define UART_BASE +0xc6000000u")
+
+    def test_c_regfields_base_constant_clashing_with_a_set_base_is_an_error(self):
+        self.enable()
+        self.edit("defs/uart.toml", "[constants]", '[constants]\nBASE = { value = 0xc6000000, grade = "established" }')
+        _files, errors = gen.render(loader.load_repo(self.root))
+        self.assertTrue([e for e in errors if "UART_BASE" in e], errors)
+
     PAD = ('unit = "pad"\nprefix = "PAD"\ntitle = "second fixture block"\ndoc = "A second block."\n'
            'from = "fixture notes (docs/uart.md)"\npublic_from = ["fixture notes"]\n\n[registers.%s]\n'
            'offset = 0x400\naccess = "r"\nwidth = 32\ngrade = "unknown"\n')

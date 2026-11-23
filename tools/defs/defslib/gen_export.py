@@ -4,7 +4,8 @@ field macros only, with no accessors, prose or test vectors.
   rust-regs     <gen>/rust-regs/<unit>.rs     one `regs! { ... }` invocation: a line per register (offset, width,
                                               reset and access masks when known, array bounds, fields) in QEMU's
                                               register vocabulary. The consumer holds the macro.
-  c-regfields   <gen>/c-regfields/<unit>.h    REG8/16/32/64 and FIELD macros in the registerfields.h style
+  c-regfields   <gen>/c-regfields/<unit>.h    REG8/16/32/64 and FIELD macros in the registerfields.h style, then every
+                                              constant of the unit as a #define
   c-clean       <gen>/c-clean/<unit>.h        the standard C header's macros with no source strings: a header
                                               safe to copy into another public project
 
@@ -31,7 +32,7 @@ is compared with it masked (see mask_commit): a file is stale when anything else
 import re
 import subprocess
 
-from .genutil import GenError, wrap_comment
+from .genutil import GenError, lit, wrap_comment
 from . import gen_c
 from .gen_rust import rid
 from .model import block_of, enum_values
@@ -168,15 +169,24 @@ def gen_rust_regs(fname, entries, source, commit):
     return "\n".join(out) + "\n"
 
 
+def _const_macro(m, n, k):
+    return k.get("macro") or "%s_%s" % (m["c"].get("const_prefix", m["prefix"]), n)      # as in the standard header
+
+
 def gen_c_regfields(m, base, project, commit):
     blk = block_of(m)
+    claimed = {_const_macro(m, n, k): k for n, k in m["constants"].items()}
+    own = claimed.get("%s_BASE" % blk)      # a constant named like the block base is the base: it wins over a zero
+    if own and base:
+        raise GenError("%s: constant %s_BASE clashes with the export base 0x%x" % (m["unit"], blk, base))
     guard = "%s_REGFIELDS_H" % m["prefix"]
     out = [export_banner(project, commit, "/*", " */"),
            *wrap_comment(m.get("title") or m["unit"]),
            *wrap_comment("Needs REG8, REG16, REG32, REG64 (name, offset) and FIELD (register, field, shift, length) "
                          "defined by the includer. Offsets are relative to %s_BASE. A comment gives each grade." % blk),
-           "#ifndef %s\n#define %s\n" % (guard, guard),
-           "#define %s_BASE 0x%x" % (blk, base)]
+           "#ifndef %s\n#define %s\n" % (guard, guard)]
+    if not own:
+        out.append("#define %s_BASE 0x%x" % (blk, base))
     for n, r in m["registers"].items():
         name = n.upper()
         out.append("")
@@ -188,6 +198,20 @@ def gen_c_regfields(m, base, project, commit):
         for fn, f in r["fields"].items():
             hi, lo = f["bits"]
             out.append("FIELD(%s, %s, %d, %d)" % (name, fn.upper(), lo, hi - lo + 1))
+    taken = {n.upper() for n in m["registers"]} | ({"%s_BASE" % blk} if not own else set())
+    if m["constants"]:
+        out.append("")
+    for n, k in m["constants"].items():
+        macro = _const_macro(m, n, k)
+        if macro in taken:
+            raise GenError("%s: constant %s becomes the macro %s, which the c-regfields header already defines" % (m["unit"], n, macro))
+        taken.add(macro)
+        grade = " /* %s */" % k["grade"]
+        if k.get("count", 1) > 1:
+            out.append(gen_c.define("%s(i)" % macro, "(%s + (i) * %d)" % (lit(k["value"]), k.get("stride", 1)), grade))
+            out.append("#define %s_COUNT %d" % (macro, k["count"]))
+        else:
+            out.append(gen_c.define(macro, lit(k["value"]), grade))
     out.append("\n#endif /* %s */" % guard)
     return "\n".join(out) + "\n"
 
