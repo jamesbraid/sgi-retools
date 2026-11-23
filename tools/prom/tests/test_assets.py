@@ -147,22 +147,23 @@ class Mips(unittest.TestCase):
         self.assertEqual(mips.routine_at([0, 3, 6], 4), (3, 6))
 
 
+def palette_routine(iterations=120, extra=()):
+    # sets entry 1 to (255, 0, 9), then a ramp from index 96: r, g and b each a running 32-bit sum
+    entry = [fx.lw(25, 8, 21), fx.addiu(5, 0, 1), fx.addiu(6, 0, 255), fx.addiu(8, 0, 9), fx.sw(8, 16, 29),
+             fx.jalr(25), fx.addiu(7, 0, 0)]
+    setup = [fx.lui(18, 0x5f), fx.or_(17, 18, 0), fx.lui(19, 0x8f), fx.addiu(16, 0, 0)]
+    body = [fx.sra(9, 19, 16), fx.sw(9, 16, 29), fx.lw(25, 8, 21), fx.addiu(5, 16, 96), fx.sra(6, 17, 16), fx.jalr(25),
+            fx.sra(7, 18, 16), fx.ori(1, 0, 0x8199), fx.addu(17, 17, 1), fx.ori(1, 0, 0xb800), fx.addu(18, 18, 1),
+            fx.ori(1, 0, 0xb333), fx.addu(19, 19, 1), fx.addiu(1, 0, iterations), fx.addiu(16, 16, 1),
+            fx.bne(16, 1, -16 & 0xffff), fx.NOP]
+    return [fx.addiu(29, 29, -104)] + entry + setup + body + list(extra) + [fx.JR_RA, fx.NOP]
+
+
 class Ip32Code(unittest.TestCase):
     """The finders that read constants from code, on routines built here."""
 
-    def palette_routine(self, iterations=120, extra=()):
-        # sets entry 1 to (255, 0, 9), then a ramp from index 96: r, g and b each a running 32-bit sum
-        entry = [fx.lw(25, 8, 21), fx.addiu(5, 0, 1), fx.addiu(6, 0, 255), fx.addiu(8, 0, 9), fx.sw(8, 16, 29),
-                 fx.jalr(25), fx.addiu(7, 0, 0)]
-        setup = [fx.lui(18, 0x5f), fx.or_(17, 18, 0), fx.lui(19, 0x8f), fx.addiu(16, 0, 0)]
-        body = [fx.sra(9, 19, 16), fx.sw(9, 16, 29), fx.lw(25, 8, 21), fx.addiu(5, 16, 96), fx.sra(6, 17, 16), fx.jalr(25),
-                fx.sra(7, 18, 16), fx.ori(1, 0, 0x8199), fx.addu(17, 17, 1), fx.ori(1, 0, 0xb800), fx.addu(18, 18, 1),
-                fx.ori(1, 0, 0xb333), fx.addu(19, 19, 1), fx.addiu(1, 0, iterations), fx.addiu(16, 16, 1),
-                fx.bne(16, 1, -16 & 0xffff), fx.NOP]
-        return [fx.addiu(29, 29, -104)] + entry + setup + body + list(extra) + [fx.JR_RA, fx.NOP]
-
     def test_the_palette_is_the_calls_and_the_ramp_comes_from_the_running_sums(self):
-        r = ip32.Reader(fx.asset_segment(self.palette_routine()))
+        r = ip32.Reader(fx.asset_segment(palette_routine()))
         ip32.palette(r, self.out())
         doc = json.loads(self.read('assets/palette.json'))
         by = {e['index']: e['rgb'] for e in doc['entries']}
@@ -176,13 +177,13 @@ class Ip32Code(unittest.TestCase):
         self.assertEqual(doc['unwritten'][:3], [0, 2, 3])
 
     def test_the_swatch_paints_index_i_in_cell_i_and_leaves_unwritten_cells_clear(self):
-        ip32.palette(ip32.Reader(fx.asset_segment(self.palette_routine())), self.out())
+        ip32.palette(ip32.Reader(fx.asset_segment(palette_routine())), self.out())
         w, h, _, px = png.decode(self.read('assets/palette.png', 'rb'))
         pixel = lambda i: px[((i // 16 * 16 + 3) * 256 + i % 16 * 16 + 5) * 4:][:4]
         self.assertEqual((w, h, pixel(1), pixel(2)), (256, 256, b'\xff\0\x09\xff', b'\0\0\0\0'))
 
     def test_a_routine_without_the_three_increments_is_not_a_palette(self):
-        code = [w for w in self.palette_routine() if w != fx.ori(1, 0, 0xb800)]
+        code = [w for w in palette_routine() if w != fx.ori(1, 0, 0xb800)]
         with self.assertRaises(AssetError):
             ip32.palette(ip32.Reader(fx.asset_segment(code)), self.out())
 
@@ -365,6 +366,112 @@ class Ip32Tagline(unittest.TestCase):
     def test_an_index_naming_a_missing_entry_is_refused(self):
         with self.assertRaises(AssetError):
             self.run_tagline(chars=(0, 3))
+
+
+class Ip32Icons(unittest.TestCase):
+    """Ten icons: six stored into menu records by code, four named by a data table (as the dialog's)."""
+    SIZE = (6, 5)
+
+    def layers(self, k):
+        # layer 0 fills the icon in palette colour 1; layer 1 is a 2 by 2 square at (1, 1) in colour 96
+        return [(1, 0, 0, 6, 5, [[1] * 6 for _ in range(5)]), (96, 1, 1, 2, 2, [[1, 1], [1, 0]])]
+
+    def build(self, menu_icons=6):
+        bitmaps = [[pack_rows([[int(v) for v in row] for row in rows]).ljust(12, b'\0')
+                    for _, _, _, _, _, rows in self.layers(k)] for k in range(10)]
+        per_icon = sum(len(b) for b in bitmaps[0]) + 24 * 3 + 20
+
+        def layout(at):
+            """Each icon's bitmaps, layer list (two layers and the terminator) and object, back to back from at."""
+            out = []
+            for k in range(10):
+                bm = [at + sum(len(x) for x in bitmaps[k][:n]) for n in range(2)]
+                lst = at + sum(len(x) for x in bitmaps[k])
+                out.append((bm, lst, lst + 72))
+                at += per_icon
+            return out, at
+
+        def code(data_addr):
+            self.addrs = [obj for _, _, obj in layout(data_addr)[0]]
+            w = palette_routine() + li32(12, 0x81070000)
+            for n in range(menu_icons):
+                w += li32(8, self.addrs[n]) + [fx.sw(8, 12 + 16 * n, 12)]
+            return w + [fx.JR_RA, fx.NOP]
+
+        base = assemble(code, b'')[1]
+        placed, end = layout(base)
+        data = b''
+        for k, (bm, lst, obj) in enumerate(placed):
+            data += b''.join(bitmaps[k])
+            for (colour, x, y, w, h, _), a in zip(self.layers(k), bm):
+                data += struct.pack('>6I', colour, x, y, w, h, a)
+            data += struct.pack('>6I', 0, 0, 0, 0, 0, 0) + struct.pack('>IIiiI', 6, 5, 0, -2 if k == 3 else 0, lst)
+        data += b''.join(struct.pack('>6I', 0, 0, 0, 0, 0, a) for a in self.addrs[6:])
+        return assemble(code, data)[0]
+
+    def run_icons(self, **kw):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+        r = ip32.Reader(self.build(**kw))
+        ip32.icons(r, self.dir)
+        with open(os.path.join(self.dir, 'assets/icons/icons.json')) as f:
+            return json.load(f)
+
+    def test_menu_icons_come_from_record_stores_and_the_rest_from_the_table(self):
+        doc = self.run_icons()
+        self.assertEqual([i['name'] for i in doc['icons']], ['menu-%d' % k for k in range(6)] + ['install-%d' % k for k in range(4)])
+        self.assertEqual([i['object_address'] for i in doc['icons']], ['0x%x' % a for a in self.addrs])
+        self.assertEqual(doc['icons'][3]['yoffset'], -2)
+
+    def test_layers_paint_in_order_with_y_measured_up_from_the_bottom(self):
+        doc = self.run_icons()
+        w, h, _, px = png.decode(open(os.path.join(self.dir, doc['icons'][0]['composite']), 'rb').read())
+        pix = lambda x, y_down: px[(y_down * w + x) * 4:][:4]
+        red, ramp = b'\xff\0\x09\xff', bytes([95, 95, 143, 255])
+        # layer 1 sits at y = 1 from the bottom of a 5-row icon, so its rows are image rows 2 and 3; its (1, 0) pixel is clear
+        self.assertEqual([pix(1, 3), pix(2, 3), pix(1, 2), pix(2, 2)], [ramp, ramp, ramp, red])
+        self.assertEqual(pix(0, 0), red)
+        lw, lh, _, lpx = png.decode(open(os.path.join(self.dir, doc['icons'][0]['layers'][1]['file']), 'rb').read())
+        self.assertEqual((lw, lh, lpx), (2, 2, b'\xff\xff\0\0\xff\xff\xff\xff'))
+
+    def test_an_icon_the_code_never_uses_is_refused(self):
+        with self.assertRaises(AssetError):
+            self.run_icons(menu_icons=5)
+
+
+LOGO_W, LOGO_H = 494, 237
+
+
+class Ip32Logo(unittest.TestCase):
+    def rows(self):
+        return [[1 if r + 1 <= x < r + 101 else 0 for x in range(LOGO_W)] for r in range(LOGO_H)]
+
+    def run_logo(self, lead=12, junk=b'\x06\xfd\x70', anchor=True):
+        data = b'\0\0' + junk + b'\0' * lead + encode_rle(self.rows())
+        data += b'\0' * (-len(data) % 4)
+        data += struct.pack('>II', LOGO_W, LOGO_H) if anchor else b'\0' * 8
+        seg, _ = assemble(lambda a: [fx.JR_RA, fx.NOP], data)
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+        r = ip32.Reader(seg)
+        ip32.logo(r, self.dir)
+        return r.files[0]
+
+    def test_the_logo_decodes_from_the_words_after_it_with_the_twelve_zero_start(self):
+        f = self.run_logo()
+        w, h, _, px = png.decode(open(os.path.join(self.dir, 'assets/logo.png'), 'rb').read())
+        self.assertEqual((w, h), (LOGO_W, LOGO_H))
+        want = self.rows()[::-1]                       # the PNG is top row first; the data is bottom row first
+        self.assertEqual([[px[(y * w + x) * 2 + 1] // 255 for x in range(w)] for y in (0, 100, 236)], [want[0], want[100], want[236]])
+        self.assertEqual(f['details']['encoded_length'], len(encode_rle(self.rows())) + 12)
+
+    def test_extra_zero_bytes_before_the_twelve_are_not_the_image(self):
+        a, b = self.run_logo(lead=12), self.run_logo(lead=16)
+        self.assertEqual((a['details']['encoded_length'], a['sha256']), (b['details']['encoded_length'], b['sha256']))
+
+    def test_no_width_and_height_words_means_no_logo(self):
+        with self.assertRaises(AssetError):
+            self.run_logo(anchor=False)
 
 
 if __name__ == '__main__':

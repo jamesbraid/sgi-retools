@@ -4,6 +4,7 @@ refuses an image where the anchor is missing or ambiguous, so both 4.18 and 4.8 
 import hashlib
 import json
 import os
+import struct
 
 from . import AssetError, glyphs, png
 from .firmware import Firmware
@@ -107,7 +108,10 @@ def ramp_of(calls):
     return run[0].args[1], n, channels
 
 
-def palette(r, out):
+def palette_entries(r):
+    """{index: {'index', 'rgb', maybe 'source'}} of the palette routine, and the routine's address and ramp."""
+    if hasattr(r, 'palette_cache'):
+        return r.palette_cache
     addr, calls = find_palette(r)
     first, count, channels = ramp_of(calls)
     entries = {}
@@ -121,6 +125,12 @@ def palette(r, out):
             entries[index]['source'] = 'pagecolor variable when it parses, else this default'
     if any(not 0 <= v < 256 for e in entries.values() for v in e['rgb']) or max(entries) > 255:
         raise AssetError('palette entry out of range')
+    r.palette_cache = entries, addr, first, count, channels
+    return r.palette_cache
+
+
+def palette(r, out):
+    entries, addr, first, count, channels = palette_entries(r)
     doc = {'format': 'promkit-palette', 'version': 1, 'routine': '0x%x' % addr,
            'entries': [entries[i] for i in sorted(entries)],
            'ramp': {'first_index': first, 'count': count, 'shift': 16,
@@ -357,3 +367,131 @@ def tagline(r, out):
     low = max(0, -min(c['yoffset'] for c in chars))
     r.add(out, 'font', 'tagline glyph bitmap', 'assets/tagline.bdf', glyphs.bdf('promtagline', top + low, low, chars), pool,
           'established', format='bdf')
+
+
+ICON_USES = {'menu': 6, 'install': 4}
+MAX_ICON, MAX_LAYERS = 128, 32
+
+
+def icon_at(r, addr):
+    """The five-word icon object at addr, with its layer records, or None when the words are not one."""
+    fw = r.fw
+    if not fw.in_data(addr, 20):
+        return None
+    w, h, xo, yo, lst = struct.unpack('>IIiiI', fw.read(addr, 20))
+    if not (1 <= w <= MAX_ICON and 1 <= h <= MAX_ICON and abs(xo) <= 16 and abs(yo) <= 16):
+        return None
+    layers = []
+    while len(layers) <= MAX_LAYERS:
+        if not fw.in_data(lst + 24 * len(layers), 24):
+            return None
+        colour, x, y, lw, lh, bmp = struct.unpack('>6I', fw.read(lst + 24 * len(layers), 24))
+        if bmp == 0:
+            break
+        size = glyphs.stride(lw) * 2 * lh
+        if not (colour < 256 and 1 <= lw and 1 <= lh and x + lw <= w and y + lh <= h and fw.in_data(bmp, size)):
+            return None
+        layers.append({'colour': colour, 'x': x, 'y': y, 'width': lw, 'height': lh, 'bitmap': bmp})
+    else:
+        return None
+    return {'address': addr, 'width': w, 'height': h, 'xoffset': xo, 'yoffset': yo, 'list': lst, 'layers': layers} if layers else None
+
+
+def find_icons(r):
+    """Every five-word icon object in the initialised data, as {address: icon}."""
+    lo, hi = r.fw.region('data')
+    found = {a: i for a in range(lo, hi - 20, 4) if (i := icon_at(r, a))}
+    return found
+
+
+def icon_uses(r, icons):
+    """(menu icons in record order, install-dialog icons in table order): the menu builder stores each icon's address
+    in a record, and the install dialog's table holds the others as data words."""
+    m = r.machine()
+    m.sweep(r.base, r.base + 4 * len(r.code))
+    stores = sorted((w.addr, w.value) for w in m.writes if w.size == 4 and w.value in icons)
+    lo, hi = r.fw.region('data')
+    data = r.fw.read(lo, hi - lo)
+    table = [struct.unpack_from('>I', data, o)[0] for o in range(0, len(data) - 3, 4)]
+    dialog = [(lo + 4 * i, v) for i, v in enumerate(table) if v in icons]
+    return [v for _, v in stores], [v for _, v in dialog]
+
+
+def icons(r, out):
+    found = find_icons(r)
+    menu, dialog = icon_uses(r, found)
+    if len(menu) != ICON_USES['menu'] or len(dialog) != ICON_USES['install'] or len(set(menu + dialog)) != len(found):
+        raise AssetError('icons: %d objects, %d menu uses, %d dialog uses' % (len(found), len(menu), len(dialog)))
+    rgb = {i: e['rgb'] for i, e in palette_entries(r)[0].items()}
+    listing = []
+    for use, addrs in (('menu', menu), ('install', dialog)):
+        for n, a in enumerate(addrs):
+            ic, name = found[a], '%s-%d' % (use, n)
+            canvas = [[(0, 0, 0, 0)] * ic['width'] for _ in range(ic['height'])]
+            layer_files = []
+            for k, ly in enumerate(ic['layers']):
+                rows = glyphs.unpack_rows(r.fw.read(ly['bitmap'], glyphs.stride(ly['width']) * 2 * ly['height']), ly['width'], ly['height'])
+                if ly['colour'] not in rgb:
+                    raise AssetError('icon %s: layer colour %d is not a written palette entry' % (name, ly['colour']))
+                for yy, row in enumerate(rows):             # rows are bottom first, y measured up from the icon's bottom edge
+                    for xx, v in enumerate(row):
+                        if v:
+                            canvas[ic['height'] - 1 - ly['y'] - yy][ly['x'] + xx] = tuple(rgb[ly['colour']]) + (255,)
+                rel = 'assets/icons/%s-layer-%d.png' % (name, k)
+                r.add(out, 'icon', '%s layer %d' % (name, k), rel, png.mask_png(rows[::-1]), ly['bitmap'], 'established',
+                      details={'colour_index': ly['colour'], 'x': ly['x'], 'y': ly['y']})
+                layer_files.append(rel)
+            px = b''.join(bytes(p) for row in canvas for p in row)
+            rel = 'assets/icons/%s.png' % name
+            r.add(out, 'icon', name, rel, png.png(ic['width'], ic['height'], px, png.RGBA), a, 'established')
+            listing.append({'name': name, 'role': name, 'object_address': '0x%x' % a,
+                            'width': ic['width'], 'height': ic['height'], 'xoffset': ic['xoffset'], 'yoffset': ic['yoffset'],
+                            'composite': rel,
+                            'layers': [{'file': f, 'colour_index': ly['colour'], 'x': ly['x'], 'y': ly['y'], 'width': ly['width'],
+                                        'height': ly['height'], 'bitmap_address': '0x%x' % ly['bitmap']}
+                                       for f, ly in zip(layer_files, ic['layers'])]})
+    doc = {'format': 'promkit-icons', 'version': 1,
+           'object': 'five words: width, height, xoffset, yoffset, layer list; layer record: colour index, x, y, width, '
+                     'height, bitmap, the list ending at a record whose bitmap is 0',
+           'layer_rule': 'each layer is a 1-bit stipple in the glyph bitmap format, x from the left and y up from the '
+                         "icon's bottom edge, painted in list order in its palette colour",
+           'centring': 'x = left + ((right - left - width + 1) >> 1), y = bottom + ((top - bottom - height + 1) >> 1) '
+                       "inside a button box with inclusive corners (signed shift), then the icon's own offsets apply",
+           'icons': listing}
+    r.add(out, 'icon', 'icon list', 'assets/icons/icons.json', dumps(doc), min(found), 'established')
+
+
+LOGO_SIZE = (494, 237)
+LOGO_LEAD = 12              # leading zero bytes the data starts with (six zero-length gap and run pairs)
+
+
+def logo(r, out):
+    """The run-length logo: anchored on the width and height words that follow it, then walked back to the start."""
+    w, h = LOGO_SIZE
+    lo, hi = r.fw.region('data')
+    data = r.fw.read(lo, hi - lo)
+    anchors = [i for i in range(0, len(data) - 7, 4) if data[i:i + 8] == struct.pack('>II', w, h)]
+    if len(anchors) != 1:
+        raise AssetError('logo: %d places hold the width and height words, expected one' % len(anchors))
+    a = anchors[0]
+    valid = []
+    for s in range(a - 1, max(-1, a - 4096), -1):
+        try:
+            _, used = glyphs.decode_rle(data[s:a], w, h)
+        except ValueError:
+            continue
+        if used >= a - s - 3:           # the rows end within the word-alignment padding before the anchor
+            valid.append(s)
+    # row 0 begins with zero-length gap and run pairs, so the start is a zero byte. Zero bytes that merely decode
+    # ahead of other bytes are not the image: take the zero run nearest the image, and no more than LOGO_LEAD of it.
+    def first_ink(s):
+        return s + len(data[s:a]) - len(data[s:a].lstrip(b'\0'))
+    zero_starts = [s for s in valid if data[s] == 0]
+    if not zero_starts:
+        raise AssetError('logo: no run-length data of %d rows ends at the anchor' % h)
+    p = max(first_ink(s) for s in zero_starts)
+    start = max(min(s for s in zero_starts if first_ink(s) == p), p - LOGO_LEAD)
+    rows, used = glyphs.decode_rle(data[start:a], w, h)
+    addr = lo + start
+    r.add(out, 'logo', 'logo', 'assets/logo.png', png.mask_png([list(row) for row in rows[::-1]]), addr, 'inferred',
+          format='png mask', details={'width': w, 'height': h, 'encoded_length': used, 'anchor': '0x%x' % (lo + a)})
