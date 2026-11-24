@@ -39,3 +39,12 @@ mips.bin	FUN_bfc00600	bfc00604	r	1	window		0x1fc00610		var
 mips.bin	FUN_bfc00600	bfc00604	r	4	window		0x1f000080		var
 mips.bin	FUN_bfc00600	bfc00610	w	4	window		0x1f000080		var
 mips.bin	FUN_bfc00600	bfc00610	w	4	window		0x1f000080		var
+mips.bin	FUN_bfc00700	bfc0070c	r	4	window		0x1f0000a0		var
+mips.bin	FUN_bfc00700	bfc00724	r	4	window		0x1f0000b0		var
+mips.bin	FUN_bfc00700	bfc0073c	w	4	window		0x1f0000a0		var
+mips.bin	FUN_bfc00700	bfc0073c	w	4	window		0x1f0000a8		var
+mips.bin	FUN_bfc00700	bfc0073c	r	4	window		0x1f0000a8		var
+mips.bin	FUN_bfc00700	bfc0073c	w	4	window		0x1f0000b0		var
+mips.bin	FUN_bfc00700	bfc00744	w	4	window		0x1f0000a0		var
+mips.bin	FUN_bfc00700	bfc00744	w	4	window		0x1f0000a8		var
+mips.bin	FUN_bfc00700	bfc00744	w	4	window		0x1f0000b0		var

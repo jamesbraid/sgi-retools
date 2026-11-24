@@ -26,7 +26,7 @@ PTR_TARGET = 0xbf100000  # what the pointer table holds: another window
 SIZE = 0x1700
 
 # Register numbers.
-ZERO, V0, A0, A1, T0, T1, T2, T9, RA = 0, 2, 4, 5, 8, 9, 10, 25, 31
+ZERO, V0, A0, A1, T0, T1, T2, T3, T9, RA = 0, 2, 4, 5, 8, 9, 10, 11, 25, 31
 
 
 def r_type(rs, rt, rd, sa, funct):
@@ -230,6 +230,29 @@ def build():
     im.load_const(A0, d + 0x100)
     im.addiu(A1, ZERO, 5)
     im.jal(helper)
+    im.ret()
+
+    # Pairing: a store takes the nearest load its changed value came from, a copy is not a change, a paired
+    # load is used up, and a table index needs a read-only base (the device window is not one).
+    im.function(BASE + 0x700)
+    im.lui(T0, d >> 16)
+    im.lw(T1, T0, 0xa0, d + 0xa0)              # two loads of one address, summed: the store pairs with the second
+    second = im.lw(T2, T0, 0xa0)
+    im.addu(T1, T1, T2)
+    store = im.sw(T1, T0, 0xa0, d + 0xa0, rec=False)
+    im.accesses.append((store, im.func, d + 0xa0, 4, 'rmw', 'absolute', None, second))
+    im.lw(T1, T0, 0xa8, d + 0xa8)               # a copy is not a change: a load and a store
+    im.addu(T3, T1, ZERO)
+    im.sw(T3, T0, 0xa8, d + 0xa8)
+    load = im.lw(T1, T0, 0xb0)                  # one rmw, then the same value stored again: a plain store
+    im.ori(T1, T1, 1)
+    store = im.sw(T1, T0, 0xb0, d + 0xb0, rec=False)
+    im.accesses.append((store, im.func, d + 0xb0, 4, 'rmw', 'absolute', None, load))
+    im.sw(T1, T0, 0xb0, d + 0xb0)
+    im.sll(T2, A0, 2)                           # a load indexed from the window is no table
+    im.addu(T2, T0, T2)
+    im.lw(T2, T2, 0xc0)
+    im.jalr(T2, None, 'unresolved')
     im.ret()
 
     # A long straight-line function, above any small test budget.
@@ -459,7 +482,7 @@ def selfcheck():
     im = build()
     assert len(im.words) * 4 < SIZE and max(im.words) - BASE < SIZE
     assert len(set(im.entries)) == len(im.entries)
-    assert len(call_rows(im)) == 7 and len(access_rows(im)) == 11, (len(call_rows(im)), len(access_rows(im)))
+    assert len(call_rows(im)) == 8 and len(access_rows(im)) == 17, (len(call_rows(im)), len(access_rows(im)))
     print('mips_synthetic: %d words, %d functions' % (len(im.words), len(im.entries)))
     return 0
 
