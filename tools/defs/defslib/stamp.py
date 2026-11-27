@@ -19,10 +19,13 @@ def digest(root, rels):
     return h.hexdigest()
 
 
+DEFAULT_LICENSE = "BSD-3-Clause"
+
+
 class Stamper:
     def __init__(self, repo):
         self.repo = repo
-        self.license = repo.settings.get("project", {}).get("license")
+        self.license = repo.settings.get("project", {}).get("license", DEFAULT_LICENSE)
         seen = []
         for _n, u in sorted(repo.units.items()):
             seen += [r for r in u.layers if r not in seen]

@@ -187,7 +187,7 @@ What `defs.toml` held, minus the header list. Everything is optional but `[proje
 [project]
 name = "odsy"
 plugin = "scripts/odsy_checks.py"   # repo-specific checks, see Plugins
-license = "BSD-3-Clause"            # SPDX id stamped on every generated file
+license = "BSD-3-Clause"            # SPDX id stamped on every generated file; this is the default
 
 [gen]
 profile = "public"                  # or "internal": see Profiles
@@ -314,7 +314,7 @@ It is never edited: if the dialect needs the export to change, the export change
 ### The stamp
 
 Every generated file carries, after its first banner line, the licence (`SPDX-License-Identifier`, from
-`[project] license` in `defs-check.toml`; no line when unset), the generator version and the sha256 of the
+`[project] license` in `defs-check.toml`, BSD-3-Clause when unset), the generator version and the sha256 of the
 unit's source TOML (a base then its overlay, concatenated; for a one-file unit it equals `sha256sum`).
 A file generated before its commit cannot name that commit, so it names its input instead. JSON files
 carry the same as `license`, `generator` and `input_sha256` keys. The crate's `Cargo.toml` and `lib.rs`

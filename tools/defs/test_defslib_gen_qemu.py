@@ -17,7 +17,6 @@ SETTINGS = '\n[gen.qemu]\nboard = "TEST"\n\n[gen.qemu.units.uart]\nname = "UART0
 
 class QemuTest(RepoTest):
     def enable(self):
-        self.edit("defs/check.toml", '[project]\nname = "mini"\n', '[project]\nname = "mini"\nlicense = "BSD-3-Clause"\n')
         self.write("defs/check.toml", self.read("defs/check.toml") + SETTINGS)
         self.edit("defs/uart.toml", 'unit = "uart"\n', 'unit = "uart"\nname_source = "ours"\n')
 

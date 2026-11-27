@@ -30,7 +30,7 @@ class StampTest(RepoTest):
                 continue
             head = text[:600]
             self.assertIn("BSD-3-Clause", head, rel)
-            self.assertIn("defs-gen 4", head, rel)
+            self.assertIn("defs-gen 5", head, rel)
             self.assertIn(digest, head, rel)
         for rel in ("gen/rust/Cargo.toml", "gen/rust/src/lib.rs"):
             self.assertIn("SPDX-License-Identifier: BSD-3-Clause", files[rel])
@@ -54,8 +54,28 @@ class StampTest(RepoTest):
         grab = lambda t: re.search(r"input sha256 ([0-9a-f]{64})", t).group(1)     # noqa: E731
         self.assertNotEqual(grab(before), grab(after))
 
-    def test_no_licence_line_without_a_setting(self):
-        self.assertNotIn("SPDX", self.render(license=False)["gen/c/uart.h"])
+    def test_the_licence_defaults_to_bsd_3_clause_and_can_be_set(self):
+        files = self.render(license=False)
+        self.assertIn("SPDX-License-Identifier: BSD-3-Clause", files["gen/c/uart.h"])
+        self.assertEqual(json.loads(files["gen/json/uart.json"])["license"], "BSD-3-Clause")
+        self.edit("defs/check.toml", '[project]\nname = "mini"\n', '[project]\nname = "mini"\nlicense = "MIT"\n')
+        files = self.render(license=False)
+        self.assertIn("SPDX-License-Identifier: MIT", files["gen/c/uart.h"])
+        self.assertNotIn("BSD-3-Clause", files["gen/c/uart.h"])
+
+    def test_every_output_kind_carries_the_licence_near_the_top(self):
+        self.write("defs/check.toml", self.read("defs/check.toml") + '\n[gen.qemu]\nboard = "T"\n\n[gen.qemu.units.uart]\n'
+                   '\n[gen.export]\nprofiles = ["rust-regs", "c-regfields", "c-clean"]\n\n[gen.export.units.uart]\nprofiles = ["rust-regs", "c-regfields", "c-clean"]\n')
+        self.edit("defs/uart.toml", 'unit = "uart"\n', 'unit = "uart"\nname_source = "ours"\n')
+        files = self.render(license=False)
+        kinds = {os.path.splitext(rel)[1] for rel in files}
+        self.assertTrue({".h", ".rs", ".py", ".json", ".xml", ".md", ".toml"} <= kinds, kinds)
+        self.assertTrue(any("/qemu/" in rel for rel in files) and any("c-clean" in rel for rel in files))
+        for rel, text in files.items():
+            if rel.endswith(".json"):
+                self.assertEqual(json.loads(text)["license"], "BSD-3-Clause", rel)
+            else:
+                self.assertIn("SPDX-License-Identifier: BSD-3-Clause", "\n".join(text.split("\n")[:40]), rel)
 
 
 if __name__ == "__main__":
