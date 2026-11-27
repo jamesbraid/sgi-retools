@@ -267,8 +267,9 @@ KINDS = {0o040000: 'dir', 0o100000: 'file', 0o120000: 'symlink', 0o020000: 'char
          0o010000: 'fifo', 0o140000: 'socket'}
 
 
-def cramfs_entries(img, base):
-    """Every entry of the CramFS at base, as dicts with path, type, mode, bytes, sha256 and symlink target."""
+def cramfs_entries(img, base, keep=None):
+    """Every entry of the CramFS at base, as dicts with path, type, mode, bytes, sha256 and symlink target.
+    A dict passed as `keep` also receives the bytes of each regular file, by path."""
     rows = []
 
     def visit(ino, path):
@@ -286,6 +287,8 @@ def cramfs_entries(img, base):
             data = _cramfs_file(img, base, ino)
             row['bytes'] = len(data)
             row['sha256'] = sha(data)
+            if keep is not None and kind == 'file':
+                keep[path] = data
             if kind == 'symlink':
                 row['target'] = data.rstrip(b'\0').decode('latin-1')
         elif kind in ('chardev', 'blockdev'):

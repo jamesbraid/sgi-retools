@@ -25,7 +25,9 @@ def firmware_segments(g, rel, data):
     """[(member, body, load address)] for one file of a group that names a `layout`: the code a controller
     runs, cut out of its container. `flat` is a file mapped at the group's `load` from its `offset`; the
     sysco layouts split the controllers' ESTFBINR images the way sysco's firmware tables do; `sgi-prom` takes the
-    segments of a PROM image from tools/prom (the members are its segment names, so `ip32prom.image(firmware)`)."""
+    segments of a PROM image from tools/prom (the members are its segment names, so `ip32prom.image(firmware)`).
+    `sysco-l1` also yields the ARM ELF files of the Linux packages' CramFS whose path matches one of the group's
+    `linux_members` globs, as `l1#N:/path` with load None: a linked ELF has no load address to give."""
     layout = g['layout']
     if layout == 'flat':
         off = _num(g.get('offset', 0))
@@ -39,10 +41,18 @@ def firmware_segments(g, rel, data):
     from sysco import sysco_tables as st
     if layout == 'sysco-l1':
         if st.FW in rel and not st._old_layout(data):
-            pkgs = [p for p in st.l1_packages(data) if not p['linux']]
+            every = st.l1_packages(data)
+            pkgs = [p for p in every if not p['linux']]
         else:       # the base product's single image, and the sysco images that predate the container
-            pkgs = [st.pre_container_package(data)]
-        return [('l1#%d' % p['index'], p['body'], p['load']) for p in pkgs]
+            every, pkgs = [], [st.pre_container_package(data)]
+        out = [('l1#%d' % p['index'], p['body'], p['load']) for p in pkgs]
+        for p in every if g.get('linux_members') else []:
+            if 'cramfs' in p:
+                files = {}
+                st.cramfs_entries(p['data'], p['cramfs'][0], files)
+                out += [('l1#%d:%s' % (p['index'], path), body, None) for path, body in sorted(files.items())
+                        if body[:4] == b'\x7fELF' and any(fnmatch.fnmatch(path, w) for w in g['linux_members'])]
+        return out
     if layout == 'sysco-l2':
         # the flash starts at the header's load address from file offset 0x2c; the kernel follows as a gzip
         # stream and runs inflated at its own link address
@@ -119,5 +129,6 @@ def segment_routine(cfg, root, key, address, size=None):
         return None
     import hostfacts
     arch, body, load, _group = found
+    elf = load is None          # a linked ARM ELF member (see firmware_segments): hostfacts reads its headers
     return hostfacts.routine_for(os.path.join(root, split_segment_key(key)[0]), address, size=size,
-                                 arch=arch, load=load, data=body)
+                                 arch='arm' if elf else arch, load=0 if elf else load, elf=elf, data=body)

@@ -584,17 +584,19 @@ class AddressZero(unittest.TestCase):
     """A relocatable object's first function is at address 0; that is an address, not a missing one."""
 
     @staticmethod
-    def relocatable(code, funcs):
-        """A big-endian 32-bit MIPS ET_REL image with one .text and a .symtab of (name, value, size) FUNC symbols."""
+    def relocatable(code, funcs, arm=False):
+        """A big-endian 32-bit MIPS ET_REL image (little-endian ARM with arm=True) with one .text and a .symtab
+        of (name, value, size) FUNC symbols."""
         import struct
+        e = '<' if arm else '>'
         names = b'\0' + b''.join(n.encode() + b'\0' for n, _, _ in funcs)
         offs, o = [], 1
         for n, _, _ in funcs:
             offs.append(o)
             o += len(n) + 1
-        syms = struct.pack('>IIIBBH', 0, 0, 0, 0, 0, 0)
+        syms = struct.pack(e + 'IIIBBH', 0, 0, 0, 0, 0, 0)
         for (n, v, sz), no in zip(funcs, offs):
-            syms += struct.pack('>IIIBBH', no, v, sz, 0x12, 0, 1)     # GLOBAL FUNC in section 1
+            syms += struct.pack(e + 'IIIBBH', no, v, sz, 0x12, 0, 1)     # GLOBAL FUNC in section 1
         shstr = b'\0.text\0.symtab\0.strtab\0.shstrtab\0'
         parts = [(b'', 0, 0, 0, 0, 0, 0, 0), (code, 1, 1, 6, 4, 0, 0, 0), (syms, 7, 2, 0, 4, 3, 2, 16),
                  (names, 15, 3, 0, 1, 0, 0, 0), (shstr, 23, 3, 0, 1, 0, 0, 0)]
@@ -602,13 +604,14 @@ class AddressZero(unittest.TestCase):
         shdrs, off = b'', 52
         for data, nm, ty, fl, al, link, info, ent in parts:
             if ty == 0:
-                shdrs += struct.pack('>10I', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                shdrs += struct.pack(e + '10I', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
                 continue
-            shdrs += struct.pack('>10I', nm, ty, fl, 0, off, len(data), link, info, al, ent)
+            shdrs += struct.pack(e + '10I', nm, ty, fl, 0, off, len(data), link, info, al, ent)
             off += len(data)
         body = b''.join(d for d, *_ in parts[1:])
-        ehdr = b'\x7fELF\x01\x02\x01' + b'\0' * 9 + struct.pack('>HHIIIIIHHHHHH', 1, 8, 1, 0, 0, 52 + len(body), 0x20000000,
-                                                                  52, 0, 0, 40, 5, 4)
+        ident = b'\x7fELF\x01' + (b'\x01' if arm else b'\x02') + b'\x01' + b'\0' * 9
+        ehdr = ident + struct.pack(e + 'HHIIIIIHHHHHH', 1, 40 if arm else 8, 1, 0, 0, 52 + len(body),
+                                   0 if arm else 0x20000000, 52, 0, 0, 40, 5, 4)
         return ehdr + body + shdrs
 
     def test_first_function_keeps_section_size_and_hash(self):
@@ -1241,6 +1244,95 @@ class RoleHedge(unittest.TestCase):
     def test_an_entry_without_a_citation_stays_named_only(self):
         self.assertEqual(inv.read_why('- `fsio_mount`: **Inferred.** Mounts it. The role is open.', self.SUBJ)[0],
                          'named-only')
+
+
+def cramfs(items, base=76):
+    """The little-endian CramFS blob for {name: bytes or a dict of the same}: the 64-byte superblock, the root
+    inode and then the entries and file blocks (stored raw), with each directory's entries before its children's."""
+    import struct
+
+    def inode(mode, size, name, off):
+        nm = name.encode() + b'\0' * (-len(name) % 4)
+        return struct.pack('<III', mode, size, len(nm) // 4 | off // 4 << 6) + nm
+
+    def build(items, at):
+        entries = sum(12 + len(n.encode()) + (-len(n) % 4) for n in items)
+        heads, tail = b'', b''
+        for name, body in sorted(items.items()):
+            here = at + entries + len(tail)
+            if isinstance(body, dict):
+                blob, n = build(body, here)
+                heads += inode(0o40755, n, name, here)
+                tail += blob
+            else:
+                heads += inode(0o100755, len(body), name, here)
+                tail += struct.pack('<I', (here + 4 + len(body)) | 1 << 31) + body + b'\0' * (-len(body) % 4)
+        return heads + tail, entries
+
+    blob, n = build(items, base)
+    root = inode(0o40755, n, '', base)
+    return (b'\x45\x3d\xcd\x28' + struct.pack('<I', 64 + len(root) + len(blob)) + b'\0' * 8 +
+            b'Compressed ROMFS' + b'\0' * 32) + root + blob
+
+
+def linux_l1(files):
+    """A sysco L1 container (ESTFBINR) with one Linux package: a gzip kernel and the CramFS of `files`."""
+    import gzip
+    import struct
+    pkg = b'xx' + gzip.compress(b'Linux version 2.6.15.6') + cramfs(files)
+    return b'ESTFBINR'.ljust(0x2c, b'\0') + struct.pack('>III', 1, 0x40, len(pkg)) + b'\0' * 8 + pkg
+
+
+@unittest.skipIf(ELFFile is None, 'pyelftools is not installed')
+class LinuxL1Elf(unittest.TestCase):
+    """The ARM ELF files in a Linux L1 package's CramFS are images of the inventory, read by their symbols."""
+    L1 = 'usr/cpu/firmware/sysco/l1.bin'
+    GROUP = {'group': 'l1', 'role': 'r', 'arch': 'coldfire', 'layout': 'sysco-l1', 'paths': [L1],
+             'linux_members': ['/stand/sysco/*/*']}
+
+    def setUp(self):
+        self.repo = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.repo)
+        self.arm = AddressZero.relocatable(bytes(range(32)), [('main', 0, 16), ('helper', 16, 16)], arm=True)
+        os.makedirs(os.path.join(self.repo, 'root', os.path.dirname(self.L1)))
+        files = {'stand': {'sysco': {'bin': {'prog': self.arm, 'note': b'not an elf'}}}, 'etc': {'rc': self.arm}}
+        with open(os.path.join(self.repo, 'root', self.L1), 'wb') as f:
+            f.write(linux_l1(files))
+        real = inv.REPO
+        inv.REPO = self.repo
+        self.addCleanup(setattr, inv, 'REPO', real)
+
+    def test_a_matching_elf_file_is_an_image_with_the_arm_abi_and_its_symbols(self):
+        cfg = {'binaries': [self.GROUP]}
+        imgs = inv.scope(cfg)
+        self.assertEqual([i['label'] for i in imgs], [self.L1 + '(l1#0:/stand/sysco/bin/prog)'])
+        self.assertIsNone(imgs[0]['fw'])
+        real = inv.run_objdump
+        inv.run_objdump = lambda path: self.fail('the MIPS replay read an ARM image')
+        try:
+            res = inv.analyse_unit((cfg, imgs, self.repo))
+        finally:
+            inv.run_objdump = real
+        label = imgs[0]['label']
+        self.assertEqual((res['abi'][label], res['kind'][label]), ('arm', 'object'))
+        self.assertEqual({n: f[1:3] for n, f in res['funcs'][label].items()}, {'main': [0, 16], 'helper': [16, 16]})
+
+    def test_a_group_without_linux_members_reads_no_elf_files(self):
+        group = {k: v for k, v in self.GROUP.items() if k != 'linux_members'}
+        self.assertEqual(inv.scope({'binaries': [group]}), [])
+
+    def test_a_reading_of_such_a_file_reads_it_as_an_arm_elf(self):
+        import hostfacts
+        import firmware_layout
+        seen = {}
+        real = hostfacts.routine_for
+        hostfacts.routine_for = lambda path, address, **kw: seen.update(kw, address=address)
+        try:
+            firmware_layout.segment_routine({'binaries': [self.GROUP]}, os.path.join(self.repo, 'root'),
+                                            self.L1 + '(l1#0:/stand/sysco/bin/prog)', 0x8000)
+        finally:
+            hostfacts.routine_for = real
+        self.assertEqual((seen['arch'], seen['elf'], seen['data']), ('arm', True, self.arm))
 
 
 if __name__ == '__main__':

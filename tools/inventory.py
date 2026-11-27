@@ -1792,7 +1792,9 @@ def scope(cfg):
         data = open(real, 'rb').read()
         if g.get('layout'):
             for member, body, load in firmware_segments(g, rel, data):
-                images.append(('%s(%s)' % (rel, member), rel, member, g, body, {'arch': g['arch'], 'load': load}))
+                # a segment with no load address is a linked ELF file, read through its headers
+                images.append(('%s(%s)' % (rel, member), rel, member, g, body,
+                               None if load is None else {'arch': g['arch'], 'load': load}))
         elif data[:8] == b'!<arch>\n':
             want = g.get('members')
             for name, body in unpack_ar(data):
@@ -1824,6 +1826,8 @@ def elf_of(data):
 
 
 def abi_of(elf):
+    if elf['e_machine'] == 'EM_ARM':
+        return 'arm'
     if elf.elfclass == 64:
         return 'n64'
     return 'n32' if elf.header['e_flags'] & 0x20 else 'o32'
@@ -2486,7 +2490,8 @@ class Unit:
         # parse every image once
         self.code = []
         for img in self.images:
-            if img['elf'] is None or img['group'].get('scan') is False:
+            # the replay reads MIPS: an ELF of another machine has function rows and no register accesses
+            if img['elf'] is None or img['elf']['e_machine'] != 'EM_MIPS' or img['group'].get('scan') is False:
                 continue
             lits = [sec for r in self.cfg.get('gp_literals', []) if self.applies(r, img) for sec in r['sections']]
             info = ImageInfo(img['elf'], lits)
