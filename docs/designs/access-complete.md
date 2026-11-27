@@ -1,11 +1,16 @@
 # Access-complete RE repositories: cross-reference tables, register contracts and lookup
 
-Status: proposed. Every name marked *(proposed name)* still needs the owner's choice. Nothing here is built.
+Status: direction approved, nothing built. `generated/xref/`, `--xref`, `--xref-all` and `questions/lookups.tsv`
+are adopted. Names still marked *(proposed name)* need the owner's choice.
 
 Read against sgi-retools `main` at `6cd5399` and the RE repositories at their 2026-11-27 heads: chips
 `abd0a17`, cobalt `add9b42`, crime `a3dadaf`, gr2 `8775b07`, kona `9472c6c`, kudzu `c9a5672`, newport
-`fb008fe`, odsy `96ee7d1`, sysco `43f80db`, voyager `b36b925`. Every one pins sgi-retools at `6cd5399`. gr4 is
-left out because its owner took it out of RE scope. stonewire is not covered.
+`fb008fe`, odsy `96ee7d1`, sysco `43f80db`, voyager `b36b925`, plus gr4 on its `origami-re` branch at `b42c8ef`
+and stonewire at `46604d3`. All but stonewire pin sgi-retools at `6cd5399`. stonewire pins `b6db4a8`.
+
+Scope is every RE repository above and every IRIX release each one holds, not a primary release per board.
+Committing all of them is the pressure test of the design: if the tables, their size or their run time do not
+hold up across every release, the design is wrong, and the first work unit measures exactly that.
 
 ## The goal
 
@@ -32,8 +37,9 @@ binary. None of the tables the repositories carry could have answered them.
    needs, side effects, reset value.
 3. Code that touches no hardware is credited by family or identical-code matching, or counted as named and
    located and left out of scope.
-4. The existing Library search indexes the tables, so one query by address, register, routine or string finds
-   them.
+4. The tables are plain TSV files that any text or code search can index, so one query by address, register,
+   routine or string finds them. Addresses are written in one canonical form inside the tables, so the search
+   needs no knowledge of address formats.
 5. Every incoming question is recorded. A question the lookup could not answer adds the missing table column
    or contract.
 
@@ -122,16 +128,12 @@ cross-workspace role check, the `scope` column with `out:N`, and the `no-softwar
 Missing: a rule that puts a routine out of scope because it touches no hardware. Without a call graph the
 inventory cannot tell a string routine from a driver helper.
 
-### Library lookup
+### Lookup
 
-Exists: Origami's Library searches source, documents and mail through one federated command and one MCP
-server. Its Code backend is Zoekt over configured git roots. Bounded reads return source lines around a hit,
-and failure to reach a backend is reported rather than read as an empty result.
-
-Missing: no RE repository is a Library root. No query understands that `0x3_8000`, `0x38000`,
-`0xa03809d4` and `0x3809d4` can name the same word. Zoekt skips the content of large files by default
-(2 MiB, to be confirmed on the pinned Zoekt build), and today's `functions.tsv` files are 2 to 60 MB
-(chips 15.8 MB, odsy 30 MB, kudzu 60 MB).
+Missing: nothing writes an address one way. Pages and tables write `0x3_8000`, `0x38000`, `0xa03809d4` and
+`0x3809d4`, and a text search cannot tell that the last two name the same word. Today's `functions.tsv` files
+are 2 to 60 MB (chips 15.8 MB, odsy 30 MB, kudzu 60 MB), larger than code-search indexers usually read in
+full.
 
 ### Questions
 
@@ -144,23 +146,32 @@ leaves no trace, so nothing tells the tooling which column to add.
 ### Repositories with no inventory
 
 cobalt, gr2 and newport have no `generated/inventory/`, no root manifest and no inventory config. cobalt's
-binaries are x86 Windows drivers. gr2 and newport hold their inputs in the repository or not at all.
+binaries are x86 Windows drivers. gr2 and newport hold their inputs in the repository or not at all. gr4's
+`origami-re` branch and stonewire have an inventory from an older sgi-retools, with no inventory README and
+no audits.
 
 ## The design
 
 The design adds one export, one directory of tables per binary, one measure in the inventory, one device map
-per family, one search mode and one log. Each extends something that exists.
+per family, one canonical address form and one log. Each extends something that exists.
 
 ### Tables
 
-Tables live in each RE repository under `generated/xref/` *(proposed name)*, one directory per distinct
+Tables live in each RE repository under `generated/xref/`, one directory per distinct
 binary content, named by its install path as `binaries.tsv` writes it: `generated/xref/IP27/unix/`,
 `generated/xref/IP32/usr/cpu/sysgen/IP32boot/crime.a/crime_init.o/`. Firmware segments use the inventory's
 `l1.bin(l1#2)` key, with the parentheses kept. The files are TSV with a header row, like every other
 generated table, so a line search returns a whole fact.
 
-Addresses are written one way everywhere: lowercase hex, `0x` prefix, no underscores, no leading zeros. That
-form is what the search matches.
+Addresses are written one way everywhere: lowercase hex, `0x` prefix, no underscores, no leading zeros, each
+in a cell of its own. A whole-word search for `0x38000` then finds every row that names the word, and never
+`0x380000`. `address` keeps the form the code builds, such as kseg1 `0xa03809d4`, and `physical` holds the
+canonical physical address, `0x3809d4`, so a search by either form finds the row. Prose that cites an address
+in another form, such as `0x3_8000`, is not changed. The normalisation lives in the tables, not in a search
+service.
+
+No file passes 1 MiB *(proposed limit)*. The export splits a larger table at a function boundary into
+numbered files, so a code-search indexer reads every file in full.
 
 `manifest.tsv` *(proposed name)* has one row per binary: `binary`, `sha256`, `arch`, `status` (`complete`,
 `partial` or `failed`, with the reason), `ghidra`, `retools`, the analysis options, and the row count of each
@@ -201,7 +212,7 @@ because the constant is formed in a different block from the read.
 ### Producing them
 
 One Ghidra post-script, `ReXrefExport.java` *(proposed name)*, run by
-`re-run --ghidra-export OBJECT --xref DIR` *(proposed option)*. It writes JSON lines from the walks, and
+`re-run --ghidra-export OBJECT --xref DIR`. It writes JSON lines from the walks, and
 `ghidra-export.py finish` turns them into the TSVs. The Python step does the register join and the sorting,
 following the hardening design's pattern where Java writes records and Python writes the file. When the
 PROM code export lands it should read the same records rather than walk the program again, so `code.json`
@@ -224,7 +235,7 @@ Accesses whose base is computed at run time, such as the SHub node window built 
 `address` as `base+0xOFFSET` with the base expression and get no `physical`. The inventory counts them as
 unplaced, so the limit stays visible.
 
-The run is per binary and incremental. `re-run --ghidra-export --xref-all` *(proposed option)* reads
+The run is per binary and incremental. `re-run --ghidra-export --xref-all` reads
 `generated/inventory/binaries.tsv`, keeps the hardware roles (`kernel`, `kernel-object`, `x-module`,
 `x-server`, GL `library`, `diagnostic`, `firmware`, `microcode` where a processor module exists), skips any
 binary whose manifest row already matches its sha256, the sgi-retools revision and the Ghidra version, and
@@ -238,8 +249,10 @@ holds the inputs, like the inventory. CI checks what it can without them (below)
 
 Two cross-checks keep the export honest:
 
-- chips `census-sites.tsv` and inventory `mmio.tsv` sites are compared with `sites.tsv`. A site one finds and
-  the other misses is reported. This follows the rule that Ghidra reads and objdump-based tools check.
+- chips `census-sites.tsv` (from `scan.py`), `callargs.py` output and inventory `mmio.tsv` sites are compared
+  with `sites.tsv`. A site one finds and the other misses is reported. This follows the rule that Ghidra reads
+  and objdump-based tools check. The chips census tools stay as cross-checks for now. The end state is to phase
+  them out, or keep them only as CI or test checks against the Ghidra tables.
 - `facts.py` stays the per-routine reader for MIPS. Its stored values must agree with `value` on the rows they
   share.
 
@@ -297,32 +310,21 @@ now. Generic routines stay in the tables, so a question about one still has rows
 
 ### Lookup
 
-In the Origami repository:
-
-- Each RE repository becomes a `git` root of Library Code, on its main branch, cloned without submodules.
-  Some RE repositories carry submodules of other projects, gr2 among them, and the index must not pick up a
-  submodule checkout. The indexer runs with submodule discovery off for these roots.
-- `generated/xref/` files are sharded so none passes 1 MiB *(proposed limit)*. The export splits a table at a
-  function boundary into numbered files. That keeps every file under Zoekt's content limit without raising it
-  for every root.
-- `tools/library-search` gains an address mode *(proposed name)*, `--address ADDR`, and the MCP search tool
-  takes the same parameter. It strips underscores, lowercases, drops leading zeros, and adds the physical
-  form of a kseg0, kseg1, xkphys or IA-64 uncached address. It searches `generated/` and the register maps with
-  a word-boundary pattern, so `0x38000` does not match `0x380000`.
-- Register names, routine names and string text need no new mode. They are plain text in the tables.
-
-A result line is a whole row. The existing bounded read returns the lines around it, which is how a reader
-follows a sequence or the next caller.
+The tables are the lookup. Any text or code search over a clone finds them: `git grep -w 0x3809d4
+generated/xref` answers the IP12 question in one command, and an indexed code search does the same across
+repositories. A result line is a whole row, and the lines after it follow a sequence or the next caller.
+Register names, routine names and string text are plain text in the same rows.
 
 A search that finds nothing proves nothing on its own. A negative answer ("no routine writes this word")
-needs three things: the binary's manifest row is `complete`, the Library reports the root indexed and
-healthy, and the answer names the walk's limits, such as block-only folding or run-time bases.
+needs the binary's manifest row to be `complete`, the search to have covered the repository, and the answer to
+name the walk's limits, such as block-only folding or run-time bases.
 
-RE repositories never mention the Library. The lookup log records the address or term, not the command.
+Search services that index these repositories are configured outside them. The repositories do not name one,
+and the lookup log records the address or term, never a command.
 
 ### Questions log
 
-Each RE repository gains `questions/lookups.tsv` *(proposed name)*, kept by hand, one row per question
+Each RE repository gains `questions/lookups.tsv`, kept by hand, one row per question
 answered:
 
 | Column | Meaning |
@@ -338,7 +340,7 @@ answered:
 A `hand` row is a miss. It stays open until a change lets the lookup answer it, and then its `result`
 records which kind of change did it. The inventory checks each row with an address `term` against the
 repository's own `sites.tsv` and `strings.tsv`: a row marked `lookup` whose term no table holds fails. That
-check needs no Library and runs in CI. `summary.tsv` counts rows by `result`, so the trend of misses is
+check needs no search service and runs in CI. `summary.tsv` counts rows by `result`, so the trend of misses is
 visible.
 
 The asker is not recorded. The repositories are mirrored publicly, and the people and sessions that ask are
@@ -360,14 +362,15 @@ Ghidra never runs on held binaries in CI. The corpus run is a host job, per bina
 ## Work units
 
 In order. Each unit lands as its own pull request in the repository named. Model choice follows the
-project's rule: Haiku for mechanical work, Sonnet for Ghidra, inventory and Library code and for review.
+project's rule: Haiku for mechanical work, Sonnet for Ghidra and inventory code and for review.
 
 1. **Measure.** sgi-retools, Sonnet, because it changes `ReAccessWalk` and needs reading Ghidra p-code. Add
    `value` and `uses` to the walk with fixtures, add `ReXrefExport.java` and `--xref`, and run it on three
    reference binaries: the linked IP27 kernel, the SHub 2 PROM and one libGLcore. Record rows, bytes and run
    time per table. The IP27 kernel has 68,071 call instructions and 325,604 loads and stores among 960,044
-   instructions (objdump count), which suggests its `sites.tsv` alone may pass a few megabytes. The
-   measurement settles the shard limit and whether committing every release is affordable (see Risks).
+   instructions (objdump count), which suggests its `sites.tsv` alone may pass a few megabytes. Then project
+   the totals for every held release in every repository from the per-binary numbers: committed bytes, files,
+   and a full corpus run's time. That projection is the test of the every-release scope (see Risks).
 2. **Device maps.** One pull request per repository that has register maps, Haiku for the transcription from
    the existing `windows` configs and register-map sources, marking unsure regions rather than guessing.
    sgi-retools: the `tools/defs` loader for `address-map.toml` with `kind`, Sonnet. A Sonnet reviewer checks
@@ -384,30 +387,31 @@ project's rule: Haiku for mechanical work, Sonnet for Ghidra, inventory and Libr
    the generic-code rule, windows from the device map, the census and `mmio.tsv` cross-check, and the
    `lookups.tsv` check, all in `test_inventory.py`. Then a Haiku pin bump and inventory regeneration in every
    repository.
-7. **Library.** Origami, Sonnet: RE repositories as Code roots with submodules off, the `--address` mode in
-   `tools/library-search` and the MCP tool, with tests. The address normalisation is the only new logic.
+7. **Search.** Make the repositories searchable where the project's search runs. That work is outside these
+   repositories and is designed separately. Nothing here depends on it: `git grep` over a clone answers the
+   same questions.
 8. **Backfill the log.** Per repository, Haiku: enter the questions answered so far, starting with the three
    above, and confirm each `term` now finds its rows. A term that does not is a miss and goes to unit 3 or 6.
 9. **Contracts.** Per family, ranked by access-site count. Haiku drafts the mechanical part of each entry from
    `registers.tsv` (readers, writers, values), marking anything unsure. Sonnet writes side effects and
    sequences, and reviews the drafts against the rows. This continues until `accesses` reaches 100 in each
    repository.
-10. **The three empty repositories.** cobalt, gr2 and newport, Haiku for the inventory config and root manifest,
-    Sonnet for the x86 port-I/O walk cobalt needs. They follow unit 6.
+10. **The remaining repositories.** cobalt, gr2 and newport, Haiku for the inventory config and root manifest,
+    Sonnet for the x86 port-I/O walk cobalt needs. gr4 (`origami-re`) and stonewire, Haiku for the pin bump and
+    an inventory on the current sgi-retools. They follow unit 6.
 
 Units 1 and 2 can run together. Unit 5 needs 1, 3 and 4. Unit 6 needs 2 and 5. Unit 7 needs 5 only. Units 8
-and 9 need 6 and 7.
+and 9 need 6.
 
 ## Risks
 
 ### Size
 
-One kernel's tables may run to several megabytes, and kudzu and chips hold many kernels across
-releases. Sharding keeps every file searchable, but the repository total and the public mirror still grow,
-and each sgi-retools change to the export rewrites the tables. Unit 1 measures it. If committing every
-release is too large, the fallback is full tables for the primary release of each board (6.5.30, and 6.5.22
-for boards it dropped), plus `sites.tsv` only for other releases. The owner decides that once the numbers
-exist.
+One kernel's tables may run to several megabytes, and kudzu, chips and sysco hold the same binaries across
+many releases. Splitting keeps every file searchable, but the repository total and the public mirrors grow,
+and each sgi-retools change to the export rewrites the tables. The scope stays every held release. Unit 1's
+projection is the test: a size or run time that does not fit means the table design changes (fewer columns,
+a more compact call graph, rows shared between identical releases), not that releases are dropped.
 
 ### Restricted source
 
@@ -422,11 +426,11 @@ keep following that rule as they do now: facts in our own words, graded. Two thi
 - Symbol names from shipped symbol tables are allowed in committed outputs (the hardening design's decision).
   The decompiler-identifier denylist applies to `name`: a Ghidra placeholder name is never written.
 
-### Index exposure
+### Submodules
 
-Indexing an RE repository with a vendor-source submodule checked out would put restricted
-text under a public root. The Library clones have no submodules, and indexing runs with submodule discovery
-off.
+Some RE repositories carry submodules of other projects, and gr2's include vendor source. A search over a clone
+with those checked out would mix their text into results. The tables never read them, and a clone used for
+lookup initialises `retools/` alone.
 
 ### Wrong facts that look mechanical
 
@@ -445,10 +449,9 @@ CI grows only by the sgi-retools fixtures and a file-reading check in each repos
 
 ## Open questions
 
-- The names marked *(proposed name)*.
-- Whether to commit tables for every held release, once unit 1 has measured sizes.
+- The names still marked *(proposed name)*.
 - Whether `facts.py` should later write its MIPS stored values into `sites.tsv`, or stay a separate reader.
-- Whether the chips census tools retire once `sites.tsv` matches them on every chip, or stay as the check.
+- When the chips census tools move from cross-check to CI or test check only, or retire.
 
 ## Out of scope
 
