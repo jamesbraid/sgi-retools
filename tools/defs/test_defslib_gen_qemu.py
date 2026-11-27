@@ -45,6 +45,14 @@ class QemuTest(RepoTest):
         self.assertIn("REG32(OTHER_UART0_CTL, 0x10)", text)
         self.assertNotIn("TEST_UART0", text)
 
+    def test_without_a_board_the_unit_name_is_the_prefix(self):
+        self.enable()
+        self.edit("defs/check.toml", 'board = "TEST"\n', "")
+        text = self.render()["gen/qemu/uart.h"]
+        self.assertIn("REG32(UART0_CTL, 0x10)", text)
+        self.assertRegex(text, r"#ifndef HW_UART0_REGS_H\n#define HW_UART0_REGS_H\n")
+        self.assertNotIn("TEST_", text)
+
     def test_header_shape(self):
         self.enable()
         text = self.render()["gen/qemu/uart.h"]

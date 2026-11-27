@@ -300,7 +300,7 @@ check always runs on the public rendering, so switching profiles needs no new fi
 |---|---|
 | `generated/c/<unit>.h` | `<BLOCK>_<REG>_OFFSET`, `_COUNT`, `_STRIDE`; `<BLOCK>_<REG>_<FIELD>_SHIFT`, `_MASK`, `_INPLACE`; `<PREFIX>_<WORD>_WIDTH` and word fields the same way; `<field macro>_<LABEL>` for a field's own enum values and `<PREFIX>_<ENUM>_<LABEL>` for shared ones; `<PREFIX>_<NAME>` for constants. Every macro carries its grade; comments wrap at 80 columns, and a grade that would push a `#define` past 80 moves to a comment above it. `[c] offset_macro = "bare"` drops `_OFFSET`. |
 | `generated/rust/` | a `#![no_std]` crate with no dependencies (`Cargo.toml`, `src/lib.rs`, a module per unit): typed field accessors, an enum with an `Other` variant per field that has values, constants, a test per vector; each file starts `// @generated` and carries `#![cfg_attr(rustfmt, rustfmt_skip)]` |
-| `generated/qemu/<unit>.h` | the QEMU form, see below: `REG` and `FIELD` macros with every name prefixed by board and unit |
+| `generated/qemu/<unit>.h` | the QEMU form, see below: `REG` and `FIELD` macros with every name prefixed by its unit (and board, if set) |
 | `generated/python/<unit>.py` | the layout as tables plus `decode`, `encode`, `describe` and `selftest`, no imports |
 | `generated/json/<unit>.json` | one flat row per register, word, field, enum value and constant |
 | `generated/xml/<unit>.xml` | the genxml dialect Asahi and Panfrost use: `<struct>` per word and register, `<field start size type>`, top-level `<enum>`; grade, source, offset, access, test vectors and constants ride in extra attributes and elements |
@@ -414,14 +414,16 @@ that QEMU takes with a plain copy:
 
 ```toml
 [gen.qemu]
-board = "MGRAS"                  # prefix of every name; the unit name follows
+# board = "MGRAS"                # optional: prefix of every name, in front of the unit name
 # include = "hw/core/registerfields.h"   # what the header includes (this is the default)
 [gen.qemu.units.re4]
 name = "RE"                      # optional: the unit part of the prefix, else the unit name upper-cased
-# board = "SGI"                  # optional: this unit's board prefix, in place of the repository's
+# board = "SGI"                  # optional: this unit's board prefix, in place of the repository's, or where the repository sets none
 ```
 
-Names are `<BOARD>_<UNIT>_<NAME>`, so the headers of several repositories share one translation unit.
+Names are `<UNIT>_<NAME>`, or `<BOARD>_<UNIT>_<NAME>` where a board is set; the guard is `HW_<UNIT>_REGS_H`
+(with the board in front likewise). Chip names are enough to keep several repositories' headers in one translation
+unit, and `defs-names dups` checks that they do.
 Each register is `REG8/16/32/64(<P>_<REG>, byte offset)`, each field `FIELD(<P>_<REG>, <FIELD>, shift,
 length)` and each constant a `#define`; a register array adds `_COUNT` and `_STRIDE`, and a word (a command
 or descriptor, which has no offset) is its fields alone plus `_WIDTH`. The grade is a trailing comment, and

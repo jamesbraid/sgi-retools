@@ -1,4 +1,4 @@
-"""QEMU headers: one per unit, in the hw/registerfields.h style, every name prefixed with board and unit.
+"""QEMU headers: one per unit, in the hw/registerfields.h style, every name prefixed with the unit (and a board, if set).
 
   REG8/16/32/64(<P>_<REG>, byte offset)        a register; a register array adds <P>_<REG>_COUNT and _STRIDE (bytes)
   FIELD(<P>_<REG>, <FIELD>, shift, length)     a field; a word (a command or descriptor, no offset) has fields only
@@ -7,8 +7,8 @@
   #define <P>_<REG>_INDEX n                            a register of a register-indexed space, in place of REG*
   #define <P>_<NAME> value                     a constant
 
-<P> is the board prefix (a unit may override the repository's) and the unit name from [gen.qemu] in defs-check.toml, so the headers of several
-repositories can share one translation unit (defs-names dups checks that they do). The grade is a trailing
+<P> is the unit name from [gen.qemu] in defs-check.toml, with a board prefix in front where one is set (a unit may override
+the repository's), so the headers of several repositories can share one translation unit (defs-names dups checks that they do). The grade is a trailing
 comment, and so is the name provenance of an item that differs from its unit's. The masks mean what QEMU's
 RegisterAccessInfo members of the same names do. A register-indexed space has no byte offset: its register
 is the plain index and _STRIDE counts indices; FIELD does not need the REG anchor, so fields are unchanged.
@@ -60,7 +60,7 @@ def gen_qemu(m, src, board, name, include=None):
         raise GenError("%s: %d name(s) are imported-unchecked, so no QEMU header is written; give them a name_source: %s%s"
                        % (m["unit"], len(bad), ", ".join(bad[:UNCHECKED_SHOWN]),
                           ", ..." if len(bad) > UNCHECKED_SHOWN else ""))
-    P = "%s_%s" % (board, name or m["unit"].upper())
+    P = "_".join(filter(None, (board, name or m["unit"].upper())))
     guard = "HW_%s_REGS_H" % P
     unit_src = _src(m, None)
     out = [*wrap_comment(banner(src, "", "").strip()), *wrap_comment(m.get("title") or m["unit"]),
@@ -148,7 +148,7 @@ def render_qemu(repo, models):
             continue
         try:
             files["%s/%s/%s.h" % (repo.layout.gen_root(), QEMU_DIR, name)] = gen_qemu(
-                models[name], repo.units[name].path, ucfg.get("board", cfg["board"]), ucfg.get("name"), cfg.get("include"))
+                models[name], repo.units[name].path, ucfg.get("board", cfg.get("board")), ucfg.get("name"), cfg.get("include"))
         except GenError as e:
             errors.append(str(e))
     return files, errors
