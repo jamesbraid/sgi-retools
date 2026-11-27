@@ -56,6 +56,7 @@ os.environ['LC_ALL'] = os.environ['LANG'] = 'C'
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import mips_xlate  # noqa: E402
+import _families  # noqa: E402
 from firmware_layout import firmware_segments  # noqa: E402,F401
 from _workspace import find_workspace, repo_arg  # noqa: E402
 from _layout import Layout, env_siblings  # noqa: E402
@@ -89,6 +90,7 @@ COLUMNS = {
     'ucode': ['program', 'kind', 'address', 'name', 'detail', 'status', 'doc', 'section'],
     'spec-registers': ['spec', 'table', 'page', 'window', 'offset', 'name', 'count', 'stride', 'width', 'rw',
                        'reached_in_code', 'status', 'doc', 'section'],
+    'families': ['binary', 'name', 'address', 'size', 'result', 'detail', 'doc', 'section'],
     'summary': ['table', 'rows', 'out_of_scope', 'understood', 'understood_with_open', 'understood_distinct', 'templated', 'located', 'named_only',
                 'undocumented', 'no_software_dependency', 'pct_understood', 'pct_located_or_better',
                 'pct_mentioned', 'pct_done', 'unresolved_sites', 'truncated', 'audited_real_pct',
@@ -1094,6 +1096,7 @@ class DocIndex:
         self.defs = collections.defaultdict(list)      # value -> [hit] for header #define / enum values
         self.order = 0
         self.entries = []                              # every prose entry, for the template cap
+        self.families, self.family_problems = [], []   # the family blocks of the prose, and what is wrong in them
         self.entry_log = []                            # (file, first line, folded kind, subject, entry) of each, for lint
         self.cfg = cfg
         d = cfg['docs']
@@ -1247,6 +1250,10 @@ class DocIndex:
             if NSD_PHRASE.search(ptext) and NSD_ROUTES.search(ptext):
                 nsd_line.update(p)
         entries, entry_of, folded = md_entries(lines)
+        in_family = set()
+        for start, heading, body in ([] if index else _families.blocks(lines)):
+            in_family.update(range(start + 1, start + 1 + len(body)))
+            self.read_family(rel, start, heading, body)
         needs_review = review_required(self.cfg, rel)
         entry_obj = {}
         head_unit = {}       # the routine a folded heading's paragraph names, written on the heading line
@@ -1258,6 +1265,8 @@ class DocIndex:
             st = ln.strip()
             if st.startswith('```'):
                 fence = not fence
+                continue
+            if i in in_family:
                 continue
             if not fence and re.match(r'#{1,6}\s', ln):
                 section = re.sub(r'^#+\s*', '', ln).strip()
@@ -1312,6 +1321,20 @@ class DocIndex:
             ctx = (ln + ' ' + section).lower()
             self.add_text(rel, n, ref, section, ln, level, nsd, spans, code_all, ctx,
                           head if is_table else None, subj, ent)
+
+    def read_family(self, rel, start, heading, body):
+        """Read the family block that opens at line index `start`: its problems, or the family."""
+        def role_why(text):
+            st, _open, why = read_why(text)
+            return '' if st == 'understood' else why
+        where = '%s:%d' % (rel, start + 1)
+        fam, problems = _families.parse(body, role_why)
+        if fam is None:
+            self.family_problems += ['%s: %s' % (where, p) for p in problems]
+            return
+        fam.where, fam.section = where, heading
+        fam.ref = '%s#%s' % (rel, slug(heading))
+        self.families.append(fam)
 
     def read_header(self, rel, index):
         lines = open(os.path.join(REPO, rel), encoding='utf-8', errors='replace').read().split('\n')
@@ -3796,6 +3819,8 @@ def build(cfg, a, tmp):
             json.dump(pins, f, indent=2, sort_keys=True)
             f.write('\n')
     docs = DocIndex(cfg, siblings)
+    if docs.family_problems:
+        sys.exit('inventory: refusing to write tables, a family entry is wrong:\n  ' + '\n  '.join(docs.family_problems))
     sibrep = docs.sibling_report
     inputs = [{'table': 'input root manifest', 'rows': nroot, 'input': manifest}]
     inputs += [{'table': 'input sibling ' + n, 'input': c} for n, c in sorted(sibrep['commits'].items())]
@@ -4185,6 +4210,9 @@ def build(cfg, a, tmp):
                'unresolved_sites': unr}
         put_status(row, st)
         brows.append(row)
+    fam_results, fam_problems = credit_families(docs.families, imgs, rows)
+    if fam_problems:
+        sys.exit('inventory: refusing to write tables, a family entry is wrong:\n  ' + '\n  '.join(fam_problems))
     scope_report, scope_problems = apply_scope(cfg, imgs, rows, touch)
     if scope_problems:
         sys.exit('inventory: refusing to write tables, the scope rules are wrong:\n  ' + '\n  '.join(scope_problems))
@@ -4193,6 +4221,11 @@ def build(cfg, a, tmp):
 
     for t in TABLES:
         write_tsv(os.path.join(a.out, t + '.tsv'), t, out[t])
+    fam_path = os.path.join(a.out, 'families.tsv')
+    if docs.families:
+        write_tsv(fam_path, 'families', family_rows(fam_results))
+    elif os.path.exists(fam_path):
+        os.remove(fam_path)
     # ---------------------------------------------------------------- summary
     total_unres = sum(unresolved.values())
     resolved_sites = sum(e['sites'] for e in mmio.values())
@@ -4239,7 +4272,8 @@ def build(cfg, a, tmp):
     print('register access sites: %d resolved, %d unresolved (%s)' %
           (resolved_sites, total_unres, ', '.join('%s %d' % kv for kv in sorted(by_win.items()))), file=sys.stderr)
     if not a.no_coverage:
-        update_coverage(cfg, srows, imgs, kinds, resolved_sites, total_unres, by_win, sibrep, inputs, scope_report)
+        update_coverage(cfg, srows, imgs, kinds, resolved_sites, total_unres, by_win, sibrep, inputs, scope_report,
+                        (len(docs.families), fam_results))
 
 
 REG_CONTEXT = ('register', 'offset', 'pio', 'window', 'fifo', 'port', 'status', 'flag', 'store', 'load',
@@ -4384,6 +4418,29 @@ def header_keeps(ent, name, img, addr, grp, owners, funcs, name_rows):
     if addr in addrs and img['label'] in cands:
         return True
     return grp in cited
+
+
+def credit_families(families, imgs, rows):
+    """Credit each function row that a family entry covers and whose bytes match the family's pattern: the
+    row is understood by that entry, a row that does not match keeps the status the documents gave it.
+    Returns (results of _families.verify, problems)."""
+    results = _families.verify(families, imgs, rows, elf_of)
+    problems = ['%s: the family matches no function of that size in its binaries' % fam.where
+                for fam in families if not any(r['family'] is fam for r in results)]
+    for r in results:
+        row = r['row']
+        if r['ok'] and RANK[row['status']] < RANK['understood'] and row['status'] != 'no-software-dependency':
+            put_status(row, ('understood', r['family'].ref, r['family'].section, 'family ' + r['family'].ref))
+    return results, problems
+
+
+def family_rows(results):
+    """The rows of families.tsv: one per candidate member, with its own field values or why it failed."""
+    rows = [{'binary': r['row']['binary'], 'name': r['row']['name'], 'address': r['row']['address'],
+             'size': r['row']['size'], 'result': 'ok' if r['ok'] else 'mismatch',
+             'detail': _families.values_text(r['values']) if r['ok'] else r['why'],
+             'doc': r['family'].ref, 'section': r['family'].section} for r in results]
+    return sorted(rows, key=lambda r: (r['doc'], r['binary'], int(r['address'], 16), r['name']))
 
 
 def code_groups(funcs, ucode_rows):
@@ -4540,7 +4597,7 @@ def summary_row(name, rows, unresolved, out_of_scope=0):
             'pct_done': pct(c['understood'] + nsd), 'unresolved_sites': unresolved}
 
 
-def update_coverage(cfg, srows, imgs, kind, resolved, unres, by_win, sib, inputs, scope_report=()):
+def update_coverage(cfg, srows, imgs, kind, resolved, unres, by_win, sib, inputs, scope_report=(), families=(0, ())):
     lay = Layout(REPO)
     path = os.path.join(REPO, lay.coverage_file)
     if not os.path.exists(path):
@@ -4598,6 +4655,11 @@ def update_coverage(cfg, srows, imgs, kind, resolved, unres, by_win, sib, inputs
         'text is the sibling\'s, at least %d%% alike, and states no offset, immediate value or callee address '
         'of its own build).' % (sib['compared'], ' and '.join(sib['siblings']), sib['reused'], round(100 * SIMILAR))
         if sib['siblings'] else 'skipped.')]
+    if families[0]:
+        ok = sum(1 for r in families[1] if r['ok'])
+        checks.append('Family entries: %d. %d candidate function rows match their entry\'s byte pattern and are '
+                      'understood by it; %d do not and keep the status the documents give them '
+                      '([families.tsv](%s/families.tsv)).' % (families[0], ok, len(families[1]) - ok, inv_link))
     for name, why in sib['skipped']:
         checks.append('Skipped: sibling %s (%s). Rows are graded without it.' % (name, why))
     checks.append('Inputs (also in [summary.tsv](%s/summary.tsv)): ' % inv_link + '; '.join(

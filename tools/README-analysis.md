@@ -328,6 +328,39 @@ be understood as a note. `grade_readings.py --apply-verdicts` writes the marker 
 Review does not lift every cap. An entry with a sentence that starts `Role (from name):` states a role
 that comes from the routine's name, not from its facts, and earns at most located however it is reviewed.
 
+### Family entries
+
+A routine family that is uniform by construction (hundreds of 12-byte entry stubs that differ in one
+offset, per-field accessors) cannot be described differently routine by routine, and the template cap holds
+such rows at located. One written entry can describe the family instead, if a per-member byte check backs it.
+The entry is a fenced block with the info string `family`, in a page the inventory reads as prose:
+
+    ```family
+    binaries: usr/lib/libx.so, usr/lib/liby.so
+    members: gl*
+    match: 8c 19 .. ..  03 20 00 08  00 00 00 00
+    field: slot = u16be@2
+    shape: Three words: load t9 from an absolute address, jump through t9, empty delay slot.
+    varies: The slot, the 16-bit absolute address the first word loads from.
+    role: Inferred. ...
+    ```
+
+- `binaries` and `members` are comma-separated globs on the binary label (or a byte-identical copy's) and the
+  function name. A function row is a candidate when both match and its size is the pattern's length.
+- `match` is the function's bytes: `HH` exact, `..` any, `HH/MM` the bits under mask `MM`. It must fix at
+  least 16 bits. A block without it is refused: the check is what replaces a sentence per member.
+- `field: NAME = u|s 8|16|32|64 be|le @OFFSET [& MASK]` reads a value out of a matching member's bytes, and
+  `families.tsv` records it. `varies` has to name every field.
+- `shape`, `varies` and `role` are prose. `role` is graded like any entry (a label, a cited address and
+  enough items), so a role that cites nothing is refused.
+
+A candidate whose bytes match is understood, by the block's page and heading, and counts as one distinct
+entry. One that does not match keeps the status the documents give it, and `families.tsv` says which byte
+differs. A block with no candidate, or a malformed one, stops the run. `generated/inventory/families.tsv`
+(binary, name, address, size, result, detail, doc, section) is written only when a page has a family block,
+and the coverage block says how many candidates matched. `grade_readings.py --check-doc` reports a malformed
+block of the page it lints. The cap on hand-written per-row prose is unchanged.
+
 ### Checking an entry's claims against its facts
 
     tools/re-run python3 retools/tools/grade_readings.py PAGE.md --check-doc --check-facts

@@ -407,6 +407,13 @@ class CheckDoc(unittest.TestCase):
         self.assertEqual(problems, 0, out)
         self.assertIn("understood=1", out)
 
+    def test_a_family_block_with_no_pattern_is_a_problem(self):
+        block = ("```family\nbinaries: %s\nmembers: fsio_*\nshape: One word.\nvaries: Nothing.\n"
+                 "role: Inferred. %s\n```\n" % (self.BINARY, self.ROLE))
+        problems, out = self.lint(block, table=False)
+        self.assertEqual(problems, 1, out)
+        self.assertIn(":5: family block\n  no \"match\" line", out.replace("b000.md", ""))
+
     def test_an_emulator_run_called_measured_is_a_problem(self):
         problems, out = self.lint("- `fsio_mount` in `%s` at 0x1f80\n  **Inferred.** %s The reset value 0x5 was measured in a QEMU run.\n"
                                   % (self.BINARY, self.ROLE))

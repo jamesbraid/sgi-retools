@@ -849,6 +849,10 @@ def check_doc(doc, inventory=None, out=None, review=False, routines=False):
     def report(line, subject, reason, problem=True):
         problems.append((line, subject, reason, problem))
 
+    for text in index.family_problems:
+        line, why = re.match(r".*?:(\d+): (.*)$", text).groups()
+        report(int(line), "family block", why)
+
     fence = False
     for i, text in enumerate(lines):
         n = i + 1

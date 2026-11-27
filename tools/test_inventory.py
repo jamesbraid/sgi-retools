@@ -11,6 +11,7 @@ import io
 import os
 import re
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -24,6 +25,8 @@ spec = importlib.util.spec_from_file_location('inventory', os.path.join(HERE, 'i
 inv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(inv)
 mips_xlate = inv.mips_xlate
+sys.path.insert(0, HERE)
+from test_families import FakeElf  # noqa: E402
 
 FILLER_ONLY = ('- `mCramToWram` (`memove.S` line 32, at 0xd4a2): **inferred**, copies a block from control memory '
                'to working memory. It gives lanes 1 and 2 their own register-1 offsets (adds of 1 and 2 at 0xd4a3 '
@@ -1203,6 +1206,111 @@ class RoleSignature(unittest.TestCase):
              'place by three factors, and it occupies 160 bytes at address 0x0da9e570; the rest.')
         self.assertEqual(inv.role_signature(t), 'scales the first three rows of a matrix record in place by '
                                                 'three factors')
+
+
+class FamilyEntries(unittest.TestCase):
+    """A family entry credits each member whose own bytes match its pattern, and nothing else."""
+    ROLE = ("Inferred. Each stub is a whole gl entry point: it loads the routine pointer held at the absolute "
+            "address in the slot field (0x1050 for `glNewList`, read at 0xda09550) into t9 and jumps to it with "
+            "the caller's argument registers untouched, so the call goes to whichever routine the context's "
+            "dispatch table holds in that slot.")
+    DOC = """# Stubs
+
+## The dispatch stubs
+
+```family
+binaries: usr/lib/libx.so
+members: gl*
+match: 8c 19 .. ..  03 20 00 08  00 00 00 00
+field: slot = u16be@2
+shape: Each stub loads one word into t9, jumps through it and leaves the delay slot empty.
+varies: The slot, the low half of the absolute address the word is loaded from.
+role: %s
+```
+"""
+    IMGS = [{'label': 'usr/lib/libx.so', 'copies': [], 'data': b'x'}]
+
+    def index(self, doc):
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root)
+        with open(os.path.join(root, 'stubs.md'), 'w') as f:
+            f.write(doc)
+        saved, inv.REPO = inv.REPO, root
+        try:
+            return inv.DocIndex({'docs': {'prose': ['stubs.md'], 'index': [], 'skip': []}})
+        finally:
+            inv.REPO = saved
+
+    def rows(self, *specs):
+        return [{'binary': 'usr/lib/libx.so', 'name': n, 'address': '0x%x' % a, 'size': 12,
+                 'elf_section': '.text', 'status': st, '_templated': st == 'located'} for n, a, st in specs]
+
+    def credit(self, rows, docs=None, text=None):
+        docs = docs or self.index(self.DOC % self.ROLE)
+        text = text or (bytes.fromhex('8c191050 03200008 00000000') + bytes.fromhex('8c191664 03200008 00000000') +
+                        bytes.fromhex('8c191050 03200008 00000001'))
+        real, inv.elf_of = inv.elf_of, lambda data: FakeElf(text)
+        try:
+            return inv.credit_families(docs.families, self.IMGS, rows)
+        finally:
+            inv.elf_of = real
+
+    def test_the_block_is_read_and_its_lines_name_nothing(self):
+        docs = self.index(self.DOC % self.ROLE)
+        self.assertEqual(docs.family_problems, [])
+        self.assertEqual([(f.where, f.section, f.ref) for f in docs.families],
+                         [('stubs.md:5', 'The dispatch stubs', 'stubs.md#the-dispatch-stubs')])
+        self.assertNotIn('varies', docs.names)
+        self.assertNotIn('slot', docs.names)
+
+    def test_a_member_that_matches_is_understood_and_one_that_does_not_keeps_its_status(self):
+        rows = self.rows(('glA', 0x1000, 'located'), ('glB', 0x100c, 'located'), ('glC', 0x1018, 'located'))
+        results, problems = self.credit(rows)
+        self.assertEqual(problems, [])
+        self.assertEqual([r['status'] for r in rows], ['understood', 'understood', 'located'])
+        self.assertEqual([r['_templated'] for r in rows], [False, False, True])
+        self.assertEqual(rows[0]['doc'], 'stubs.md#the-dispatch-stubs')
+        self.assertEqual([(r['row']['name'], r['values']) for r in results if r['ok']],
+                         [('glA', {'slot': '0x1050'}), ('glB', {'slot': '0x1664'})])
+
+    def test_a_row_the_documents_already_understand_or_exempt_is_not_lowered_or_replaced(self):
+        rows = self.rows(('glA', 0x1000, 'understood'), ('glB', 0x100c, 'no-software-dependency'))
+        rows[0]['doc'] = 'elsewhere.md#a'
+        self.credit(rows)
+        self.assertEqual([r['status'] for r in rows], ['understood', 'no-software-dependency'])
+        self.assertEqual(rows[0]['doc'], 'elsewhere.md#a')
+
+    def test_the_rows_of_the_table_carry_each_members_value_or_its_failure(self):
+        rows = self.rows(('glB', 0x100c, 'located'), ('glC', 0x1018, 'located'))
+        table = inv.family_rows(self.credit(rows)[0])
+        self.assertEqual([(r['name'], r['result'], r['detail']) for r in table],
+                         [('glB', 'ok', 'slot=0x1664'),
+                          ('glC', 'mismatch', 'byte 11 is 0x01, the pattern wants 0x00 under mask 0xff')])
+
+    def test_a_family_with_no_candidate_is_an_error(self):
+        _r, problems = self.credit(self.rows(('other', 0x1000, 'located')))
+        self.assertEqual(problems, ['stubs.md:5: the family matches no function of that size in its binaries'])
+
+    def test_a_role_that_cites_nothing_is_refused(self):
+        docs = self.index(self.DOC % 'Inferred. It loads the pointer in the slot field into t9 and jumps to it.')
+        self.assertEqual(docs.families, [])
+        self.assertIn('the role is not one the inventory credits', docs.family_problems[0])
+
+    def test_a_block_with_no_pattern_is_refused(self):
+        docs = self.index((self.DOC % self.ROLE).replace('match: 8c 19 .. ..  03 20 00 08  00 00 00 00\n', ''))
+        self.assertEqual(docs.family_problems, ['stubs.md:5: no "match" line'])
+
+    def test_a_block_in_an_index_document_is_not_read(self):
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root)
+        with open(os.path.join(root, 'stubs.md'), 'w') as f:
+            f.write(self.DOC % self.ROLE)
+        saved, inv.REPO = inv.REPO, root
+        try:
+            docs = inv.DocIndex({'docs': {'prose': [], 'index': ['stubs.md'], 'skip': []}})
+        finally:
+            inv.REPO = saved
+        self.assertEqual((docs.families, docs.family_problems), ([], []))
 
 
 class RoleHedge(unittest.TestCase):
