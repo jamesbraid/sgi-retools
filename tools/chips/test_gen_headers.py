@@ -170,6 +170,47 @@ class Resets(unittest.TestCase):
             gen_headers.gen('bedrock', gen_headers.CHIPS['bedrock'])
 
 
+class NameAudit(unittest.TestCase):
+    """A config's name_audit renames a register and records where names come from."""
+
+    def setUp(self):
+        self.old = os.getcwd()
+        self.addCleanup(os.chdir, self.old)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        os.chdir(tmp.name)
+        os.makedirs('tools/configs')
+        d = 'chips/bedrock/census/'
+        write(d + 'census.tsv', ROW, [['bedrock', '0x20', '0', '', 'rw', '8', '0', '1', '1', 'ip35-kernel'],
+                                      ['bedrock', '0x28', '0', '', 'rw', '8', '0', '1', '1', 'ip35-kernel']])
+        write(d + 'census-sites.tsv', SITE, [['ip35-kernel', 'get_slice', '0', 'ld', 'r', '8', '0x20', '0', 'bedrock', 'image-hint'],
+                                             ['ip35-kernel', 'put_slice', '0', 'ld', 'r', '8', '0x28', '0', 'bedrock', 'image-hint']])
+        write(d + 'fields.tsv', ['variant', 'register', 'kind', 'bits_or_value', 'source', 'sites'], [])
+
+    def gen(self, audit):
+        json.dump({'name_audit': audit}, open('tools/configs/bedrock.json', 'w'))
+        return gen_headers.gen('bedrock', gen_headers.CHIPS['bedrock'])[0]
+
+    def test_rename_and_per_register_source(self):
+        unit = self.gen({'unit': {'source': 'ours', 'cite': 'a'},
+                         'registers': {'0x20': {'name': 'slice_get', 'source': 'public', 'cite': 'b'}}})
+        self.assertEqual((unit['name_source'], unit['name_cite']), ('ours', 'a'))
+        self.assertEqual(sorted(unit['registers']), ['put_slice', 'slice_get'])
+        self.assertEqual((unit['registers']['slice_get']['name_source'], unit['registers']['slice_get']['name_cite']),
+                         ('public', 'b'))
+        self.assertNotIn('name_source', unit['registers']['put_slice'])
+
+    def test_the_unit_source_reaches_the_written_source(self):
+        import tomllib
+        self.gen({'unit': {'source': 'ours', 'cite': 'a'}})
+        got = tomllib.loads(gen_headers.toml_of('bedrock', gen_headers.CHIPS['bedrock']))
+        self.assertEqual((got['name_source'], got['name_cite']), ('ours', 'a'))
+
+    def test_a_row_the_census_lacks_is_an_error(self):
+        with self.assertRaises(SystemExit):
+            self.gen({'unit': {'source': 'ours', 'cite': 'a'}, 'registers': {'0x99': {'source': 'public', 'cite': 'b'}}})
+
+
 class Overlay(unittest.TestCase):
     """A chip written as an overlay (XBridge on Bridge) loads to the unit the census gave it."""
 

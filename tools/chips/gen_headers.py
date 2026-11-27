@@ -281,6 +281,14 @@ def gen(chip, spec):
                    "where it prints none); offsets 0x100000 and up are the widget block, see the chip page.")
     unit = {'unit': chip, 'prefix': P, 'title': title, 'doc': ' '.join(doc),
             'c': {}}
+    # config "name_audit": {"unit": {"source", "cite"}, "registers": {OFFSET: {"name", "source", "cite"}}} records where
+    # names come from; OFFSET is the census offset string, "name" renames the register's label, and a register's own
+    # source and cite are written only when it names one.
+    audit = cfg.get('name_audit', {})
+    if audit:
+        unit['name_source'], unit['name_cite'] = audit['unit']['source'], audit['unit']['cite']
+    audited = audit.get('registers', {})
+    unknown_audit = set(audited)
     if not current():       # the current layout has no forwarding headers: consumers include generated/c
         unit['c'] = {'legacy_header': 'include/%s.h' % chip, 'legacy_guard': '%s_H' % P}
     blocks = {}
@@ -351,6 +359,10 @@ def gen(chip, spec):
             prefix = P
             label = ident(given) if given else (ident(names[0]) if names else
                                                 ('REG_%06X' if pseudo_only else '%X') % off)
+        row_audit = None if space else audited.get(r['offset'])
+        if row_audit:
+            unknown_audit.discard(r['offset'])
+            label = ident(row_audit.get('name', label))
         macro = '%s_%s' % (prefix, label)
         if macro in taken:
             macro += '_%X' % off
@@ -389,6 +401,8 @@ def gen(chip, spec):
                 sp = '%s_%s' % (chip, re.sub(r'[^a-z0-9]+', '_', space.lower()).strip('_'))
                 reg['space'] = sp
                 spaces.setdefault(sp, {'unit': 'byte', 'doc': 'Registers reached through the %s window.' % space})
+            if row_audit and row_audit.get('source'):
+                reg['name_source'], reg['name_cite'] = row_audit['source'], row_audit['cite']
             regs[name.lower()] = reg
             last[(space, off)] = macro
         mine = deprecated.get((space, off), [])
@@ -431,6 +445,8 @@ def gen(chip, spec):
             regs[n]['reset'] = r['value']
             regs[n]['reset_grade'] = r.get('grade', 'established')
             regs[n]['reset_from'] = r['from']
+    if unknown_audit:
+        raise SystemExit('%s: name_audit names rows the census does not have: %s' % (chip, ', '.join(sorted(unknown_audit))))
     unused = {d['name'] for ds in deprecated.values() for d in ds} - used_aliases
     if unused:
         raise SystemExit('%s: deprecated_defines name a row the census does not have: %s' % (chip, ', '.join(sorted(unused))))

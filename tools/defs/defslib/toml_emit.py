@@ -53,7 +53,7 @@ def _scalars(d, ctx, out, skip=()):
 def trimmed(u):
     """Drop what the loader restores by default."""
     o = {}
-    for k in ("unit", "prefix", "block", "title", "doc", "from", "public_from"):
+    for k in ("unit", "prefix", "block", "title", "name_source", "name_cite", "doc", "from", "public_from"):
         if u.get(k):
             o[k] = u[k]
     c = {k: v for k, v in u["c"].items() if v and not (k == "offset_macro" and v == "suffix")}
