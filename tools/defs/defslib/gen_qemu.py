@@ -61,7 +61,7 @@ def gen_qemu(m, src, board, name, include=None):
                        % (m["unit"], len(bad), ", ".join(bad[:UNCHECKED_SHOWN]),
                           ", ..." if len(bad) > UNCHECKED_SHOWN else ""))
     P = "%s_%s" % (board, name or m["unit"].upper())
-    guard = "HW_SGI_GPU_%s_REGS_H" % P
+    guard = "HW_%s_REGS_H" % P
     unit_src = _src(m, None)
     out = [*wrap_comment(banner(src, "", "").strip()), *wrap_comment(m.get("title") or m["unit"]),
            *wrap_comment("Names are %s; name source: %s." % (P + "_*", unit_src))]

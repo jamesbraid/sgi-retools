@@ -58,7 +58,7 @@ class QemuTest(RepoTest):
         self.assertIn("REG8(TEST_UART0_DATA, 0x120) /* inferred */\n#define TEST_UART0_DATA_COUNT 16\n#define TEST_UART0_DATA_STRIDE 0x1", text)
         self.assertIn("#define TEST_UART0_FRAME_WIDTH 32 /* established; word */\nFIELD(TEST_UART0_FRAME, PAYLOAD, 1, 8)", text)
         self.assertIn("#define TEST_UART0_FIFO_DEPTH 0x10u /* ", text)
-        self.assertRegex(text, r"#ifndef HW_SGI_GPU_TEST_UART0_REGS_H\n#define HW_SGI_GPU_TEST_UART0_REGS_H\n")
+        self.assertRegex(text, r"#ifndef HW_TEST_UART0_REGS_H\n#define HW_TEST_UART0_REGS_H\n")
         self.assertNotIn("Control register", text)       # no prose
 
     def test_an_unknown_reset_is_left_out(self):
