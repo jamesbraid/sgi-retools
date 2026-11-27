@@ -38,6 +38,13 @@ class QemuTest(RepoTest):
         self.assertEqual([ln for ln in text.splitlines() if len(ln) > 80 and not ln.startswith("/* input sha256")], [])
         self.assertRegex(text, r"/\* established \*/\nFIELD\(TEST_UART0_WITH_A_LONG_UNIT_NAME_FOR_WRAPPING_CTL, DIVISOR, 16, 16\)\n")
 
+    def test_a_unit_may_override_the_board(self):
+        self.enable()
+        self.edit("defs/check.toml", 'name = "UART0"', 'name = "UART0"\nboard = "OTHER"')
+        text = self.render()["gen/qemu/uart.h"]
+        self.assertIn("REG32(OTHER_UART0_CTL, 0x10)", text)
+        self.assertNotIn("TEST_UART0", text)
+
     def test_header_shape(self):
         self.enable()
         text = self.render()["gen/qemu/uart.h"]

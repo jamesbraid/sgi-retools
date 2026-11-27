@@ -7,7 +7,7 @@
   #define <P>_<REG>_INDEX n                            a register of a register-indexed space, in place of REG*
   #define <P>_<NAME> value                     a constant
 
-<P> is the board prefix and the unit name from [gen.qemu] in defs-check.toml, so the headers of several
+<P> is the board prefix (a unit may override the repository's) and the unit name from [gen.qemu] in defs-check.toml, so the headers of several
 repositories can share one translation unit (defs-names dups checks that they do). The grade is a trailing
 comment, and so is the name provenance of an item that differs from its unit's. The masks mean what QEMU's
 RegisterAccessInfo members of the same names do. A register-indexed space has no byte offset: its register
@@ -148,7 +148,7 @@ def render_qemu(repo, models):
             continue
         try:
             files["%s/%s/%s.h" % (repo.layout.gen_root(), QEMU_DIR, name)] = gen_qemu(
-                models[name], repo.units[name].path, cfg["board"], ucfg.get("name"), cfg.get("include"))
+                models[name], repo.units[name].path, ucfg.get("board", cfg["board"]), ucfg.get("name"), cfg.get("include"))
         except GenError as e:
             errors.append(str(e))
     return files, errors

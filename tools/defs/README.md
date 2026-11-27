@@ -418,6 +418,7 @@ board = "MGRAS"                  # prefix of every name; the unit name follows
 # include = "hw/core/registerfields.h"   # what the header includes (this is the default)
 [gen.qemu.units.re4]
 name = "RE"                      # optional: the unit part of the prefix, else the unit name upper-cased
+# board = "SGI"                  # optional: this unit's board prefix, in place of the repository's
 ```
 
 Names are `<BOARD>_<UNIT>_<NAME>`, so the headers of several repositories share one translation unit.
