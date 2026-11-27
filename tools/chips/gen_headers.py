@@ -49,24 +49,12 @@ CHIPS = {
  'hub':  ('hub', None, 0, 'Hub (Origin 2000 node controller)', 'hub'),
  'ioc3': ('ioc3', None, 0, 'IOC3 (PCI I/O controller)', None),
  'ioc4': ('ioc4', None, 0, 'IOC4 (PCI I/O controller, later)', None),
- 'mace': ('mace', None, 0, 'MACE (O2 I/O ASIC)', 'mace'),
  'vice': ('vice', None, 0, 'VICE (O2 video engine, presence only)', None),
  'tiocp': ('pic', 'tiocp', 0, 'TIOCP (PCI-X bridge, later family), as the Origin 3000 family Bridge driver reaches it', None),
  'l1': ('l1', 'bedrock', 0, 'L1 system controller UART path (node-local window), Origin 3000 family', None),
  'router_origin2000': ('router', 'ip27', 0, 'network router as the Origin 2000 kernel reaches it (register numbers of a vector access)', None),
  'router_origin3000': ('router', 'ip35', 0, 'network router as the Origin 3000 kernel reaches it (register numbers of a vector access)', None),
 }
-MACE_BLOCKS = [  # the specification's block map (table 91 and 92); offsets are from physical 0x1f000000
- (0x080000, 'PCI host bridge'),
- (0x280000, 'Ethernet'),
- (0x300000, 'audio'),
- (0x304000, 'peripheral controller gap (not a listed register)'),
- (0x310000, 'ISA control, parallel and serial DMA'),
- (0x320000, 'PS/2 keyboard and mouse'),
- (0x330000, 'I2C'),
- (0x340000, 'timers'),
- (0x380000, 'external ISA (calendar clock block, base 0x3a0000)'),
-]
 BEDROCK_BLOCKS = [  # inferred from routine-name prefixes (see chips/bedrock/README.md)
  (0x1000000, 0x1200000, 'PROCESSOR_INTERFACE_LIKE', 'low window: interrupt send, clocks, error masks, time counter'),
  (0x1600000, 0x1800000, 'NETWORK_INTERFACE_LIKE', 'ports, router tables, a counter'),
@@ -340,8 +328,6 @@ def gen(chip, spec):
             blk = [n for lo, n in HEART_BLOCKS if off >= lo][-1]
         elif rules == 'hub':
             blk = [n for lo, n in HUB_BLOCKS if off >= lo][-1]
-        elif rules == 'mace':
-            blk = [n for lo, n in MACE_BLOCKS if off >= lo][-1]
         elif off >= 0x10000:
             blk = 'arrays and windows (offset is the array base)'
         else:
