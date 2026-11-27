@@ -1,7 +1,7 @@
 # Access-complete RE repositories: cross-reference tables, register contracts and lookup
 
-Status: direction approved, nothing built. `generated/xref/`, `--xref`, `--xref-all` and `questions/lookups.tsv`
-are adopted, as are the other names below.
+Status: direction approved. `generated/xref/`, `--xref`, `--xref-all` and `questions/lookups.tsv` are adopted, as
+are the other names below. Only unit 1 (the measurement, below) is built.
 
 Read against sgi-retools `main` at `6cd5399` and the RE repositories at their 2026-11-27 heads: chips
 `abd0a17`, cobalt `add9b42`, crime `a3dadaf`, gr2 `8775b07`, kona `9472c6c`, kudzu `c9a5672`, newport
@@ -422,6 +422,196 @@ runs and pin bumps. "Review-grade" work is Ghidra and inventory code, and review
 
 Units 1 and 2 can run together, as can 3 and 4. Unit 7 can start at once. Unit 8 needs 1, 5, 6 and 7. Unit 9
 needs 2 and 8. Unit 10 needs 8 only. Units 11 and 12 need 9.
+
+## Unit 1: what was built and what it measured
+
+Measured 2026-11-27 on the shared build host, one run per input, `--cpus 1`, Ghidra 12.1.3 in the pinned image,
+container capped at 8 GiB. Times are wall clock on a host with other jobs running, so read them to within a
+factor of about 1.3. Peak memory is the container's cgroup `memory.peak`.
+
+### Choices where the design was silent
+
+- `--xref DIR` writes `DIR/<install path>/`, the object path without a leading `root/`. It runs no decompile and
+  needs no decompile option. `ReXrefExport` calls `ReCallWalk`, `ReAccessWalk` and `ReBlockEval` directly.
+- `functions.tsv` takes the design's columns. `end` is the exclusive end (maximum address plus one). A function
+  Ghidra named itself has an empty `name` and `name_source`. `name_source` is the lower-cased Ghidra source type
+  (`imported` for a symbol-table name, `analysis`, `user`).
+- `sites.tsv` omits `via`, `region` and `register` until the passes that fill them exist, and has no
+  `addressing` column. Its `grade` is `established` for every row. A call row's `target` is `ENTRY RESOLVED_BY`,
+  where `RESOLVED_BY` is `direct`, `constant`, `table` or `unresolved`, with `@0xSOURCE` after `constant` and
+  `table` and ` tail` after a tail jump, and `?` for ENTRY when the call does not resolve. At one site an access
+  row sorts before the call row, because a delay-slot access is reported at its branch.
+- `hardware` follows the design: `access` for a routine with an access row, `calls-access` for its direct callers.
+  `sites.tsv` holds the accesses and every call site of both kinds.
+- `value`: `0xHEX`, `load@0xSITE[,load@0xSITE]` (up to four loads of the same block that the stored value depends
+  on, the lowest addresses first, image and stack loads included, so a site need not have a row), or `?`. A word read
+  through a loaded pointer names its own load, not the pointer's. There is no `arg0` or `ret(...)` form yet, because an argument is only a
+  value that is unknown in the block.
+- `uses`: operations in the same block that meet the loaded value, or a value derived from it, with a constant.
+  Names: `and or xor shl shr sar add sub mul eq ne lt le gt ge ltu leu gtu geu`, the loaded value on the left, so
+  `ltu 0x10` is value < 0x10 and `gtu 0x3` is 3 < value. An add of a negative constant is a `sub`. Moves
+  (`+ 0`, `| 0`) are not uses. Each load keeps at most eight distinct uses, in order of first occurrence, joined by `;`.
+  The add of an addressing mode (`lw t, 8(p)`) is not a use, and a word read through a loaded pointer is a new
+  load, so a test of a structure field is not a use of the pointer. A register add (`addiu t, p, 8`) still is,
+  because nothing says it is address arithmetic. The first run listed both kinds: on libGLcore `add` was 1,521 of
+  5,241 entries and is now 99 of 3,146, and on the kernel 6,612 entries on 2,954 loads fell to 1,493 on 1,162.
+- `strings.tsv`: only strings in initialised, loaded, non-overlay memory. A reference is a constant the block
+  walk builds that equals a string's first byte, or a reference Ghidra's own analysis recorded from an
+  instruction. Text is escaped (`\t`, `\n`, `\\`, `\xNN`) and cut at 200 characters with `...`. The `leakcheck.py` pass
+  the risks section calls for is not applied yet.
+- Addresses of a flat image placed under a window are written without the window.
+
+### Results
+
+| Input | Size | Functions | Hardware routines | Access rows | Call rows | Strings with a reference |
+|---|---|---|---|---|---|---|
+| IP27 linked kernel (`unix`, 6.5.30 build, sha256 `56747467`) | 11.1 MB ELF | 12,274 | 4,773 | 4,107 | 40,203 | 5,361 rows |
+| SHub 2 PROM `shub2snprom.bin` (sha256 `3ea83318`) | 12.6 MB flat | 2,714 | 1,182 | 27,430 | 8,281 | 4,693 rows |
+| `libGLcore.so` (IP27KONA) | 2.9 MB ELF | 4,962 | 2,896 | 5,793 | 6,479 | 88 rows |
+| `acl.o` (smallest kernel object, for the fixed cost) | 20 KB | 35 | 2 | 4 | 28 | 0 |
+
+| Input | functions.tsv | sites.tsv | strings.tsv | Total | gzip -9 | xz -9 |
+|---|---|---|---|---|---|---|
+| kernel | 2.19 MB | 3.85 MB | 0.46 MB | 6.49 MB | 0.70 MB | 0.52 MB |
+| SHub 2 PROM | 0.23 MB | 2.42 MB | 0.34 MB | 2.99 MB | 0.24 MB | 0.14 MB |
+| libGLcore | 0.29 MB | 0.74 MB | 0.005 MB | 1.03 MB | 0.12 MB | 0.07 MB |
+| acl.o | 2.1 KB | 2.0 KB | 0.03 KB | 4.1 KB | 0.9 KB | 0.9 KB |
+
+| Input | Wall | Import, analysis and start-up | Walks | Strings | Peak memory |
+|---|---|---|---|---|---|
+| kernel (5 GiB Java heap) | 234 s | 187 s | 25 s | 18 s | 1.9 GiB (2.2 GiB on a first run) |
+| SHub 2 PROM (4 GiB heap) | 338 s | 273 s | 40 s | 21 s | 1.9 GiB |
+| libGLcore | 91 s | 78 s | 6 s | 3 s | 1.1 GiB |
+| acl.o | 27 s | 24 s | 0 s | 0 s | 0.46 GiB |
+
+The kernel and PROM runs also ran a throwaway counting script, which took 18 s and 55 s. Those are subtracted
+above. Two runs of libGLcore gave byte-identical tables. The fixtures compare two runs of the whole export.
+The size rows for the kernel and libGLcore are from the final scripts. The SHub 2 PROM and `acl.o` rows, the
+times and the extrapolation below were taken before the pointer and addressing-add change, which only shortens
+`value` and `uses` (the kernel's `sites.tsv` by 1.2%) and leaves every row and every other table as it was.
+
+Findings that change the design:
+
+- **Fixed cost per file.** The smallest object costs 24 s before any walk, which is Podman, the JVM and the
+  project import. Time is about `24 s + 21 s per MB`. A corpus of thousands of objects is dominated by the fixed
+  part, so `--xref-all` has to open many files in one headless session, not start one container per file.
+- **The `hardware` flag is polluted in the kernel.** 4,031 of the kernel's 4,107 access rows are loads and stores
+  at `0xffffffffffffc000` to `0xffffffffffffdfff`, the per-CPU private page, and 55 more are at addresses below `0x10000`. Only
+  21 are anywhere a device window could be. That makes 1,538 routines `access` and 3,235 `calls-access`, and call
+  rows are 88% of `sites.tsv` (3.4 of 3.9 MB). A region test before the flag (unit 2, the device map) takes the
+  kernel's `sites.tsv` to well under 1 MB. In the SHub 2 PROM the walk's addresses are mostly real: 21,208 are
+  above `0x10000`, 6,002 below it and 220 are `0x0`.
+- **Block-only string references are weak.** The block walk finds 87 string references in the kernel and 0 in the
+  PROM and libGLcore, where Ghidra's own references find 5,274, 4,693 and 88. The IA-64 PROM builds addresses from
+  `gp`, which is not a constant in the block. Both sources are kept.
+- **Function counts differ from the inventory.** Ghidra finds 12,274 functions in the kernel, the inventory's
+  `functions.tsv` 13,484. Not investigated.
+
+### Run-time base plus a constant
+
+`ReAccessWalk` drops a load or store whose address is a known constant added to an unknown base. Counted over
+the same two programs with a throwaway script, with "register offsets" meaning the `offset` of every row in the
+chips `generated/json` for the Hub, Bridge, Xbow and IOC3 units (kernel, 375 offsets) or SHub 2 (PROM, 357):
+
+| Rows | IP27 kernel | SHub 2 PROM |
+|---|---|---|
+| all run-time base plus constant | 286,289 (11,111 routines) | 676,234 (2,429 routines) |
+| in a routine that also has a known access above `0x10000` and below `0xffffffffffff0000` | 243 (11) | 135,610 (326) |
+| constant equals a register offset | 182,870 (10,849) | 42,448 (2,332) |
+| constant equals a register offset of at least `0x100` | 13,266 (2,199) | 20,607 (24) |
+| equals a register offset, in a routine with such a known access | 166 (10) | 25,468 (317) |
+| fully unknown address, no constant | 255 | 45,459 |
+
+At about 50 bytes a row before value and uses, the kernel's unrestricted set is 15 MB and the PROM's 24 MB.
+99% of the PROM's rows are 8 bytes wide: they are `gp`-relative and stack accesses, not registers. In the kernel
+they are every structure field. The restriction to a known device-window access is the only one that holds the
+volume down on both, and it finds almost nothing in the kernel because the kernel reaches its devices through
+bases the walk cannot fold. Check against the chips census: the kernel's census lists 1,382 sites, 3 of which
+are constant-address rows and 990 of which appear as run-time base plus constant rows (442 with the same offset).
+So the new row kind is the kernel's main source of accesses.
+
+### Spot checks
+
+- **SHub 2 store at `0xff420850` through the helper `0xff420840`.** The helper's store address is its first
+  argument, so the walk emits no access row for it. What it emits: a `functions.tsv` row for `0xff420840` (end
+  `0xff420890`, no name, `hardware` empty) with 103 callers, among them `0xff4886c0` and `0xff47bf60`. In
+  `0xff4886c0`, whose own accesses make it a hardware routine, `sites.tsv` has the call row
+  `0xff488dcc call 0xff420840 direct`, and its callers `0xff481b20` and `0xff482c60` match the memory-init page.
+  `0xff47bf60`, the port loader with sixteen stores through the helper, has no access row and calls only
+  routines without one, so it is not a hardware routine and none of its call rows are written. Searching
+  `0x38000` finds nothing. That is unit 3 (accessor propagation), as designed, and it also shows that an
+  accessor's callers must be treated as hardware routines.
+- **A kernel register access in the chips census.** Census row `ip27-unix update_ust 0xc0000000000236b8 ld r 8
+  0x30100` has `sites.tsv` row `0xc0000000000236a0 0xc0000000000236b8 load 0x9200000001030100 0x1030100 8` (function
+  `update_ust`, then site): same
+  site, direction and width, offset `0x30100` in the `0x1000000` window. Two more match, `start` at
+  `0xc00000000001a780` and `bootstrap` at `0xc000000000043764`, both loads of offset `0x600000`, where the
+  read-use column adds `and 0x1ff00;shr 0x8` (and in `bootstrap` `shl 0x20;or 0xa8000000000021d0`), the field extraction
+  the census does not carry.
+
+### What call-argument and return tracking would take
+
+Not built. The walks clear their state at a call, and an argument is only a value that is unknown in the block.
+Three pieces are needed.
+
+1. An argument value: a symbolic "incoming argument N plus a constant" in `ReBlockEval`, so a leaf accessor
+   `st [arg0+k] = arg1` shows as an accessor with its address and value arguments. MIPS names the argument
+   registers by ABI (o32 `a0`-`a3` with the rest on the stack, n32 and n64 `a0`-`a7`), so the register to argument
+   mapping needs the object's ABI, which `ghidra-export.py` already derives. A routine's accessor summary is
+   built from its first block only, so it covers leaves and the single-block wrappers, not a wrapper that
+   calls first.
+2. The caller's side: the state at each call, which today is discarded. The call hook needs the constants of the
+   argument registers, and the result is one derived row per call site with a constant argument (for the SHub 2
+   PROM, the four leaf routines have 378 calling routines between them, and how many of their call sites pass a
+   constant is only known by building it).
+3. Return values: `v0` and `v1` after a call are unknown unless the callee summary says it returns a constant or
+   an argument. That needs a per-routine summary and an order (callees first, a fixed depth for recursion).
+   On IA-64 the arguments sit in the caller's output registers, which the register stack renames to the
+   callee's `r32` onward at the call, so the caller's `alloc` (inputs, locals, outputs) is needed to map them,
+   and a return value is in `r8` to `r11`, which are not renamed. `IA64Signatures.java` already derives
+   callee parameter lists and is the starting point. Predicated calls and `br.call` through `b6` need the same
+   care as predicated writes now get.
+
+### Extrapolation
+
+Corpus (the RE repositories' `generated/inventory/binaries.tsv`, hardware roles, deduplicated by sha256 across
+repositories): 8,443 binaries, 472,000 functions, 704 MB. By repository, unique binaries: chips 3,092 (98,000
+functions), kudzu 4,481 (151,000), kona 508 (50,000), odsy 181 (93,000), voyager 43 (64,000), crime 31
+(15,000), sysco 107 (900). The root manifests hold two kernel releases, 6.5.22 and 6.5.30 (kudzu: 4,013 and 3,443
+binaries with 179,000 and 174,000 functions); the media inventory lists 6.5-base and a 6.5.29 tarball set as well,
+which no root manifest holds yet. Each further release costs about what 6.5.30 does.
+
+Rates used: raw table bytes per function 117 (`acl.o`, the only object), 208 (libGLcore), 533 (kernel) and
+1,100 (PROM); gzip about 1/8 of raw and xz about 1/12 for the large inputs. Git stores deflate, so the gzip
+column is the repository growth for one generation.
+
+| Part | Count | Raw | gzip | Time, one stream |
+|---|---|---|---|---|
+| 6 linked kernels (IP27, IP30, IP35, two releases), taken as the IP27 kernel | 6 | 39 MB | 4.2 MB | 25 min |
+| kernel objects, both releases | about 7,570 | 29 to 133 MB | 4 to 17 MB | 52 h, nearly all fixed cost |
+| graphics libraries, X modules, diagnostics, firmware | 870 | 46 to 119 MB | 6 to 15 MB | 8 h |
+| all | 8,443 | 114 to 291 MB | 14 to 36 MB | 60 h; about 15 h with four runs at once |
+
+Memory stays under 2.5 GiB per run, so four at once fit the 8 GiB cap each with room to spare on this host. One
+more release adds roughly 40 to 110 MB raw, 5 to 14 MB gzip and about 24 hours of one stream.
+
+Is committing full tables for everything feasible? Once, yes. Every regeneration is the problem: any new column or
+changed value rewrites every line, so each full generation adds the whole gzip figure (14 to 36 MB) to each
+mirrored repository, and the 1 MiB shard limit makes the kernel alone 4 `sites.tsv` and 3 `functions.tsv`
+files, about 25,000 files for the corpus. What would make it so:
+
+- A region test before the `hardware` flag and a rule for which run-time-base rows are kept (a known window in the
+  routine, or an offset of at least `0x100` that equals a register offset). By estimate, not run, that takes the kernel's `sites.tsv`
+  from 3.9 MB to about 1 MB, and its tables from 6.5 MB to about 3.5 MB, because `functions.tsv` (2.2 MB) has a
+  row per function whatever is kept. The PROM's partial rows stay near 1 MB.
+- Not tabulating kernel objects that a linked kernel covers. That holds for IP27 and IP30, which have linked kernels
+  held. IP35 and IP32 do not, so their objects (353 and 230 per release) must be run.
+- Batching objects into one headless session, which removes the 24 s fixed cost. The 52 hours go to a few.
+- Deduplicating by function, not by binary. No kernel object is byte-identical across 6.5.22 and 6.5.30 (0 of
+  3,141 at the same path), but 43% of 6.5.30's function rows have code that also occurs in 6.5.22, and 38% of a
+  release's functions repeat inside it (111,000 distinct code hashes in 179,000). Tables keyed by code hash with
+  routine-relative addresses would hold each once.
+- Regenerating only when the manifest's sgi-retools revision or the input changes, never per commit.
 
 ## Risks
 
