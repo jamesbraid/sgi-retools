@@ -6,6 +6,7 @@ need the same bytes and load address back from such a key, so both use this modu
 exists once.
 """
 import fnmatch
+import io
 import json
 import os
 import re
@@ -130,5 +131,9 @@ def segment_routine(cfg, root, key, address, size=None):
     import hostfacts
     arch, body, load, _group = found
     elf = load is None          # a linked ARM ELF member (see firmware_segments): hostfacts reads its headers
+    if elf:                     # and wants its lowest PT_LOAD address as the load
+        from elftools.elf.elffile import ELFFile
+        load = min((s['p_vaddr'] for s in ELFFile(io.BytesIO(body)).iter_segments()
+                    if s['p_type'] == 'PT_LOAD' and s['p_memsz']), default=0)
     return hostfacts.routine_for(os.path.join(root, split_segment_key(key)[0]), address, size=size,
-                                 arch='arm' if elf else arch, load=0 if elf else load, elf=elf, data=body)
+                                 arch='arm' if elf else arch, load=load, elf=elf, data=body)

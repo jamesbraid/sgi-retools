@@ -1423,7 +1423,11 @@ class LinuxL1Elf(unittest.TestCase):
     def setUp(self):
         self.repo = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.repo)
-        self.arm = AddressZero.relocatable(bytes(range(32)), [('main', 0, 16), ('helper', 16, 16)], arm=True)
+        import struct
+        arm = bytearray(AddressZero.relocatable(bytes(range(32)), [('main', 0, 16), ('helper', 16, 16)], arm=True))
+        struct.pack_into('<I', arm, 28, len(arm))               # e_phoff: one PT_LOAD at 0x8000, after the sections
+        struct.pack_into('<HH', arm, 42, 32, 1)                 # e_phentsize, e_phnum
+        self.arm = bytes(arm) + struct.pack('<8I', 1, 0, 0x8000, 0x8000, len(arm), len(arm), 5, 4)
         os.makedirs(os.path.join(self.repo, 'root', os.path.dirname(self.L1)))
         files = {'stand': {'sysco': {'bin': {'prog': self.arm, 'note': b'not an elf'}}}, 'etc': {'rc': self.arm}}
         with open(os.path.join(self.repo, 'root', self.L1), 'wb') as f:
@@ -1462,7 +1466,7 @@ class LinuxL1Elf(unittest.TestCase):
                                             self.L1 + '(l1#0:/stand/sysco/bin/prog)', 0x8000)
         finally:
             hostfacts.routine_for = real
-        self.assertEqual((seen['arch'], seen['elf'], seen['data']), ('arm', True, self.arm))
+        self.assertEqual((seen['arch'], seen['elf'], seen['load'], seen['data']), ('arm', True, 0x8000, self.arm))
 
 
 if __name__ == '__main__':
