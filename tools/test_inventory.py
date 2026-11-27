@@ -420,6 +420,26 @@ class HeaderSite(unittest.TestCase):
                                'usr/c/gfx.o': 'undocumented'})
 
 
+class UcodeNameCredit(unittest.TestCase):
+    # an ELF function and a microcode symbol can share a name (`color`); an entry whose header gives a binary
+    # describes that binary's function
+    OWNERS = inv.path_owners(fake_images(('usr/gfx/arch/IGLOO/libgl.so', []), ('usr/gfx/ucode/KONA/arm1.u', [])))
+
+    def named_in_binary(self, text):
+        ent = inv.Entry(text, 'understood', frozenset({('id', 'color')}))
+        return inv.header_names_binary(ent, 'color', self.OWNERS, 'arm1.u')
+
+    def test_an_entry_headed_by_a_binary_is_not_about_a_microcode_symbol(self):
+        self.assertTrue(self.named_in_binary('- `color` in `usr/gfx/arch/IGLOO/libgl.so` at 0xec6fde0\n  **Inferred.** x'))
+
+    def test_a_bare_name_or_a_microcode_program_keeps_crediting_the_symbol(self):
+        self.assertFalse(self.named_in_binary('| `color` | 0x0c0164d8 | **Established** (`arm1.u` +0x164d8). Sends it.'))
+        self.assertFalse(self.named_in_binary('- `color` in `usr/gfx/ucode/KONA/arm1.u` at 0x0c0164d8: sends it.'))
+
+    def test_a_binary_in_the_description_is_not_the_header(self):
+        self.assertFalse(self.named_in_binary('- `color` sends the colour: the caller is in `usr/gfx/arch/IGLOO/libgl.so`'))
+
+
 class ReadingEntries(unittest.TestCase):
     """The shapes a routine-reading round writes into docs/routines/*.md, and what each credits in a
     table of builds that share a routine name: fsio_mount sits at a different address in every build

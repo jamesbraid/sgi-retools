@@ -4095,6 +4095,7 @@ def build(cfg, a, tmp):
     out['ioctls'] = rows
 
     # ---------------------------------------------------------------- ucode
+    token_images = path_owners(imgs)     # path written in a document -> binaries it names
     rows = []
     labels = {}
     truncated = []
@@ -4148,7 +4149,8 @@ def build(cfg, a, tmp):
             r.pop('_names', None)
             put_status(r, st)
             continue
-        st = docs.by_name(*[n for n in r.pop('_names', []) if n])
+        st = docs.best([h for n in r.pop('_names', []) if n for h in docs.name_hits(n)
+                        if not header_names_binary(h.ent, n, token_images, r['program'])])
         rec = r.pop('_record', None)
         if rec is not None and st[0] != 'understood':
             st = best_of(st, record_status(docs, rec, cfg))
@@ -4161,7 +4163,6 @@ def build(cfg, a, tmp):
     # at most located. A name with one code in every build needs no citation. An entry whose header
     # names one build and address credits that row and the rows whose code is identical to it (header_keeps).
     name_rows = code_groups(funcs, out['ucode'])
-    token_images = path_owners(imgs)     # path written in a document -> binaries it names
     cited = {}
 
     rows = []
@@ -4379,6 +4380,22 @@ def function_status(docs, name, hits, demote):
     return st
 
 
+def entry_head(ent):
+    """The part of an entry's first line before its description (its first colon or bold lead)."""
+    head = ent.text.split('\n', 1)[0]
+    cut = re.search(r':\s|\*\*|\.\s', head)
+    return head[:cut.start()] if cut else head
+
+
+def header_names_binary(ent, name, owners, program):
+    """True when the entry is about `name` and its header writes the path of a binary other than the
+    microcode `program`: it describes that binary's function, not the microcode symbol of the same name."""
+    if ent is None or ('id', name) not in ent.subj:
+        return False
+    toks = (PATH_PREFIX.sub('', m.group(0).strip('.,;:')) for m in PATHTOK.finditer(entry_head(ent).replace('`', ' ')))
+    return any(owners.get(t.removeprefix('root/')) and os.path.basename(t) != program for t in toks)
+
+
 def header_site(ent, name, owners):
     """None when the entry is not about `name`, or its header gives no binary or no address: it is matched by
     name alone. Otherwise (addresses, named, shared): the exact addresses the header writes, the builds whose
@@ -4386,9 +4403,7 @@ def header_site(ent, name, owners):
     part before the entry's description (its first colon or bold lead)."""
     if ent is None or ('id', name) not in ent.subj:
         return None
-    head = ent.text.split('\n', 1)[0]
-    cut = re.search(r':\s|\*\*|\.\s', head)
-    head = head[:cut.start()] if cut else head
+    head = entry_head(ent)
     addrs = frozenset(int(m.group(2), 16) for m in HEXLIT.finditer(head) if not m.group(1))
     # a `Build:` line right under the header names the build the entry was read from
     m = re.match(r'[^`]*`[^`]*`[^:]*:\s*(?:\*\*[^*]*\*\*)?\s*Build:\s*`?([^\s`]+)', ent.text)
