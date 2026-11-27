@@ -1230,14 +1230,14 @@ role: %s
 """
     IMGS = [{'label': 'usr/lib/libx.so', 'copies': [], 'data': b'x'}]
 
-    def index(self, doc):
+    def index(self, doc, **cfg):
         root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, root)
         with open(os.path.join(root, 'stubs.md'), 'w') as f:
             f.write(doc)
         saved, inv.REPO = inv.REPO, root
         try:
-            return inv.DocIndex({'docs': {'prose': ['stubs.md'], 'index': [], 'skip': []}})
+            return inv.DocIndex(dict({'docs': {'prose': ['stubs.md'], 'index': [], 'skip': []}}, **cfg))
         finally:
             inv.REPO = saved
 
@@ -1295,6 +1295,28 @@ role: %s
         docs = self.index(self.DOC % 'Inferred. It loads the pointer in the slot field into t9 and jumps to it.')
         self.assertEqual(docs.families, [])
         self.assertIn('the role is not one the inventory credits', docs.family_problems[0])
+
+    def test_a_role_the_grader_caps_at_located_is_refused(self):
+        for role in ('Role (from name): ' + self.ROLE, self.ROLE.replace('Inferred.', '') + ' Unverified.'):
+            docs = self.index(self.DOC % role)
+            self.assertEqual(docs.families, [], role)
+            self.assertEqual(len(docs.family_problems), 1, role)
+            self.assertIn('the role is not one the inventory credits', docs.family_problems[0])
+
+    def test_a_review_required_page_needs_the_reviewed_line_in_the_role(self):
+        cfg = {'review_required': ['stubs.md']}
+        docs = self.index(self.DOC % self.ROLE, **cfg)
+        self.assertIn('no "Reviewed: DATE" line', docs.family_problems[0])
+        docs = self.index(self.DOC % (self.ROLE + ' Reviewed: 2026-11-26.'), **cfg)
+        self.assertEqual((docs.family_problems, len(docs.families)), ([], 1))
+
+    def test_a_family_whose_candidates_all_differ_is_an_error(self):
+        rows = self.rows(('glC', 0x1018, 'located'))
+        _r, problems = self.credit(rows)
+        self.assertEqual(rows[0]['status'], 'located')
+        self.assertEqual(len(problems), 1)
+        self.assertIn('none of its 1 candidate functions has the pattern', problems[0])
+        self.assertIn('glC: byte 11 is 0x01', problems[0])
 
     def test_a_block_with_no_pattern_is_refused(self):
         docs = self.index((self.DOC % self.ROLE).replace('match: 8c 19 .. ..  03 20 00 08  00 00 00 00\n', ''))

@@ -39,7 +39,8 @@ class FakeSection:
 
 class FakeElf:
     """The little of pyelftools' ELFFile that function_bytes reads: one section at 0x1000, file offset 0x40."""
-    def __init__(self, text):
+    def __init__(self, text, machine='EM_MIPS'):
+        self.header = {'e_machine': machine}
         self.stream = io.BytesIO(b'\0' * 0x40 + text)
         self.sec = FakeSection(0x1000, 0x40, text)
 
@@ -95,8 +96,33 @@ class Parse(unittest.TestCase):
         self.assertIn('fixes 8 bits', parsed(match='8c .. .. .. .. .. .. ..')[1][0])
 
     def test_a_masked_byte_counts_only_its_bits(self):
-        self.assertIsNone(parsed(match='08/fc .. .. ..')[0])
-        self.assertIsNotNone(parsed(match='08/fc 00 00 ..')[0])
+        self.assertIsNone(parsed(match='08/fc 00 00 00 .. .. .. ..', field='slot = u16be@0 & 0x300')[0])
+        self.assertIsNotNone(parsed(match='08/fc 00 00 00 00 00 00 00', field='slot = u16be@0 & 0x300')[0])
+
+    def test_a_pattern_that_leaves_much_open_is_refused(self):
+        # 32 of 96 bits open is a third: any function that ends in a nop
+        _f, problems = parsed(match='.. .. .. .. 03 20 00 08 00 00 00 00', field='slot = u32be@0')
+        self.assertEqual(len(problems), 1)
+        self.assertIn('leaves 32 of its 96 bits open', problems[0])
+
+    def test_a_bit_no_field_reads_is_refused(self):
+        _f, problems = parsed(match='8c 19 .. ..  03 20 00 08  00 00 00 ..')
+        self.assertEqual(problems, ['the pattern leaves 8 bits open that no field reads: name each varying '
+                                    'operand with a field'])
+
+    def test_a_field_mask_reads_only_its_bits(self):
+        f, problems = parsed(match='8c 19 .. 00 03 20 00 08 00 00 00 00', field='slot = u16be@2 & 0xff00')
+        self.assertEqual(problems, [])
+        self.assertEqual(fam.covered_bits(f.fields, 12)[2:4], bytes([0xff, 0]))
+        low, _p = parsed(match='8c 19 .. .. 03 20 00 08 00 00 00 00', field='slot = u16le@2')
+        self.assertEqual(fam.covered_bits(low.fields, 12)[2:4], bytes([0xff, 0xff]))
+        _f, problems = parsed(match='8c 19 .. .. 03 20 00 08 00 00 00 00', field='slot = u16be@2 & 0xff')
+        self.assertIn('leaves 8 bits open that no field reads', problems[0])
+
+    def test_a_glob_of_wildcards_alone_is_refused(self):
+        self.assertIn('"members" has a glob of wildcards alone', parsed(members='*')[1][0])
+        self.assertIn('"binaries" has a glob of wildcards alone', parsed(binaries='usr/lib/libx.so, *')[1][0])
+        self.assertIsNotNone(parsed(members='gl*, __gl?*')[0])
 
     def test_a_bad_byte_is_named(self):
         self.assertIn('"8cx"', parsed(match='8cx 19')[1][0])
@@ -138,11 +164,11 @@ class Check(unittest.TestCase):
         self.assertIn('size 8', self.f.check(STUB[:8])[1])
 
     def test_signed_little_endian_and_masked_fields(self):
-        f, problems = fam.parse(['binaries: b', 'members: m*', 'match: 04/ff .. 0c 00',
+        f, problems = fam.parse(['binaries: b', 'members: m*', 'match: 04/ff .. 0c 00 11 22 33 44',
                                  'field: back = s8be@1', 'field: low = u16le@1', 'field: top = u32be@0 & 0xff00',
                                  'shape: s', 'varies: back low top', 'role: r'])
         self.assertEqual(problems, [])
-        self.assertEqual(f.check(bytes.fromhex('04fe0c00'))[0], {'back': '-2', 'low': '0xcfe', 'top': '0xc00'})
+        self.assertEqual(f.check(bytes.fromhex('04fe0c00 11223344'))[0], {'back': '-2', 'low': '0xcfe', 'top': '0xc00'})
 
 
 class Verify(unittest.TestCase):
@@ -180,6 +206,11 @@ class Verify(unittest.TestCase):
         rows = rows_for(('glA', 0x1000, 12))
         rows[0]['_unknown'] = True
         self.assertFalse(self.run_verify(rows)[0]['ok'])
+
+    def test_an_arm_symbol_address_loses_its_thumb_bit(self):
+        self.elf = lambda data: FakeElf(STUB, 'EM_ARM')
+        got = self.run_verify(rows_for(('glA', 0x1001, 12)))
+        self.assertEqual([(r['ok'], r['values']) for r in got], [(True, {'slot': '0x1050'})])
 
     def test_values_text(self):
         self.assertEqual(fam.values_text({'slot': '0x1050', 'x': '-2'}), 'slot=0x1050;x=-2')

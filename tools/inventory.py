@@ -1326,6 +1326,10 @@ class DocIndex:
         """Read the family block that opens at line index `start`: its problems, or the family."""
         def role_why(text):
             st, _open, why = read_why(text)
+            if st == 'understood' and classify(text)[0] != 'understood':
+                return 'the grader caps it at located (a "Role (from name):" sentence or a closing "Unverified.")'
+            if st == 'understood' and review_required(self.cfg, rel) and not REVIEWED.search(text):
+                return 'the page needs a review and the role has no "Reviewed: DATE" line'
             return '' if st == 'understood' else why
         where = '%s:%d' % (rel, start + 1)
         fam, problems = _families.parse(body, role_why)
@@ -4425,8 +4429,14 @@ def credit_families(families, imgs, rows):
     row is understood by that entry, a row that does not match keeps the status the documents gave it.
     Returns (results of _families.verify, problems)."""
     results = _families.verify(families, imgs, rows, elf_of)
-    problems = ['%s: the family matches no function of that size in its binaries' % fam.where
-                for fam in families if not any(r['family'] is fam for r in results)]
+    problems = []
+    for fam in families:
+        mine = [r for r in results if r['family'] is fam]
+        if not mine:
+            problems.append('%s: the family matches no function of that size in its binaries' % fam.where)
+        elif not any(r['ok'] for r in mine):
+            problems.append('%s: none of its %d candidate functions has the pattern\'s bytes (%s: %s)'
+                            % (fam.where, len(mine), mine[0]['row']['name'], mine[0]['why']))
     for r in results:
         row = r['row']
         if r['ok'] and RANK[row['status']] < RANK['understood'] and row['status'] != 'no-software-dependency':

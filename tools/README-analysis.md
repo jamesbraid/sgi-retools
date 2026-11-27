@@ -348,18 +348,24 @@ The entry is a fenced block with the info string `family`, in a page the invento
 - `binaries` and `members` are comma-separated globs on the binary label (or a byte-identical copy's) and the
   function name. A function row is a candidate when both match and its size is the pattern's length.
 - `match` is the function's bytes: `HH` exact, `..` any, `HH/MM` the bits under mask `MM`. It must fix at
-  least 16 bits. A block without it is refused: the check is what replaces a sentence per member.
+  least 32 bits and leave at most a quarter of them open, and a `field` must read every open bit. A pattern
+  that leaves more open (`.. .. .. .. 03 20 00 08 00 00 00 00`, any first instruction) matches functions that
+  only share a size, and is refused. A block without a pattern is refused: the check is what replaces a
+  sentence per member.
+- `binaries` and `members` may not include a glob of wildcards alone.
 - `field: NAME = u|s 8|16|32|64 be|le @OFFSET [& MASK]` reads a value out of a matching member's bytes, and
   `families.tsv` records it. `varies` has to name every field.
 - `shape`, `varies` and `role` are prose. `role` is graded like any entry (a label, a cited address and
-  enough items), so a role that cites nothing is refused.
+  enough items), so a role that cites nothing is refused, and one that the grader caps at located (a
+  `Role (from name):` sentence, a closing `Unverified.`) is refused. On a page the config lists in
+  `review_required`, the role needs the `Reviewed: DATE` line.
 
 A candidate whose bytes match is understood, by the block's page and heading, and counts as one distinct
 entry. One that does not match keeps the status the documents give it, and `families.tsv` says which byte
-differs. A block with no candidate, or a malformed one, stops the run. `generated/inventory/families.tsv`
-(binary, name, address, size, result, detail, doc, section) is written only when a page has a family block,
-and the coverage block says how many candidates matched. `grade_readings.py --check-doc` reports a malformed
-block of the page it lints. The cap on hand-written per-row prose is unchanged.
+differs. A block with no candidate, none that matches, or a malformed one, stops the run.
+`generated/inventory/families.tsv` (binary, name, address, size, result, detail, doc, section) is written only
+when a page has a family block, and the coverage block says how many candidates matched.
+`grade_readings.py --check-doc` reports a malformed block of the page it lints. The cap on hand-written per-row prose is unchanged.
 
 ### Checking an entry's claims against its facts
 

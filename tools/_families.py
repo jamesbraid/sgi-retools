@@ -17,13 +17,16 @@ function's bytes: `HH` exact, `..` any, `HH/MM` the bits of MM only. The functio
 pattern's length to be a candidate. Each `field` reads one value out of the bytes of a match. A candidate
 that matches is understood and records its field values; one that does not is left as the documents
 leave it. Without a `match` there is no family: the byte check is what stands in for a sentence per member.
+Every bit the pattern leaves open must be read by a field, and at most a quarter of the bits may be open, so
+the members are the same code with named operands, not any function of that size.
 """
 import fnmatch
 import re
 
 REQUIRED = ('binaries', 'members', 'match', 'shape', 'varies', 'role')
 KEYS = REQUIRED + ('field',)
-MIN_FIXED_BITS = 16      # a pattern that fixes fewer bits than this matches almost any function
+MIN_FIXED_BITS = 32      # a pattern that fixes fewer bits than this matches almost any function of that size
+MAX_OPEN_SHARE = 4       # at most 1 bit in this many may be open: a looser pattern is not one routine's shape
 FIELD = re.compile(r'^([a-z][a-z0-9_]*)\s*=\s*([us])(8|16|32|64)(be|le)@(0x[0-9a-fA-F]+|\d+)'
                    r'(?:\s*&\s*(0x[0-9a-fA-F]+|\d+))?$')
 KEY_LINE = re.compile(r'^([a-z]+):\s*(.*)$')
@@ -79,6 +82,22 @@ def read_field(data, f):
     if signed and v >> (bits - 1):
         return str(v - (1 << bits))
     return '0x%x' % v
+
+
+def covered_bits(fields, length):
+    """Per byte of a pattern, the bits that the fields read."""
+    got = bytearray(length)
+    for _name, (_signed, bits, order, off, mask) in fields:
+        width = bits // 8
+        for k in range(bits):
+            if mask is None or mask >> k & 1:
+                got[off + (width - 1 - k // 8 if order == 'big' else k // 8)] |= 1 << k % 8
+    return got
+
+
+def wild_glob(globs):
+    """True when a glob list names every binary or function: a glob of wildcards alone."""
+    return any(not re.sub(r'[*?\[\]!]', '', g) for g in globs)
 
 
 def parse_pattern(text):
@@ -158,6 +177,21 @@ def parse(body, role_why=None):
             problems.append('field "%s" is not named in the varies text, which has to say what it is' % name)
         seen.add(name)
         fam.fields.append((name, (sign == 's', bits, 'big' if order == 'be' else 'little', off, mask)))
+    if not problems:
+        total = 8 * len(fam.value)
+        free = [~m & 0xff for m in fam.mask]
+        nfree = sum(bin(b).count('1') for b in free)
+        unread = sum(bin(b & ~c & 0xff).count('1') for b, c in zip(free, covered_bits(fam.fields, len(free))))
+        if nfree * MAX_OPEN_SHARE > total:
+            problems.append('the pattern leaves %d of its %d bits open and a family may leave at most 1 in %d: '
+                            'fix more of the shape' % (nfree, total, MAX_OPEN_SHARE))
+        if unread:
+            problems.append('the pattern leaves %d bits open that no field reads: name each varying operand '
+                            'with a field' % unread)
+        for what, globs in (('binaries', fam.binaries), ('members', fam.members)):
+            if wild_glob(globs):
+                problems.append('"%s" has a glob of wildcards alone, which names every one: say which code the '
+                                'family is' % what)
     if role_why is not None and not problems:
         why = role_why(fam.role)
         if why:
@@ -167,7 +201,9 @@ def parse(body, role_why=None):
 
 def function_bytes(elf, section, addr, size):
     """The bytes of a function from its section, or from the loadable segment that holds it; b'' when the
-    image does not hold them."""
+    image does not hold them. An ARM symbol's low bit marks Thumb code, not an address."""
+    if elf.header['e_machine'] == 'EM_ARM':
+        addr &= ~1
     sec = elf.get_section_by_name(section) if section else None
     if sec is not None and sec['sh_type'] != 'SHT_NOBITS':
         off = addr - sec['sh_addr']
