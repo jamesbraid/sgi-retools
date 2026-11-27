@@ -138,7 +138,7 @@ A register may carry `ro`, `w1c`, `cor` and `rsvd`: bit masks over the register'
 the same-named members of QEMU's `RegisterAccessInfo`: read-only bits, write-1-to-clear bits, clear-on-read
 bits and reserved bits. Omitted means no bit, and a mask is written only where a source states it. The
 `access` letter is a different thing and is not used for them: it records what a driver table says, not
-what the bits do. Only the rust-regs export carries the masks.
+what the bits do. The rust-regs export and the QEMU header carry the masks.
 
 ### Name provenance
 
@@ -424,8 +424,18 @@ Names are `<BOARD>_<UNIT>_<NAME>`, so the headers of several repositories share 
 Each register is `REG8/16/32/64(<P>_<REG>, byte offset)`, each field `FIELD(<P>_<REG>, <FIELD>, shift,
 length)` and each constant a `#define`; a register array adds `_COUNT` and `_STRIDE`, and a word (a command
 or descriptor, which has no offset) is its fields alone plus `_WIDTH`. The grade is a trailing comment, and
-so is a name source that differs from the unit's. A register in a register-indexed space is written in
-bytes (index * register size). Enum values are not carried.
+so is a name source that differs from the unit's.
+
+A register with a known reset adds `#define <P>_<REG>_RESET <value>` (per element for an array, and left out
+when the reset is `unknown`; the comment is the reset's own grade). A register's `ro`, `w1c`, `cor` and `rsvd`
+masks become `<P>_<REG>_RO`, `_W1C`, `_COR` and `_RSVD`, only where the register has them. Each enum value of a
+field, own or shared, is `#define <P>_<REG>_<FIELD>_<LABEL> <value>`, the same `<FIELD macro>_<LABEL>` form
+the C header uses. A register in a register-indexed space has no byte offset: it is
+`#define <P>_<REG>_INDEX <n>` in place of the `REG` line, and its `_STRIDE` counts indices. Its `FIELD` lines
+are unchanged, as `FIELD` expands to `R_<reg>_<field>_*` and does not need the `REG` anchor.
+
+The generator will not write a header for a unit while a name in it is still `imported-unchecked`; the error
+lists the names (`defs-names unchecked` lists them all). Give the unit or register a `name_source` first.
 
 The generator refuses a name defined twice in one header (`FIELD` expands to `R_<reg>_<field>_SHIFT`, so
 register `a` with field `b_c` collides with register `a_b` with field `c`). `defs-names dups REPO...` makes

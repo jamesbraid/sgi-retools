@@ -19,6 +19,7 @@ class QemuTest(RepoTest):
     def enable(self):
         self.edit("defs/check.toml", '[project]\nname = "mini"\n', '[project]\nname = "mini"\nlicense = "BSD-3-Clause"\n')
         self.write("defs/check.toml", self.read("defs/check.toml") + SETTINGS)
+        self.edit("defs/uart.toml", 'unit = "uart"\n', 'unit = "uart"\nname_source = "ours"\n')
 
     def render(self):
         repo = loader.load_repo(self.root)
@@ -44,18 +45,71 @@ class QemuTest(RepoTest):
         self.assertIn('#include "hw/core/registerfields.h"', text)
         self.assertIn("REG32(TEST_UART0_CTL, 0x10) /* established */", text)
         self.assertIn("FIELD(TEST_UART0_CTL, DIVISOR, 16, 16) /* established */", text)
+        self.assertIn("#define TEST_UART0_CTL_RESET 0x0u /* established */\n", text)
+        self.assertIn("FIELD(TEST_UART0_CTL, PARITY, 1, 3) /* inferred */\n#define TEST_UART0_CTL_PARITY_NONE 0 /* established */\n"
+                      "#define TEST_UART0_CTL_PARITY_ODD 1 /* established */\n"
+                      "#define TEST_UART0_CTL_PARITY_EVEN 2 /* inferred */\n", text)
         self.assertIn("REG8(TEST_UART0_DATA, 0x120) /* inferred */\n#define TEST_UART0_DATA_COUNT 16\n#define TEST_UART0_DATA_STRIDE 0x1", text)
         self.assertIn("#define TEST_UART0_FRAME_WIDTH 32 /* established; word */\nFIELD(TEST_UART0_FRAME, PAYLOAD, 1, 8)", text)
         self.assertIn("#define TEST_UART0_FIFO_DEPTH 0x10u /* ", text)
         self.assertRegex(text, r"#ifndef HW_SGI_GPU_TEST_UART0_REGS_H\n#define HW_SGI_GPU_TEST_UART0_REGS_H\n")
         self.assertNotIn("Control register", text)       # no prose
 
-    def test_a_register_indexed_space_is_written_in_bytes(self):
+    def test_an_unknown_reset_is_left_out(self):
+        self.enable()
+        text = self.render()["gen/qemu/uart.h"]
+        self.assertNotIn("TEST_UART0_STATUS_RESET", text)
+        self.assertNotIn("TEST_UART0_DATA_RESET", text)
+
+    def test_a_reset_has_its_own_grade_and_applies_per_element(self):
+        self.enable()
+        self.edit("defs/uart.toml", "reset = 0\n", 'reset = 0\nreset_grade = "inferred"\n')
+        self.edit("defs/uart.toml", "grade = \"inferred\"\n\n[words.FRAME]", 'reset = 0x5a\ngrade = "inferred"\n\n[words.FRAME]')
+        text = self.render()["gen/qemu/uart.h"]
+        self.assertIn("#define TEST_UART0_CTL_RESET 0x0u /* inferred */\n", text)
+        self.assertIn("#define TEST_UART0_DATA_COUNT 16\n#define TEST_UART0_DATA_STRIDE 0x1\n#define TEST_UART0_DATA_RESET 0x5au /* inferred */\n", text)
+
+    def test_masks_are_written_only_where_the_register_has_them(self):
+        self.enable()
+        self.edit("defs/uart.toml", 'reset = 0\n', "reset = 0\nro = 0xf0\nw1c = 0x100\ncor = 0x2\nrsvd = 0xff000000\n")
+        text = self.render()["gen/qemu/uart.h"]
+        for line in ("RO 0xf0u", "W1C 0x100u", "COR 0x2u", "RSVD 0xff000000u"):
+            self.assertIn("#define TEST_UART0_CTL_%s /* established */\n" % line, text)
+        self.assertEqual(len(re.findall(r"_(?:RO|W1C|COR|RSVD) ", text)), 4)
+
+    def test_a_field_with_its_own_enum_values_carries_them(self):
+        self.enable()
+        self.edit("defs/uart.toml", "rx_ready = { bits = [0, 0], grade = \"established\" }",
+                  'rx_ready = { bits = [0, 0], grade = "established", enums = { no = { value = 0, grade = "inferred" } } }')
+        self.assertIn("#define TEST_UART0_STATUS_RX_READY_NO 0 /* inferred */\n", self.render()["gen/qemu/uart.h"])
+
+    def test_a_register_indexed_space_is_written_as_an_index(self):
         self.enable()
         self.edit("defs/uart.toml", "[registers.status]\n", '[spaces.idx]\nunit = "reg"\n\n[registers.status]\nspace = "idx"\n')
         self.edit("defs/uart.toml", "offset = 0x14\n", "offset = 0x5\n")
         text = self.render()["gen/qemu/uart.h"]
-        self.assertIn("REG32(TEST_UART0_STATUS, 0x14)", text)
+        self.assertIn("#define TEST_UART0_STATUS_INDEX 5 /* established */\n", text)
+        self.assertIn("\n/* A register-indexed space has _INDEX numbers, not byte offsets. */\n", text)
+        self.assertNotIn("REG32(TEST_UART0_STATUS", text)
+        self.assertIn("FIELD(TEST_UART0_STATUS, RX_READY, 0, 1)", text)
+
+    def test_an_indexed_array_counts_in_indices(self):
+        self.enable()
+        self.edit("defs/uart.toml", "[registers.status]\n", '[spaces.idx]\nunit = "reg"\n\n[registers.status]\nspace = "idx"\ncount = 4\n')
+        text = self.render()["gen/qemu/uart.h"]
+        self.assertIn("#define TEST_UART0_STATUS_COUNT 4\n#define TEST_UART0_STATUS_STRIDE 1\n", text)
+
+    def test_unchecked_names_are_refused(self):
+        self.enable()
+        self.edit("defs/uart.toml", 'name_source = "ours"\n', "")
+        _files, errors = gen.render(loader.load_repo(self.root))
+        self.assertTrue(any("imported-unchecked" in e and "ctl.divisor" in e and "status" in e for e in errors), errors)
+
+    def test_one_unchecked_register_is_refused_by_name(self):
+        self.enable()
+        self.edit("defs/uart.toml", "[registers.status]\n", '[registers.status]\nname_source = "imported-unchecked"\n')
+        _files, errors = gen.render(loader.load_repo(self.root))
+        self.assertTrue(any("status, status.rx_ready" in e for e in errors), errors)
 
     def test_a_name_defined_twice_is_refused(self):
         self.enable()
@@ -63,6 +117,12 @@ class QemuTest(RepoTest):
         self.edit("defs/uart.toml", "[registers.status]\n", reg % ("a", "0x30", "a", "b_c") + reg % ("a_b", "0x34", "a_b", "c") + "[registers.status]\n")
         _files, errors = gen.render(loader.load_repo(self.root))
         self.assertTrue(any("R_TEST_UART0_A_B_C_SHIFT is defined twice" in e for e in errors), errors)
+
+    def test_a_new_name_defined_twice_is_refused(self):
+        self.enable()
+        self.edit("defs/uart.toml", "[constants]\n", "[constants]\nCTL_RESET = { value = 1, grade = \"inferred\" }\n")
+        _files, errors = gen.render(loader.load_repo(self.root))
+        self.assertTrue(any("TEST_UART0_CTL_RESET is defined twice" in e for e in errors), errors)
 
     def test_the_header_compiles_against_the_shim(self):
         if not CC:
@@ -101,14 +161,16 @@ class QemuNamesTest(RepoTest):
     def test_the_source_shows_in_the_header_when_it_differs_from_the_unit(self):
         self.edit("defs/check.toml", '[project]\nname = "mini"\n', '[project]\nname = "mini"\n')
         self.write("defs/check.toml", self.read("defs/check.toml") + SETTINGS)
+        self.edit("defs/uart.toml", 'unit = "uart"\n', 'unit = "uart"\nname_source = "ours"\n')
         self.edit("defs/uart.toml", "[registers.status]\n", '[registers.status]\nname_source = "public"\nname_cite = "a datasheet"\n')
         repo = loader.load_repo(self.root)
         text = gen.render(repo)[0]["gen/qemu/uart.h"]
-        self.assertIn("name source: imported-unchecked", text.split("#ifndef")[0])
+        self.assertIn("name source: ours", text.split("#ifndef")[0])
         self.assertIn("name source: public (a datasheet)", text)
 
     def test_dups_across_repositories(self):
         self.write("defs/check.toml", self.read("defs/check.toml") + SETTINGS)
+        self.edit("defs/uart.toml", 'unit = "uart"\n', 'unit = "uart"\nname_source = "ours"\n')
         repo = loader.load_repo(self.root)
         files, _e = gen.render(repo)
         gen.write(repo, files)
