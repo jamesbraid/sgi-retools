@@ -1,0 +1,458 @@
+# Access-complete RE repositories: cross-reference tables, register contracts and lookup
+
+Status: proposed. Every name marked *(proposed name)* still needs the owner's choice. Nothing here is built.
+
+Read against sgi-retools `main` at `6cd5399` and the RE repositories at their 2026-11-27 heads: chips
+`abd0a17`, cobalt `add9b42`, crime `a3dadaf`, gr2 `8775b07`, kona `9472c6c`, kudzu `c9a5672`, newport
+`fb008fe`, odsy `96ee7d1`, sysco `43f80db`, voyager `b36b925`. Every one pins sgi-retools at `6cd5399`. gr4 is
+left out because its owner took it out of RE scope. stonewire is not covered.
+
+## The goal
+
+Someone asking a hardware question should get the answer by looking it up, not by asking for a trace. The
+questions that reach the RE repositories today come in four forms:
+
+- who writes this RAM word or register, and with what value
+- what calls the routine that does the store, back to an entry point
+- what register sequence follows a given access
+- what a value read from a register is compared, masked or added against.
+
+Three questions answered on 2026-11-27 show the cost. The IP12 PROM's delay divisor at physical `0x3809d4`
+and the INT2 timer writes at `0x1fb801f0` (chips `platforms/ip12/README.md`). The SHub 2 PROM's store to
+`0x3_8000` and the memory-test sequence around it (chips `devices/shub/shub2-memory-test.md`). The RTC year
+base each IRIX platform uses (chips `devices/ds1286/`, `devices/ds1685/`). Each took a hand trace of the
+binary. None of the tables the repositories carry could have answered them.
+
+"Done" here means *access-complete*, not "every function understood":
+
+1. Every held binary that touches hardware has machine-generated cross-reference tables: calls, every load and
+   store to a constant address with its width, value and routine, the constants a loaded value meets, and the
+   strings each routine references.
+2. Every register those tables reach has a graded contract: readers and writers, sequences, the values software
+   needs, side effects, reset value.
+3. Code that touches no hardware is credited by family or identical-code matching, or counted as named and
+   located and left out of scope.
+4. The existing Library search indexes the tables, so one query by address, register, routine or string finds
+   them.
+5. Every incoming question is recorded. A question the lookup could not answer adds the missing table column
+   or contract.
+
+## What exists
+
+### Cross-reference tables
+
+Exists:
+
+- `ReCallWalk` gives one record per call site: direct, constant, table or unresolved, with tail jumps.
+  `DumpCallEdges.java sites` writes them. Neither runs over a whole corpus, and nothing commits the output.
+- `ReAccessWalk` gives one record per load or store to a constant address outside the image, with physical
+  address, width, `load`/`store`/`rmw`, and `absolute` or `base+offset` addressing. `FindWindowStores.java`
+  writes them. Constant folding stops at a basic block boundary, which `ReBlockEval` keeps on purpose so a
+  walk loses an address rather than reporting a wrong one.
+- `re-run --ghidra-export` drives Ghidra headless in the pinned image, with hand function boundaries, a
+  work-bounded decompile budget and a run-twice check in CI.
+- `tools/facts.py` writes a symbolic fact sheet for one MIPS routine: stored values, immediates, branches,
+  exits, literals and `mmio`. It runs on demand, one routine at a time, and nothing tabulates it.
+- chips `tools/chips/scan.py` writes committed per-site register tables, `devices/<chip>/census/census-sites.tsv`
+  (13 chips, 8,051 rows). It is a path-sensitive data flow over objdump text, MIPS only, seeded per chip.
+- `tools/chips/callargs.py` finds the constant register numbers passed to named accessor routines
+  (`router_reg_read`), straight-line within one routine.
+- `tools/kona/ge_catalogue.py` writes kona `software/ucode/ge_xref.tsv` (1,100 rows), what reaches each
+  geometry-engine label. It is the only true cross-reference table in any repository. Its header cites a
+  path that is not where the script lives.
+- Partial call-site tables for one purpose each: sysco `console-messages.tsv` (calls of console sinks), kudzu
+  `panics.tsv`, `hwgraph-adds.tsv`, `tunable-sites.tsv` and `selectors.tsv`.
+
+Partial:
+
+- The inventory's `mmio.tsv` holds one row per register offset in a configured window, with a site count,
+  the first six functions and one example. It has no binary column and lists no sites. It reaches only the
+  windows a repository configured: chips configures seven (CRIME, RE, GBE, two MACE regions, Hub, HEART), so
+  Bridge, Xbow, IOC3, SHub, Bedrock, INT2 and HPC1 accesses are not counted. The linked IP27 kernel shows 5
+  access sites.
+- The hardening design ([re-toolchain-hardening.md](re-toolchain-hardening.md)) specifies a committed
+  `code.json` per PROM with call and device-access records and a device map per family,
+  `devices/address-map.toml`. Its fifth commit, the export, has not landed: it waits for the promkit Ghidra
+  loader. The `prom/promkit-code` branch writes a code file for a flat segment from Python, first for the
+  IP27 PROM.
+
+Missing:
+
+- Committed tables of any kind for most hardware binaries. No repository has a caller and callee table.
+- Stored values and their sources in a table.
+- The constants a loaded value is compared, masked or offset against.
+- Accesses made through an accessor routine whose address is an argument. Finding them takes either a named
+  accessor (`callargs.py`, `FindWindowStores` helper mode) or a hand read. The SHub 2 store is one: sixteen
+  stores go through one write-64 leaf.
+- Strings to routines, outside the console-sink and panic tables.
+- Any device map. No repository has `devices/address-map.toml`.
+
+### Register contracts
+
+Exists:
+
+- `registers.toml` per unit, loaded strictly by `tools/defs`. Every item is graded. A register carries
+  `reset`, `reset_grade`, `reset_from`, the `ro`, `w1c`, `cor` and `rsvd` masks, prose and decode vectors.
+  Counts at the heads above: chips 3,378 registers in 106 units, crime 384, voyager 362, kona 141, cobalt 68,
+  sysco 59, gr2 58, newport 50, odsy 48. kudzu's 12 units are formats with no registers.
+- The inventory grades each `mmio.tsv` and `spec-registers.tsv` row from the documents that mention it.
+
+Partial:
+
+- Readers and writers appear only as `mmio.tsv`'s six function names. Sequences and side effects are in prose
+  pages, written per question.
+- Across the register-type tables (`mmio`, `spec-registers`, `tokens`, `ucode`, sysco `io-registers`) there are
+  31,224 rows. sysco's `mmio.tsv` is 23,575 of them, and its 20,077 undocumented rows are 64% of the total, mostly L1 firmware
+  offsets in its own flash and SRAM repeated across releases. The other 7,649 rows are 72% understood, 20%
+  located, 6% named-only and 1% undocumented. These counts come from the 2026-11-27 access-gap measurement in
+  the evidence store.
+
+Missing:
+
+- A generated per-register list of who reads and writes, the values written and the constants compared.
+- A measure of how many access sites land on a register with a finished contract.
+- Any distinction between a device register and firmware's own memory, so firmware RAM and flash inflate the
+  register gap.
+
+### Generic code
+
+Exists: `code_sha` in `functions.tsv` (identical bytes across binaries), family blocks (`families.tsv`), the
+cross-workspace role check, the `scope` column with `out:N`, and the `no-software-dependency` status.
+
+Missing: a rule that puts a routine out of scope because it touches no hardware. Without a call graph the
+inventory cannot tell a string routine from a driver helper.
+
+### Library lookup
+
+Exists: Origami's Library searches source, documents and mail through one federated command and one MCP
+server. Its Code backend is Zoekt over configured git roots. Bounded reads return source lines around a hit,
+and failure to reach a backend is reported rather than read as an empty result.
+
+Missing: no RE repository is a Library root. No query understands that `0x3_8000`, `0x38000`,
+`0xa03809d4` and `0x3809d4` can name the same word. Zoekt skips the content of large files by default
+(2 MiB, to be confirmed on the pinned Zoekt build), and today's `functions.tsv` files are 2 to 60 MB
+(chips 15.8 MB, odsy 30 MB, kudzu 60 MB).
+
+### Questions
+
+Exists: every repository has `questions/README.md`, with routes tried, the next route and a route tag. An
+answered entry moves to its owning page and is deleted.
+
+Missing: a record of questions that were answered, and of which lookup would have answered them. A miss
+leaves no trace, so nothing tells the tooling which column to add.
+
+### Repositories with no inventory
+
+cobalt, gr2 and newport have no `generated/inventory/`, no root manifest and no inventory config. cobalt's
+binaries are x86 Windows drivers. gr2 and newport hold their inputs in the repository or not at all.
+
+## The design
+
+The design adds one export, one directory of tables per binary, one measure in the inventory, one device map
+per family, one search mode and one log. Each extends something that exists.
+
+### Tables
+
+Tables live in each RE repository under `generated/xref/` *(proposed name)*, one directory per distinct
+binary content, named by its install path as `binaries.tsv` writes it: `generated/xref/IP27/unix/`,
+`generated/xref/IP32/usr/cpu/sysgen/IP32boot/crime.a/crime_init.o/`. Firmware segments use the inventory's
+`l1.bin(l1#2)` key, with the parentheses kept. The files are TSV with a header row, like every other
+generated table, so a line search returns a whole fact.
+
+Addresses are written one way everywhere: lowercase hex, `0x` prefix, no underscores, no leading zeros. That
+form is what the search matches.
+
+`manifest.tsv` *(proposed name)* has one row per binary: `binary`, `sha256`, `arch`, `status` (`complete`,
+`partial` or `failed`, with the reason), `ghidra`, `retools`, the analysis options, and the row count of each
+table. `generated/xref/README.md` defines every column, as `generated/inventory/README.md` does for the
+inventory.
+
+Per binary:
+
+- `functions.tsv`: `entry`, `end`, `name`, `name_source`, `callers`, `callees`, `hardware`. `hardware` is
+  `access` for a routine with an access row, `calls-access` for its direct callers, empty otherwise. The
+  `callers` and `callees` cells list entry addresses, so a search for a routine's address finds its own row
+  and every row that calls it. Repeated searches walk a caller chain back to an entry point.
+- `sites.tsv`: one row per access and per call site inside a `hardware` routine, sorted by function and then
+  site. Columns: `function`, `site`, `kind` (`load`, `store`, `rmw`, `call`), `address` (as the code forms
+  it), `physical`, `width`, `value`, `uses`, `target`, `via`, `region`, `register`, `grade`. Reading the
+  lines after a hit gives the static order of accesses and calls in that routine, which answers "what follows".
+  - `value`, on a store: a constant, or where the value came from: `arg0`, `load@0xSITE`,
+    `ret(0xENTRY)`, or `?`.
+  - `uses`, on a load: the operations within the block that meet the loaded value with a constant, such as
+    `and 0xff`, `beq 0x3`, `add 0x7b2`, `sltiu 0x10`. This is where the 1970 year base and the
+    "compared after the read" answers show up.
+  - `target`, on a call: the callee entry and how it was resolved, from `ReCallWalk`.
+  - `via`, on an access found through an accessor: the call site and the accessor's entry.
+  - `region` and `register`: the device-map region and the register name, joined after export.
+- `strings.tsv`: `string`, `text`, `function`, `site`. One row per reference from code to a string.
+
+Two of the questions above would have been answered directly:
+
+- IP12: search `0x3809d4`. The `store` rows in the calibration routine and the `load` row in the delay
+  routine come back. The INT2 rows at `0x1fb801f0` show values `0x2`, `0x42`, `0x42` in one routine, in order.
+- SHub 2: search `0x38000`. The row in the port loader carries `via` with the write-64 leaf, `value`
+  `0x80000000000`, and the routine's following rows give the sequence. Its `functions.tsv` row gives callers
+  to walk back to the memory test.
+
+The RTC year base needs the `uses` column on the calendar loads, plus the function-scope values below,
+because the constant is formed in a different block from the read.
+
+### Producing them
+
+One Ghidra post-script, `ReXrefExport.java` *(proposed name)*, run by
+`re-run --ghidra-export OBJECT --xref DIR` *(proposed option)*. It writes JSON lines from the walks, and
+`ghidra-export.py finish` turns them into the TSVs. The Python step does the register join and the sorting,
+following the hardening design's pattern where Java writes records and Python writes the file. When the
+PROM code export lands it should read the same records rather than walk the program again, so `code.json`
+and the xref tables cannot disagree.
+
+Changes to the walks, each with a fixture in `mips_synthetic.py` and the IA-64 `synthetic.py`:
+
+1. `ReAccessWalk` gains `value` on stores and `uses` on loads, inside the block, graded `established`.
+2. A second pass follows values and addresses across blocks within one function, using Ghidra's
+   `SymbolicPropogator`, with no decompiler. Rows it adds or changes are graded `inferred`, and the `grade`
+   column says which pass produced them. Block-only stays the default for anything called `established`.
+3. Accessor propagation. A routine whose accesses take their address from an argument plus a constant is an
+   accessor. At every call of it, an argument that is constant at the call site gives a derived access row
+   with `via` set. Wrappers are followed to a fixed depth. The named-accessor lists in chips'
+   `call_census` configs seed it, so `callargs.py` becomes a check on the export, not a second source.
+4. A string walk: constants that point into a defined string, found with `ReBlockEval`, give `strings.tsv`
+   rows.
+
+Accesses whose base is computed at run time, such as the SHub node window built from a read of `V`, keep
+`address` as `base+0xOFFSET` with the base expression and get no `physical`. The inventory counts them as
+unplaced, so the limit stays visible.
+
+The run is per binary and incremental. `re-run --ghidra-export --xref-all` *(proposed option)* reads
+`generated/inventory/binaries.tsv`, keeps the hardware roles (`kernel`, `kernel-object`, `x-module`,
+`x-server`, GL `library`, `diagnostic`, `firmware`, `microcode` where a processor module exists), skips any
+binary whose manifest row already matches its sha256, the sgi-retools revision and the Ghidra version, and
+runs the rest one at a time under the image's memory cap. Committed tables use `--cpus 1`, the setting the
+hardening design reserves for a run-twice mismatch, so two runs give the same bytes. Kernel objects are
+skipped when the same board and release has a linked kernel held and every function in the object matches a
+kernel function by name and size. The manifest records them as `covered-by` that kernel.
+
+The binaries are not in the repositories and CI has no `root/`, so the tables are generated on a host that
+holds the inputs, like the inventory. CI checks what it can without them (below).
+
+Two cross-checks keep the export honest:
+
+- chips `census-sites.tsv` and inventory `mmio.tsv` sites are compared with `sites.tsv`. A site one finds and
+  the other misses is reported. This follows the rule that Ghidra reads and objdump-based tools check.
+- `facts.py` stays the per-routine reader for MIPS. Its stored values must agree with `value` on the rows they
+  share.
+
+Architectures: MIPS and IA-64 work in the walks today. ColdFire and m68k (sysco L1), ARM (kona L1, SN2 L1),
+PowerPC and x86 PE (cobalt) go through the same p-code walks. `RePhysical` needs a rule for each, and x86 adds
+port I/O (`in`, `out`) as an access with its own address space. Each architecture is enabled when its fixture
+passes.
+
+### Device maps
+
+The device map from the hardening design becomes the one place that says where each unit sits in a
+machine: `devices/address-map.toml`, or `devices/address-map.<family>.toml` where a repository covers several
+machines. Each region has a name, physical base, length, the `registers.toml` unit it maps (or none), a grade
+and a source. It also gets one more key, `kind` *(proposed name)*: `registers`, `ram`, `flash` or `rom`.
+
+`kind` separates firmware's own memory from device registers. Accesses to `ram`, `flash` and `rom` regions are
+still tabled, so "who writes RAM word `0x3809d4`" is answered. They need no register contract, and they are
+not counted in the register gap. We expect most of sysco's 20,077 undocumented rows to move there, once its map exists.
+
+The inventory's `windows` config already lists physical bases for some windows. Each repository moves those
+into the map once, and the inventory reads its windows from the map when one exists, so the two cannot
+drift.
+
+### Contracts and the coverage measure
+
+A register's contract is three things:
+
+1. Its `registers.toml` entry, graded, with a reset value or an `unknown` reset and its reason.
+2. Its generated software-use row in `generated/xref/registers.tsv` *(proposed name)*: unit, register,
+   readers and writers by binary and routine, distinct values written with counts, constants met after reads.
+   The inventory writes this from `sites.tsv` and the device map, so nobody types it.
+3. A documented entry at `understood` or `no-software-dependency` under the inventory's existing rules, which
+   states the side effects and the sequence software uses, or says none is seen.
+
+Parts 1 and 3 already exist. Part 2 is new, and it hands the entry writer the facts the question-answerers
+had to trace.
+
+`inventory.py` gains one table in `summary.tsv`, `accesses` *(proposed name)*, counting access sites in
+`sites.tsv`:
+
+- placed: the physical address falls in a device-map region
+- unplaced: no physical address, or no region covers it
+- on a register: placed in a `registers` region and inside a named register
+- with a contract: on a register whose contract is complete as above
+- memory: placed in a `ram`, `flash` or `rom` region.
+
+`pct_done` for `accesses` is sites with a contract over sites in `registers` regions. COVERAGE.md shows it
+beside the existing headline, with unplaced as its own number. A repository is access-complete when every
+hardware binary's manifest row is `complete` or carries a stated failure, unplaced is zero or every remaining
+site is listed with its reason, and `pct_done` for `accesses` is 100.
+
+The same pass applies the generic-code rule. A routine with an empty `hardware` cell in `functions.tsv` is
+counted as named and located, and is left out of the done ratio. Identical-code and family credit work as
+now. Generic routines stay in the tables, so a question about one still has rows to find.
+
+### Lookup
+
+In the Origami repository:
+
+- Each RE repository becomes a `git` root of Library Code, on its main branch, cloned without submodules.
+  Some RE repositories carry submodules of other projects, gr2 among them, and the index must not pick up a
+  submodule checkout. The indexer runs with submodule discovery off for these roots.
+- `generated/xref/` files are sharded so none passes 1 MiB *(proposed limit)*. The export splits a table at a
+  function boundary into numbered files. That keeps every file under Zoekt's content limit without raising it
+  for every root.
+- `tools/library-search` gains an address mode *(proposed name)*, `--address ADDR`, and the MCP search tool
+  takes the same parameter. It strips underscores, lowercases, drops leading zeros, and adds the physical
+  form of a kseg0, kseg1, xkphys or IA-64 uncached address. It searches `generated/` and the register maps with
+  a word-boundary pattern, so `0x38000` does not match `0x380000`.
+- Register names, routine names and string text need no new mode. They are plain text in the tables.
+
+A result line is a whole row. The existing bounded read returns the lines around it, which is how a reader
+follows a sequence or the next caller.
+
+A search that finds nothing proves nothing on its own. A negative answer ("no routine writes this word")
+needs three things: the binary's manifest row is `complete`, the Library reports the root indexed and
+healthy, and the answer names the walk's limits, such as block-only folding or run-time bases.
+
+RE repositories never mention the Library. The lookup log records the address or term, not the command.
+
+### Questions log
+
+Each RE repository gains `questions/lookups.tsv` *(proposed name)*, kept by hand, one row per question
+answered:
+
+| Column | Meaning |
+|---|---|
+| `date` | when it was answered |
+| `question` | the question in one line, in our words |
+| `class` | `writers`, `callers`, `sequence`, `read-use`, `string`, `contract` or `other` |
+| `term` | the address, register, routine or string that should find the answer |
+| `answer` | the page and anchor that holds the answer |
+| `result` | `lookup` (the tables answered it), `added-column`, `added-table`, `added-contract`, or `hand` |
+| `change` | the sgi-retools or repository commit that closed the miss |
+
+A `hand` row is a miss. It stays open until a change lets the lookup answer it, and then its `result`
+records which kind of change did it. The inventory checks each row with an address `term` against the
+repository's own `sites.tsv` and `strings.tsv`: a row marked `lookup` whose term no table holds fails. That
+check needs no Library and runs in CI. `summary.tsv` counts rows by `result`, so the trend of misses is
+visible.
+
+The asker is not recorded. The repositories are mirrored publicly, and the people and sessions that ask are
+not hardware facts.
+
+### CI
+
+The RE repositories' CI runs `defs/ci-check` in a plain container. It gains a pure-Python check of
+`generated/xref/`: column headers, address form, file sizes under the shard limit, every hardware binary in
+`binaries.tsv` present in `manifest.tsv` or listed as covered or excluded, and the `lookups.tsv` check. It
+reads files only and adds seconds.
+
+sgi-retools' `ghidra-check.yml` `re-scripts` job gains the new fixtures, including the run-twice comparison of
+`--xref` output. That is the only CI cost that grows with this design, and it grows by the fixtures, not by
+the corpus.
+
+Ghidra never runs on held binaries in CI. The corpus run is a host job, per binary and incremental.
+
+## Work units
+
+In order. Each unit lands as its own pull request in the repository named. Model choice follows the
+project's rule: Haiku for mechanical work, Sonnet for Ghidra, inventory and Library code and for review.
+
+1. **Measure.** sgi-retools, Sonnet, because it changes `ReAccessWalk` and needs reading Ghidra p-code. Add
+   `value` and `uses` to the walk with fixtures, add `ReXrefExport.java` and `--xref`, and run it on three
+   reference binaries: the linked IP27 kernel, the SHub 2 PROM and one libGLcore. Record rows, bytes and run
+   time per table. The IP27 kernel has 68,071 call instructions and 325,604 loads and stores among 960,044
+   instructions (objdump count), which suggests its `sites.tsv` alone may pass a few megabytes. The
+   measurement settles the shard limit and whether committing every release is affordable (see Risks).
+2. **Device maps.** One pull request per repository that has register maps, Haiku for the transcription from
+   the existing `windows` configs and register-map sources, marking unsure regions rather than guessing.
+   sgi-retools: the `tools/defs` loader for `address-map.toml` with `kind`, Sonnet. A Sonnet reviewer checks
+   each map against its cited sources, because a wrong base misplaces every site under it.
+3. **Function-scope values and accessors.** sgi-retools, Sonnet: the `SymbolicPropogator` pass, accessor
+   propagation seeded from `call_census`, the string walk. The fixtures include a value formed in one block
+   and stored in another, and a write through a leaf accessor.
+4. **Corpus driver.** sgi-retools, Sonnet: `--xref-all`, the manifest, kernel-object covering, the shard
+   writer, the register join in the finish step and the pure-Python CI check.
+5. **Generate.** Per repository, Haiku: run `--xref-all` on a host that holds the inputs, check the manifest,
+   commit `generated/xref/`. Start with chips, since today's questions came from it, then the rest. Failures go
+   back to unit 3 or 4 as tool fixes, never as hand edits to the tables.
+6. **Coverage.** sgi-retools `inventory.py`, Sonnet: the `accesses` summary table, `generated/xref/registers.tsv`,
+   the generic-code rule, windows from the device map, the census and `mmio.tsv` cross-check, and the
+   `lookups.tsv` check, all in `test_inventory.py`. Then a Haiku pin bump and inventory regeneration in every
+   repository.
+7. **Library.** Origami, Sonnet: RE repositories as Code roots with submodules off, the `--address` mode in
+   `tools/library-search` and the MCP tool, with tests. The address normalisation is the only new logic.
+8. **Backfill the log.** Per repository, Haiku: enter the questions answered so far, starting with the three
+   above, and confirm each `term` now finds its rows. A term that does not is a miss and goes to unit 3 or 6.
+9. **Contracts.** Per family, ranked by access-site count. Haiku drafts the mechanical part of each entry from
+   `registers.tsv` (readers, writers, values), marking anything unsure. Sonnet writes side effects and
+   sequences, and reviews the drafts against the rows. This continues until `accesses` reaches 100 in each
+   repository.
+10. **The three empty repositories.** cobalt, gr2 and newport, Haiku for the inventory config and root manifest,
+    Sonnet for the x86 port-I/O walk cobalt needs. They follow unit 6.
+
+Units 1 and 2 can run together. Unit 5 needs 1, 3 and 4. Unit 6 needs 2 and 5. Unit 7 needs 5 only. Units 8
+and 9 need 6 and 7.
+
+## Risks
+
+### Size
+
+One kernel's tables may run to several megabytes, and kudzu and chips hold many kernels across
+releases. Sharding keeps every file searchable, but the repository total and the public mirror still grow,
+and each sgi-retools change to the export rewrites the tables. Unit 1 measures it. If committing every
+release is too large, the fallback is full tables for the primary release of each board (6.5.30, and 6.5.22
+for boards it dropped), plus `sites.tsv` only for other releases. The owner decides that once the numbers
+exist.
+
+### Restricted source
+
+The tables are generated from shipped binaries only. They never read IRIX source, so
+they contain no source-derived facts. That keeps them readable by implementers and safe for the public
+mirrors under the rule that implementers read the RE repositories (Origami decision D-0038). Contract entries
+keep following that rule as they do now: facts in our own words, graded. Two things need a check:
+
+- Strings in shipped binaries can carry source file names and internal names. `strings.tsv` runs through
+  `leakcheck.py` with the repository's own term list before it is written. A string that fails keeps its
+  address and routine and has its text withheld.
+- Symbol names from shipped symbol tables are allowed in committed outputs (the hardening design's decision).
+  The decompiler-identifier denylist applies to `name`: a Ghidra placeholder name is never written.
+
+### Index exposure
+
+Indexing an RE repository with a vendor-source submodule checked out would put restricted
+text under a public root. The Library clones have no submodules, and indexing runs with submodule discovery
+off.
+
+### Wrong facts that look mechanical
+
+A wrong function boundary or a misread base gives a confident wrong row.
+Block-only folding stays `established`. Function-scope rows are `inferred`. The census cross-check reports
+disagreement. Run-time bases stay unplaced, never guessed.
+
+### Host load
+
+A full corpus run is heavy. It runs one binary at a time per repository under the Ghidra image's
+memory cap, with at most four repositories at once, and incrementally after the first pass.
+
+### CI time
+
+CI grows only by the sgi-retools fixtures and a file-reading check in each repository.
+
+## Open questions
+
+- The names marked *(proposed name)*.
+- Whether to commit tables for every held release, once unit 1 has measured sizes.
+- Whether `facts.py` should later write its MIPS stored values into `sites.tsv`, or stay a separate reader.
+- Whether the chips census tools retire once `sites.tsv` matches them on every chip, or stay as the check.
+
+## Out of scope
+
+- Understanding every function. Generic code stays named and located.
+- Emulator design. The tables describe the hardware and the software that drives it.
+- Physical hardware reads.
+- A new search service, index or viewer.
