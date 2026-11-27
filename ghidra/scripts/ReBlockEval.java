@@ -46,6 +46,11 @@ public final class ReBlockEval {
         default void call(Address site, Address direct, Val target) {}
         /** A BRANCH out of the function to the entry of another one. */
         default void tail(Address site, Address target) {}
+        /** An operation that meets a loaded value with a constant: op is and, or, xor, shl, shr, sar, add, sub, mul, eq, ne,
+         *  lt, le, gt, ge, ltu, leu, gtu or geu (value OP constant), loads the sites of the loads the value came from. */
+        default void use(Address site, String op, long constant, Set<Long> loads) {}
+        /** A constant a register or temporary was given or a read-only word held, for finding addresses of strings. */
+        default void constant(Address site, long value) {}
     }
 
     private static final Set<Long> NONE = Collections.emptySet();
@@ -279,9 +284,59 @@ public final class ReBlockEval {
         return new Val(a.known, a.partial, a.value & max, a.source, a.indexed, a.loads);
     }
 
+    private static final Map<Integer, String> USE_OPS = new HashMap<>();
+    static {
+        USE_OPS.put(PcodeOp.INT_AND, "and"); USE_OPS.put(PcodeOp.INT_OR, "or"); USE_OPS.put(PcodeOp.INT_XOR, "xor");
+        USE_OPS.put(PcodeOp.INT_LEFT, "shl"); USE_OPS.put(PcodeOp.INT_RIGHT, "shr"); USE_OPS.put(PcodeOp.INT_SRIGHT, "sar");
+        USE_OPS.put(PcodeOp.INT_ADD, "add"); USE_OPS.put(PcodeOp.INT_SUB, "sub"); USE_OPS.put(PcodeOp.INT_MULT, "mul");
+        USE_OPS.put(PcodeOp.INT_EQUAL, "eq"); USE_OPS.put(PcodeOp.INT_NOTEQUAL, "ne");
+        USE_OPS.put(PcodeOp.INT_LESS, "ltu"); USE_OPS.put(PcodeOp.INT_LESSEQUAL, "leu");
+        USE_OPS.put(PcodeOp.INT_SLESS, "lt"); USE_OPS.put(PcodeOp.INT_SLESSEQUAL, "le");
+    }
+    private static final Map<String, String> FLIP = Map.of("ltu", "gtu", "leu", "geu", "lt", "gt", "le", "ge");
+
+    // A loaded value (not a known one) met with a constant in one operation: the operation names the constant side.
+    private void reportUse(Address site, PcodeOp op, Val a, Val b, Listener l) {
+        String name = USE_OPS.get(op.getOpcode());
+        if (name == null || op.getNumInputs() != 2) return;
+        boolean constB = b.known && !a.known && !a.loads.isEmpty();
+        boolean constA = a.known && !b.known && !b.loads.isEmpty();
+        if (!constB && !constA) return;
+        Val loaded = constB ? a : b;
+        long c = constB ? b.value : a.value;
+        // A register move (x + 0, x | 0) is not a use.
+        if (c == 0 && (name.equals("add") || name.equals("sub") || name.equals("or") || name.equals("xor") || name.equals("shl")
+            || name.equals("shr") || name.equals("sar"))) return;
+        if (constA) {
+            if (name.equals("sub") || name.equals("shl") || name.equals("shr") || name.equals("sar")) return;  // constant OP value
+            if (FLIP.containsKey(name)) name = FLIP.get(name);
+        }
+        int size = op.getInput(constB ? 1 : 0).getSize();
+        if (name.equals("add") && size < 8 && (c & (1L << (8 * size - 1))) != 0) { name = "sub"; c = mask(-c, size); }
+        else if (name.equals("add") && size == 8 && c < 0) { name = "sub"; c = -c; }
+        l.use(site, name, c, loaded.loads);
+    }
+
+    // An addressing mode's own add: its temporary reaches a LOAD or STORE address in the same instruction, perhaps
+    // through copies. Not a use of the base.
+    private static boolean addressTemp(PcodeOp[] ops, PcodeOp op) {
+        Varnode out = op.getOutput();
+        if (out == null || !out.isUnique()) return false;
+        Set<Varnode> temps = new HashSet<>();
+        temps.add(out);
+        for (PcodeOp o : ops) {
+            int c = o.getOpcode();
+            if ((c == PcodeOp.COPY || c == PcodeOp.INT_ZEXT || c == PcodeOp.INT_SEXT || c == PcodeOp.SUBPIECE)
+                && temps.contains(o.getInput(0)) && o.getOutput().isUnique()) temps.add(o.getOutput());
+            else if ((c == PcodeOp.LOAD || c == PcodeOp.STORE) && temps.contains(o.getInput(1))) return true;
+        }
+        return false;
+    }
+
     private void step(Function f, Instruction in, Listener l) {
         boolean guarded = false;
-        for (PcodeOp op : in.getPcode(true)) {
+        PcodeOp[] ops = in.getPcode(true);
+        for (PcodeOp op : ops) {
             Address site = op.getSeqnum().getTarget();
             int opc = op.getOpcode();
             Varnode out = op.getOutput();
@@ -316,7 +371,7 @@ public final class ReBlockEval {
                 l.load(site, a, size);
                 long s = site.getOffset();
                 loadBlock.put(s, block);
-                Set<Long> loads = union(a.loads, Collections.singleton(s));
+                Set<Long> loads = Collections.singleton(s);  // where a pointer came from locates this word, it is not a source of it
                 Val v;
                 Address at = a.known ? addr(space, a.value) : null;
                 try {
@@ -330,13 +385,18 @@ public final class ReBlockEval {
                 } catch (Exception e) {
                     v = new Val(false, false, 0, -1, false, loads);
                 }
+                if (v.known) l.constant(site, v.value);
                 write(out, v, guarded);
                 continue;
             }
             if (out == null) continue;
             Val a = op.getNumInputs() > 0 ? read(op.getInput(0)) : UNKNOWN;
             Val b = op.getNumInputs() > 1 ? read(op.getInput(1)) : UNKNOWN;
-            write(out, fold(op, out.getSize(), a, b), guarded);
+            if (!addressTemp(ops, op)) reportUse(site, op, a, b, l);
+            Val r = fold(op, out.getSize(), a, b);
+            if (r.known && !guarded && (op.getInput(0).isConstant() || !(opc == PcodeOp.COPY || opc == PcodeOp.INT_ZEXT
+                || opc == PcodeOp.INT_SEXT || opc == PcodeOp.SUBPIECE))) l.constant(site, r.value);
+            write(out, r, guarded);
         }
     }
 }

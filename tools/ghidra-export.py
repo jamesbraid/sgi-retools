@@ -70,6 +70,10 @@ Options (after OBJECT, a path inside the workspace):
                                           it, at most 14G (a 12 MiB SHub 2 PROM completed at 2G).
                                           The container's memory cap is RE_GHIDRA_MEMORY (16g);
                                           raise it for a larger heap
+  --xref DIR                              write the cross-reference tables DIR/<install path>/functions.tsv,
+                                          sites.tsv and strings.tsv (ghidra/scripts/ReXrefExport.java; the
+                                          columns are in docs/designs/access-complete.md). The install path
+                                          is OBJECT without a leading root/. Needs no decompile option
   --no-analysis                           skip Ghidra's automatic analysis. Only what the import
                                           lays out (an SN2 PROM's entries, an ELF's symbols) and the
                                           functions asked for as @0xADDR are functions; use it to
@@ -307,6 +311,7 @@ def parser():
     p.add_argument('--gzip-elfs', action='store_true')
     p.add_argument('--timeout', type=int, default=3600)
     p.add_argument('--heap', metavar='SIZE')
+    p.add_argument('--xref', metavar='DIR')
     p.add_argument('--no-analysis', action='store_true')
     p.add_argument('--cpus', type=int, default=2)
     return p
@@ -402,8 +407,14 @@ def prepare(argv):
         except (OSError, EOFError) as error:
             die('cannot inflate %s: %s' % (args.object, error))
     exporting = bool(args.decompile_symbol or args.decompile_list or args.decompile_all or args.decompile_component)
-    if not exporting and not args.bsim_db:
-        die('name functions with --decompile-symbol, --decompile-component, --decompile-list or --decompile-all, or give --bsim-db')
+    if not exporting and not args.bsim_db and not args.xref:
+        die('name functions with --decompile-symbol, --decompile-component, --decompile-list or --decompile-all, or give --bsim-db or --xref')
+    xref = None
+    if args.xref:
+        install = pathlib.PurePosixPath(args.object).relative_to('root') if args.object.startswith('root/') else pathlib.PurePosixPath(args.object)
+        if '..' in install.parts or install.is_absolute():
+            die('--xref: %s has no install path inside the workspace' % args.object)
+        xref = str(pathlib.PurePosixPath(args.xref) / install)
     if args.bsim_label and not args.bsim_db:
         die('--bsim-label needs --bsim-db')
     if args.types and not exporting:
@@ -594,6 +605,8 @@ def prepare(argv):
         argv += ['-postScript', 'IA64Signatures.java'] + roots
     for script in post_scripts:
         argv += ['-postScript', script.name]
+    if xref:
+        argv += ['-postScript', 'ReXrefExport.java', str(job)]
     if exporting:
         argv += ['-postScript', 'ReDecompileExport.java', str(job)]
     if args.bsim_db:
@@ -615,7 +628,7 @@ def prepare(argv):
     (job / 'plan.json').write_text(json.dumps({
         'object': str(original), 'image_sha256': sha, 'language': language or 'default (from the %s header)' % header_kind,
         'compiler_spec_requested': spec, 'relocatable': relocatable, 'exporting': exporting,
-        'bsim': bool(args.bsim_db), 'mdebug_seeds': len(seeds), 'object_path': args.object,
+        'bsim': bool(args.bsim_db), 'xref': xref, 'mdebug_seeds': len(seeds), 'object_path': args.object,
         'flat': flat, 'dbg': args.dbg, 'pdb': args.pdb, 'returning': returning, 'retype_rules': rules,
         'pre_scripts': [str(s) for s in pre_scripts], 'post_scripts': [str(s) for s in post_scripts],
         'hand_functions': len(hand or [])}, indent=1) + '\n')
@@ -649,6 +662,54 @@ def log_warnings(path):
     return found
 
 
+XREF_TEXT_LIMIT = 200   # characters of a string kept in strings.tsv
+XREF_ESCAPES = {'\\': '\\\\', '\t': '\\t', '\n': '\\n', '\r': '\\r'}
+
+
+def xref_text(text):
+    out = ''.join(XREF_ESCAPES.get(c) or (c if c.isprintable() else '\\x%02x' % ord(c)) for c in text[:XREF_TEXT_LIMIT])
+    return out + ('...' if len(text) > XREF_TEXT_LIMIT else '')
+
+
+def write_xref(job, out, window):
+    """ReXrefExport's JSON lines as the three TSV tables of one binary, sorted, in the published address space."""
+    def rows(name):
+        path = job / name
+        return [json.loads(l) for l in path.read_text(encoding='utf-8').splitlines()] if path.is_file() else []
+
+    def pub(v):
+        n = int(v, 16)
+        return hex(n - window) if window and n & window == window else v
+
+    def target(t):
+        at, how = t.split(' ', 1)
+        return (at if at == '?' else pub(at)) + ' ' + how
+
+    def key(v):
+        return int(v, 16) if v else -1
+    out.mkdir(parents=True, exist_ok=True)
+    tables = {
+        'functions.tsv': (['entry', 'end', 'name', 'name_source', 'callers', 'callees', 'hardware'],
+            sorted(([pub(r['entry']), pub(r['end']), r['name'], r['name_source'], ','.join(pub(a) for a in r['callers']),
+                     ','.join(pub(a) for a in r['callees']), r['hardware']] for r in rows('xref-functions.jsonl')),
+                   key=lambda r: key(r[0]))),
+        'sites.tsv': (['function', 'site', 'kind', 'address', 'physical', 'width', 'value', 'uses', 'target', 'grade'],
+            sorted(([pub(r['function']), pub(r['site']), r['kind'], r.get('address', ''), r.get('physical', ''),
+                     str(r.get('width', '')), r.get('value', ''), ';'.join(r.get('uses', [])),
+                     target(r['target']) if 'target' in r else '', r['grade']]
+                    for r in rows('xref-sites.jsonl')),
+                   key=lambda r: (key(r[0]), key(r[1]), r[2] == 'call'))),
+        'strings.tsv': (['string', 'text', 'function', 'site'],
+            sorted(([pub(r['string']), xref_text(r['text']), pub(r['function']), pub(r['site'])]
+                    for r in rows('xref-strings.jsonl')), key=lambda r: (key(r[0]), key(r[2]), key(r[3])))),
+    }
+    for name, (header, body) in tables.items():
+        with open(out / name, 'w', encoding='utf-8', newline='\n') as f:
+            f.write('\t'.join(header) + '\n')
+            f.writelines('\t'.join(r) + '\n' for r in body)
+        print('ghidra-export: xref %s: %d rows' % (out / name, len(body)), file=sys.stderr)
+
+
 def finish(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument('--job', required=True)
@@ -661,7 +722,8 @@ def finish(argv):
     reported = ['ReHandFunctions.java> ', 'ReDbgImport.java> ', 'RePdbImport.java> ', 'ReReturning.java> ', 'ReFunctionTypes.java> ']
     reported += ['%s> ' % pathlib.Path(s).name for s in plan.get('pre_scripts', []) + plan.get('post_scripts', [])]
     for line in text.splitlines():
-        if 're-' in line and ('re-bsim:' in line or 're-decompile-export:' in line or 're-symbols:' in line or 're-gp:' in line):
+        if 're-' in line and ('re-bsim:' in line or 're-decompile-export:' in line or 're-symbols:' in line or 're-gp:' in line
+                              or 're-xref-export:' in line):
             print(line.split('> ', 1)[-1], file=sys.stderr)
         elif any(m in line for m in reported):
             print('ghidra-export: ' + line.split('> ', 1)[-1], file=sys.stderr)
@@ -718,6 +780,8 @@ def finish(argv):
             print('ghidra-export: no function matches %s' % name, file=sys.stderr)
             status = 1
         print(shown)
+    if plan.get('xref'):
+        write_xref(job, pathlib.Path(plan['xref']), (plan.get('flat') or {}).get('window', 0))
     if plan['bsim']:
         print('ghidra-export: BSim matches appended to the .matches.jsonl beside the database; '
               'a similarity is a lead, not a finding', file=sys.stderr)

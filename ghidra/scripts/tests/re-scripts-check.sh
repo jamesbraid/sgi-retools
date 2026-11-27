@@ -28,6 +28,7 @@ cp ghidra/scripts/*.java $T/FixtureSetup.java $T/WalkDump.java $T/BudgetProbe.ja
 run='proj=$(mktemp -d); cd /work
     go() {  # go NAME HELPER-ADDRESS HELPER-NAME IMPORT-ARGS...
         name=$1; at=$2; helper=$3; shift 3
+        mkdir -p /work/xref-$name
         analyzeHeadless "$proj" "$name" -import "$@" -noanalysis -scriptPath /work/scripts \
             -postScript FixtureSetup.java in/$name-functions.tsv $at \
             -postScript WalkDump.java /work/$name-calls.tsv /work/$name-accesses.tsv \
@@ -35,6 +36,7 @@ run='proj=$(mktemp -d); cd /work
             -postScript DumpCallEdges.java /work/$name-sites.tsv sites \
             -postScript FindWindowStores.java /work/$name-stores.tsv - \
             -postScript FindWindowStores.java /work/$name-helper.tsv "$helper" \
+            -postScript ReXrefExport.java /work/xref-$name \
             -deleteProject > /work/headless-$name.txt 2>&1
     }
     go mips 0xbfc00500 FUN_bfc00500 in/mips.bin -loader BinaryLoader -loader-baseAddr 0xbfc00000 -processor MIPS:BE:64:64-32addr
@@ -65,14 +67,16 @@ run='proj=$(mktemp -d); cd /work
         -postScript ReDecompileExport.java /work/export-ia64 -deleteProject > /work/headless-export-ia64.txt 2>&1'
 # Everything runs twice, each time in a fresh container and Ghidra project, and the two runs must agree.
 one() {  # one DIR
-    mkdir -p "$1/export" "$1/export-ia64"
+    mkdir -p "$1/export" "$1/export-ia64" "$1/xref-mips" "$1/xref-ia64"
     cid=$($engine create -w /work -e HOME=/tmp "$tag" bash -c "$run")
     $engine cp "$out/in" "$cid:/work/in"
     $engine cp "$out/scripts" "$cid:/work/scripts"
     $engine start -a "$cid" >/dev/null 2>&1 || true
     for f in mips-calls.tsv mips-accesses.tsv mips-edges.tsv mips-sites.tsv mips-stores.tsv mips-helper.tsv headless-mips.txt \
              ia64-calls.tsv ia64-accesses.tsv ia64-edges.tsv ia64-sites.tsv ia64-stores.tsv ia64-helper.tsv headless-ia64.txt \
-             budget1.tsv budget2.tsv hand.tsv headless-hand-drop.txt export/functions.jsonl export-ia64/functions.jsonl; do
+             budget1.tsv budget2.tsv hand.tsv headless-hand-drop.txt export/functions.jsonl export-ia64/functions.jsonl \
+             xref-mips/xref-functions.jsonl xref-mips/xref-sites.jsonl xref-mips/xref-strings.jsonl \
+             xref-ia64/xref-functions.jsonl xref-ia64/xref-sites.jsonl xref-ia64/xref-strings.jsonl; do
         $engine cp "$cid:/work/$f" "$1/$f" || { echo "FAIL: Ghidra wrote no $f"; $engine rm -f "$cid" >/dev/null 2>&1; exit 1; }
     done
     $engine rm -f "$cid" >/dev/null 2>&1
@@ -84,6 +88,7 @@ cp "$out"/in/*expected-*.tsv "$out/"
 status=0
 python3 $T/mips_synthetic.py check-walks "$out" mips- || status=1
 python3 $T/mips_synthetic.py check-walks "$out" ia64- || status=1
+python3 $T/mips_synthetic.py check-xref "$out/xref-mips" "" || status=1
 python3 $T/mips_synthetic.py check-budget "$out" || status=1
 python3 $T/mips_synthetic.py check-hand "$out" || status=1
 python3 $T/mips_synthetic.py check-names "$out/export/functions.jsonl" "$out/export-ia64/functions.jsonl" || status=1

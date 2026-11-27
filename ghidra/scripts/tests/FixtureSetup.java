@@ -1,5 +1,6 @@
 // Make the image read-only, as the PROM import does, and create a function at each address listed in a
 // file (one 0x... address a line), last entry first, so a routine that runs on into the next stops there.
+// A line "string 0x..." makes a string there instead.
 // With a second argument, the function there takes two 32-bit parameters, which -noanalysis would not infer.
 // Args: FUNCTIONS_FILE [TWO_PARAMETER_FUNCTION]
 // @category RE
@@ -21,9 +22,12 @@ public class FixtureSetup extends GhidraScript {
     protected void run() throws Exception {
         for (MemoryBlock b : currentProgram.getMemory().getBlocks()) b.setWrite(false);
         List<Long> entries = new ArrayList<>();
+        List<Long> strings = new ArrayList<>();
         for (String line : Files.readAllLines(Paths.get(getScriptArgs()[0]))) {
-            if (!line.trim().isEmpty()) entries.add(Long.decode(line.trim()));
+            if (line.startsWith("string ")) strings.add(Long.decode(line.substring(7).trim()));
+            else if (!line.trim().isEmpty()) entries.add(Long.decode(line.trim()));
         }
+        for (long a : strings) createAsciiString(toAddr(a));
         Collections.reverse(entries);
         for (long e : entries) {
             disassemble(toAddr(e));

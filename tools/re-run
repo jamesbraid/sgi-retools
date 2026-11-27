@@ -38,7 +38,8 @@
 # --param-type GLOB:INDEX:TYPE, --pre-script FILE, --post-script FILE (extra Ghidra scripts),
 # --bsim-db NAME --bsim-label LABEL --bsim-dir DIR --bsim-min S (similarity database, default
 # .cache/ghidra-bsim), --flat --load ADDR --header N --processor LANG --window ADDR (a raw image),
-# --sn2-prom, --sal-runtime (with --sn2-prom, also map the SAL runtime ELF), --timeout S, --cpus N,
+# --sn2-prom, --sal-runtime (with --sn2-prom, also map the SAL runtime ELF), --xref DIR (write cross-reference
+# tables under DIR; no decompile option needed), --timeout S, --cpus N,
 # --heap SIZE (Ghidra's Java heap; sized from the image for a flat one), --no-analysis (skip auto-analysis).
 # It builds both images. Decompiler and BSim output is navigation, not evidence.
 # retools/tools/ghidra-export.py has the full list.

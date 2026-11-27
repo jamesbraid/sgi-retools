@@ -710,7 +710,8 @@ def write_walk(out):
     with open(os.path.join(out, 'ia64-expected-calls.tsv'), 'w') as f:
         f.write(''.join('\t'.join((h(s), h(fn), h(t), k, '-', '0')) + '\n' for s, fn, t, k in sorted(calls)))
     with open(os.path.join(out, 'ia64-expected-accesses.tsv'), 'w') as f:
-        f.write(''.join('\t'.join((h(s), h(fn), h(a), h(phys(a)), str(w), o, 'absolute', '-', '-')) + '\n'
+        f.write(''.join('\t'.join((h(s), h(fn), h(a), h(phys(a)), str(w), o, 'absolute', '-', '-',
+                                   '?' if o == 'store' else '-', '-')) + '\n'
                         for s, fn, a, w, o in sorted(accesses)))
 
 

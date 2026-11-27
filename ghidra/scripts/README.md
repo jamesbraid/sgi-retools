@@ -177,6 +177,14 @@ plain jump to another function's entry is a tail record), and a branch into a de
 with the nearest earlier load of the same address and width whose value an operation changed; a pure copy is a
 load and a store. They never run the decompiler, so a function it fails on still gives its records.
 
+`ReAccessWalk` also gives a store its `value` (a constant, the loads in the block it came from, or `?`) and a load its
+`uses`: the constants the loaded value, or a value derived from it, meets in the same block (`and 0xff`, `eq 0x3`,
+`sub 0x7b2`, `ltu 0x10`, with the loaded value on the left; a word read through a loaded pointer is a new load, and an
+addressing mode's own add is not an `add`). `ReXrefExport` writes those records, the call graph
+and the references to defined strings as JSON lines, and `re-run --ghidra-export OBJECT --xref DIR` turns them into
+`DIR/<install path>/functions.tsv`, `sites.tsv` and `strings.tsv`. It needs no decompile option and never runs the
+decompiler. [docs/designs/access-complete.md](../../docs/designs/access-complete.md) defines the columns.
+
 `tests/re-scripts-check.sh` runs both, and compares the default output of `DumpCallEdges` and `FindWindowStores` with the goldens in `tests/golden/` (taken from the scripts before the walks were added: the same rows, with the access rows' first ten columns unchanged), on a MIPS image from `tests/mips_synthetic.py` and an IA-64 one from
 `ghidra/processors/ia64/tests/synthetic.py write-walk`, each built from hand-encoded words, and compares the
 records with what the generators built.

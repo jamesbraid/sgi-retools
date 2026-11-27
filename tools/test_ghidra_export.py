@@ -8,6 +8,7 @@ import importlib.util
 import io
 import json
 import os
+import pathlib
 import struct
 import tempfile
 import unittest
@@ -348,6 +349,62 @@ class PlanLanguage(unittest.TestCase):
         for blob in (elf32(3, '<'), elf32(ge.EM_ARM, '>'), elf32(ge.EM_MIPS, '<'), elf32(ge.EM_IA_64, '>')):
             with self.assertRaises(SystemExit):
                 self.plan(blob)
+
+
+class Xref(unittest.TestCase):
+    def test_xref_needs_no_decompile_option_and_names_the_install_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            job, os_dir = os.path.join(d, 'job'), os.path.join(d, 'root', 'IP27')
+            os.makedirs(job)
+            os.makedirs(os_dir)
+            old = os.getcwd()
+            os.chdir(d)
+            try:
+                open('root/IP27/unix', 'wb').write(elf32(ge.EM_MIPS, '>'))
+                ge.prepare(['--job', job, '--xref', 'generated/xref', 'root/IP27/unix'])
+            finally:
+                os.chdir(old)
+            plan = json.load(open(os.path.join(job, 'plan.json')))
+            script = open(os.path.join(job, 'ghidra.sh')).read()
+        self.assertEqual(plan['xref'], 'generated/xref/IP27/unix')
+        self.assertIn('-postScript ReXrefExport.java', script)
+        self.assertNotIn('ReDecompileExport', script)
+
+    def test_tables_are_sorted_in_the_published_address_space_with_escaped_text(self):
+        window = 0xc000000000000000
+        rows = {
+            'xref-functions.jsonl': [
+                {'entry': hex(window + 0x200), 'end': hex(window + 0x240), 'name': '', 'name_source': '', 'callers': [hex(window + 0x100)],
+                 'callees': [], 'hardware': 'access'},
+                {'entry': hex(window + 0x100), 'end': hex(window + 0x140), 'name': 'main', 'name_source': 'user',
+                 'callers': [], 'callees': [hex(window + 0x200)], 'hardware': 'calls-access'}],
+            'xref-sites.jsonl': [
+                {'function': hex(window + 0x100), 'site': hex(window + 0x110), 'kind': 'call',
+                 'target': hex(window + 0x200) + ' direct', 'grade': 'established'},
+                {'function': hex(window + 0x200), 'site': hex(window + 0x210), 'kind': 'rmw', 'address': '0xbf000040',
+                 'physical': '0x1f000040', 'width': 4, 'value': 'load@0x1', 'uses': ['or 0x1', 'eq 0x0'], 'grade': 'established'},
+                {'function': hex(window + 0x100), 'site': hex(window + 0x120), 'kind': 'call', 'target': '? unresolved',
+                 'grade': 'established'}],
+            'xref-strings.jsonl': [
+                {'string': hex(window + 0x300), 'text': 'a\tb\n\\' + 'x' * 300, 'function': hex(window + 0x100),
+                 'site': hex(window + 0x114)}]}
+        with tempfile.TemporaryDirectory() as d:
+            job, out = pathlib.Path(d) / 'job', pathlib.Path(d) / 'out'
+            job.mkdir()
+            for name, items in rows.items():
+                (job / name).write_text(''.join(json.dumps(r) + '\n' for r in items))
+            with contextlib.redirect_stderr(io.StringIO()):
+                ge.write_xref(job, out, window)
+            got = {n: (out / n).read_text().splitlines() for n in ('functions.tsv', 'sites.tsv', 'strings.tsv')}
+        self.assertEqual(got['functions.tsv'], ['entry\tend\tname\tname_source\tcallers\tcallees\thardware',
+                         '0x100\t0x140\tmain\tuser\t\t0x200\tcalls-access', '0x200\t0x240\t\t\t0x100\t\taccess'])
+        self.assertEqual(got['sites.tsv'][1:], ['0x100\t0x110\tcall\t\t\t\t\t\t0x200 direct\testablished',
+                         '0x100\t0x120\tcall\t\t\t\t\t\t? unresolved\testablished',
+                         '0x200\t0x210\trmw\t0xbf000040\t0x1f000040\t4\tload@0x1\tor 0x1;eq 0x0\t\testablished'])
+        text = got['strings.tsv'][1].split('\t')
+        self.assertEqual(text[0], '0x300')
+        self.assertEqual(text[1], 'a\\tb\\n\\\\' + 'x' * (ge.XREF_TEXT_LIMIT - 5) + '...')
+        self.assertEqual(text[2:], ['0x100', '0x114'])
 
 
 if __name__ == '__main__':

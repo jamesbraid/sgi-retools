@@ -21,7 +21,8 @@ public class WalkDump extends GhidraScript {
         try (PrintWriter out = new PrintWriter(a[1])) {
             for (ReAccessWalk.Access x : ReAccessWalk.walk(currentProgram, monitor))
                 out.println(hex(x.site) + "\t" + hex(x.function) + "\t0x" + Long.toHexString(x.address) + "\t0x" + Long.toHexString(x.physical) + "\t" + x.width
-                    + "\t" + x.op + "\t" + x.addressing + "\t" + hex(x.base) + "\t" + hex(x.loadSite));
+                    + "\t" + x.op + "\t" + x.addressing + "\t" + hex(x.base) + "\t" + hex(x.loadSite)
+                    + "\t" + (x.value.isEmpty() ? "-" : x.value) + "\t" + (x.uses.isEmpty() ? "-" : String.join(";", x.uses)));
         }
     }
 }
