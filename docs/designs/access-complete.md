@@ -1,12 +1,12 @@
 # Access-complete RE repositories: cross-reference tables, register contracts and lookup
 
 Status: direction approved, nothing built. `generated/xref/`, `--xref`, `--xref-all` and `questions/lookups.tsv`
-are adopted. Names still marked *(proposed name)* need the owner's choice.
+are adopted, as are the other names below.
 
 Read against sgi-retools `main` at `6cd5399` and the RE repositories at their 2026-11-27 heads: chips
 `abd0a17`, cobalt `add9b42`, crime `a3dadaf`, gr2 `8775b07`, kona `9472c6c`, kudzu `c9a5672`, newport
 `fb008fe`, odsy `96ee7d1`, sysco `43f80db`, voyager `b36b925`, plus gr4 on its `origami-re` branch at `b42c8ef`
-and stonewire at `46604d3`. All but stonewire pin sgi-retools at `6cd5399`. stonewire pins `b6db4a8`.
+and one private repository that this page does not name. All but the private one pin sgi-retools at `6cd5399`.
 
 Scope is every RE repository above and every IRIX release each one holds, not a primary release per board.
 Committing all of them is the pressure test of the design: if the tables, their size or their run time do not
@@ -59,9 +59,9 @@ Exists:
   work-bounded decompile budget and a run-twice check in CI.
 - `tools/facts.py` writes a symbolic fact sheet for one MIPS routine: stored values, immediates, branches,
   exits, literals and `mmio`. It runs on demand, one routine at a time, and nothing tabulates it.
-- chips `tools/chips/scan.py` writes committed per-site register tables, `devices/<chip>/census/census-sites.tsv`
-  (13 chips, 8,051 rows). It is a path-sensitive data flow over objdump text, MIPS only, seeded per chip.
-- `tools/chips/callargs.py` finds the constant register numbers passed to named accessor routines
+- sgi-retools `tools/chips/scan.py` writes committed per-site register tables, `devices/<chip>/census/census-sites.tsv`
+  (13 chips, 8,038 rows). It is a path-sensitive data flow over objdump text, MIPS only, seeded per chip.
+- sgi-retools `tools/chips/callargs.py` finds the constant register numbers passed to named accessor routines
   (`router_reg_read`), straight-line within one routine.
 - `tools/kona/ge_catalogue.py` writes kona `software/ucode/ge_xref.tsv` (1,100 rows), what reaches each
   geometry-engine label. It is the only true cross-reference table in any repository. Its header cites a
@@ -110,8 +110,7 @@ Partial:
 - Across the register-type tables (`mmio`, `spec-registers`, `tokens`, `ucode`, sysco `io-registers`) there are
   31,224 rows. sysco's `mmio.tsv` is 23,575 of them, and its 20,077 undocumented rows are 64% of the total, mostly L1 firmware
   offsets in its own flash and SRAM repeated across releases. The other 7,649 rows are 72% understood, 20%
-  located, 6% named-only and 1% undocumented. These counts come from the 2026-11-27 access-gap measurement in
-  the evidence store.
+  located, 6% named-only and 1% undocumented. These counts come from a measurement made on 2026-11-27.
 
 Missing:
 
@@ -147,8 +146,8 @@ leaves no trace, so nothing tells the tooling which column to add.
 
 cobalt, gr2 and newport have no `generated/inventory/`, no root manifest and no inventory config. cobalt's
 binaries are x86 Windows drivers. gr2 and newport hold their inputs in the repository or not at all. gr4's
-`origami-re` branch and stonewire have an inventory from an older sgi-retools, with no inventory README and
-no audits.
+`origami-re` branch and the private repository have an inventory from an older sgi-retools, with no inventory
+README and no audits.
 
 ## The design
 
@@ -170,10 +169,10 @@ canonical physical address, `0x3809d4`, so a search by either form finds the row
 in another form, such as `0x3_8000`, is not changed. The normalisation lives in the tables, not in a search
 service.
 
-No file passes 1 MiB *(proposed limit)*. The export splits a larger table at a function boundary into
+No file passes 1 MiB. The export splits a larger table at a function boundary into
 numbered files, so a code-search indexer reads every file in full.
 
-`manifest.tsv` *(proposed name)* has one row per binary: `binary`, `sha256`, `arch`, `status` (`complete`,
+`manifest.tsv` has one row per binary: `binary`, `sha256`, `arch`, `status` (`complete`,
 `partial` or `failed`, with the reason), `ghidra`, `retools`, the analysis options, and the row count of each
 table. `generated/xref/README.md` defines every column, as `generated/inventory/README.md` does for the
 inventory.
@@ -211,7 +210,7 @@ because the constant is formed in a different block from the read.
 
 ### Producing them
 
-One Ghidra post-script, `ReXrefExport.java` *(proposed name)*, run by
+One Ghidra post-script, `ReXrefExport.java`, run by
 `re-run --ghidra-export OBJECT --xref DIR`. It writes JSON lines from the walks, and
 `ghidra-export.py finish` turns them into the TSVs. The Python step does the register join and the sorting,
 following the hardening design's pattern where Java writes records and Python writes the file. When the
@@ -266,7 +265,7 @@ passes.
 The device map from the hardening design becomes the one place that says where each unit sits in a
 machine: `devices/address-map.toml`, or `devices/address-map.<family>.toml` where a repository covers several
 machines. Each region has a name, physical base, length, the `registers.toml` unit it maps (or none), a grade
-and a source. It also gets one more key, `kind` *(proposed name)*: `registers`, `ram`, `flash` or `rom`.
+and a source. It also gets one more key, `kind`: `registers`, `ram`, `flash` or `rom`.
 
 `kind` separates firmware's own memory from device registers. Accesses to `ram`, `flash` and `rom` regions are
 still tabled, so "who writes RAM word `0x3809d4`" is answered. They need no register contract, and they are
@@ -281,7 +280,7 @@ drift.
 A register's contract is three things:
 
 1. Its `registers.toml` entry, graded, with a reset value or an `unknown` reset and its reason.
-2. Its generated software-use row in `generated/xref/registers.tsv` *(proposed name)*: unit, register,
+2. Its generated software-use row in `generated/xref/registers.tsv`: unit, register,
    readers and writers by binary and routine, distinct values written with counts, constants met after reads.
    The inventory writes this from `sites.tsv` and the device map, so nobody types it.
 3. A documented entry at `understood` or `no-software-dependency` under the inventory's existing rules, which
@@ -290,7 +289,7 @@ A register's contract is three things:
 Parts 1 and 3 already exist. Part 2 is new, and it hands the entry writer the facts the question-answerers
 had to trace.
 
-`inventory.py` gains one table in `summary.tsv`, `accesses` *(proposed name)*, counting access sites in
+`inventory.py` gains one table in `summary.tsv`, `accesses`, counting access sites in
 `sites.tsv`:
 
 - placed: the physical address falls in a device-map region
@@ -351,7 +350,7 @@ not hardware facts.
 The RE repositories' CI runs `defs/ci-check` in a plain container. It gains a pure-Python check of
 `generated/xref/`: column headers, address form, file sizes under the shard limit, every hardware binary in
 `binaries.tsv` present in `manifest.tsv` or listed as covered or excluded, and the `lookups.tsv` check. It
-reads files only and adds seconds.
+reads files only. Its run time is measured in unit 1.
 
 sgi-retools' `ghidra-check.yml` `re-scripts` job gains the new fixtures, including the run-twice comparison of
 `--xref` output. That is the only CI cost that grows with this design, and it grows by the fixtures, not by
@@ -397,8 +396,8 @@ project's rule: Haiku for mechanical work, Sonnet for Ghidra and inventory code 
    sequences, and reviews the drafts against the rows. This continues until `accesses` reaches 100 in each
    repository.
 10. **The remaining repositories.** cobalt, gr2 and newport, Haiku for the inventory config and root manifest,
-    Sonnet for the x86 port-I/O walk cobalt needs. gr4 (`origami-re`) and stonewire, Haiku for the pin bump and
-    an inventory on the current sgi-retools. They follow unit 6.
+    Sonnet for the x86 port-I/O walk cobalt needs. gr4 (`origami-re`) and the private repository, Haiku for the pin
+    bump and an inventory on the current sgi-retools. They follow unit 6.
 
 Units 1 and 2 can run together. Unit 5 needs 1, 3 and 4. Unit 6 needs 2 and 5. Unit 7 needs 5 only. Units 8
 and 9 need 6.
@@ -417,7 +416,7 @@ a more compact call graph, rows shared between identical releases), not that rel
 
 The tables are generated from shipped binaries only. They never read IRIX source, so
 they contain no source-derived facts. That keeps them readable by implementers and safe for the public
-mirrors under the rule that implementers read the RE repositories (Origami decision D-0038). Contract entries
+mirrors, because the RE repositories are open to the people who implement from them. Contract entries
 keep following that rule as they do now: facts in our own words, graded. Two things need a check:
 
 - Strings in shipped binaries can carry source file names and internal names. `strings.tsv` runs through
@@ -449,7 +448,6 @@ CI grows only by the sgi-retools fixtures and a file-reading check in each repos
 
 ## Open questions
 
-- The names still marked *(proposed name)*.
 - Whether `facts.py` should later write its MIPS stored values into `sites.tsv`, or stay a separate reader.
 - When the chips census tools move from cross-check to CI or test check only, or retire.
 
