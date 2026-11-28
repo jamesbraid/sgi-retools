@@ -299,6 +299,11 @@ def gen(chip, spec):
         deprecated[(d.get('space', ''), int(d['offset'], 0))].append(d)
     used_aliases = set()
     taken = set()          # macros a row has already used
+
+    def own_name(sym):
+        # a source symbol that already starts with the chip name (hub_error_devenable) must not double it
+        n = ident(sym)
+        return n[len(P) + 1:] if n.startswith(P + '_') and len(n) > len(P) + 1 else n
     last = {}              # (space, offset) -> macro of the last register at that offset
     # The Hub keeps one register per offset, but its rows differ by index (an idx-0 read row, a node-alias store
     # row): the register's access is every kind any row at the offset saw, and each row's site counts stay in "from".
@@ -340,10 +345,10 @@ def gen(chip, spec):
         # than by the address of a pseudo-function. Other unnamed registers keep their bare offset.
         if space:
             prefix = '%s_%s' % (P, ident(space))
-            label = ident(given) if given else (ident(names[0]) if names else 'OFF_%06X' % off)
+            label = ident(given) if given else (own_name(names[0]) if names else 'OFF_%06X' % off)
         else:
             prefix = P
-            label = ident(given) if given else (ident(names[0]) if names else
+            label = ident(given) if given else (own_name(names[0]) if names else
                                                 ('REG_%06X' if pseudo_only else '%X') % off)
         row_audit = None if space else audited.get(r['offset'])
         if row_audit:

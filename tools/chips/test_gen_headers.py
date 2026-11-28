@@ -365,5 +365,26 @@ class HubAccessMerge(unittest.TestCase):
         self.assertIn('(w, indexed)', regs['pi_region_present']['from'])
 
 
+class UnitPrefixNotDoubled(unittest.TestCase):
+    def test_symbol_starting_with_the_chip_name_is_not_prefixed_twice(self):
+        old = os.getcwd()
+        self.addCleanup(os.chdir, old)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        os.chdir(tmp.name)
+        d = 'chips/hub/census/'
+        write(d + 'census.tsv', ROW, [['?', '0x4002c8', '0', '', 'r', '8', '0', '1', '1', 'ip27-unix'],
+                                      ['?', '0x20', '0', '', 'r', '8', '0', '1', '1', 'ip27-unix'],
+                                      ['?', '0x28', '0', 'HUB_GIVEN', 'r', '8', '0', '1', '1', 'ip27-unix']])
+        site = lambda fn, off: ['ip27-unix', fn, '0', 'ld', 'r', '8', off, '0', '?', 'direct']
+        write(d + 'census-sites.tsv', SITE, [site('hub_error_devenable', '0x4002c8'), site('get_slice', '0x20')])
+        write(d + 'fields.tsv', ['variant', 'register', 'kind', 'bits_or_value', 'source', 'sites'], [])
+        unit, _ = gen_headers.gen('hub', gen_headers.CHIPS['hub'])
+        self.assertIn('error_devenable', unit['registers'])
+        self.assertNotIn('hub_error_devenable', unit['registers'])
+        self.assertIn('get_slice', unit['registers'])
+        self.assertIn('hub_given', unit['registers'])       # an explicit name is the register's own
+
+
 if __name__ == '__main__':
     unittest.main()
