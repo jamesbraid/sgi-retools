@@ -151,12 +151,11 @@ def gen_rust(u, src):
 
 ALLOW_DOC_MARKDOWN = "#![allow(clippy::doc_markdown)]"     # register docs are source prose; names in it are not reliably findable
 RUSTFMT_SKIP = "#![cfg_attr(rustfmt, rustfmt_skip)]"      # module-level skip that stable rustfmt honours
-DEFAULT_CRATE = "hwdefs"
 
 
-def crate_name(name=None):
-    """The crate is named neutrally by default: a generated crate must not name its project."""
-    return re.sub(r"[^a-z0-9_-]", "-", (name or DEFAULT_CRATE).lower())
+def crate_name(name):
+    """The repo chooses the crate name; there is no default."""
+    return re.sub(r"[^a-z0-9_-]", "-", name.lower())
 
 
 def gen_cargo(name, label):

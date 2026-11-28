@@ -70,7 +70,7 @@ class ChecksTest(RepoTest):
         self.assertEqual(r.returncode, 0, r.stdout)
 
     def test_internal_profile_still_checks_the_public_rendering(self):
-        self.edit("defs/check.toml", "[project]", '[gen]\nprofile = "internal"\n\n[project]')
+        self.edit("defs/check.toml", "[gen]\n", '[gen]\nprofile = "internal"\n')
         self.edit("defs/uart.toml", 'from = "fixture notes (status page)"', 'from = "libfoo.so"')
         self.generate()
         self.assertEqual(self.check().returncode, 0)
@@ -83,8 +83,7 @@ class ChecksTest(RepoTest):
         self.assertIn("gen/rust/src/uart.rs", r.stdout)
         self.assertNotIn("gen/c/uart.h", r.stdout)       # C and docs may name the project
 
-    def test_crate_named_after_the_project_is_allowed_but_nothing_else(self):
-        self.edit("defs/check.toml", "[project]", '[gen]\nrust_crate = "mini-defs"\n\n[project]')
+    def test_configured_crate_name_is_allowed_but_nothing_else(self):
         self.generate()
         self.assertIn('name = "mini-defs"', self.read("gen/rust/Cargo.toml"))
         self.assertEqual(self.check().returncode, 0)
@@ -92,8 +91,10 @@ class ChecksTest(RepoTest):
         r = self.assert_fails("project name in generated Rust")
         self.assertIn("gen/rust/src/uart.rs", r.stdout)
 
-    def test_crate_name_is_chosen_not_derived_from_the_project(self):
-        self.assertIn('name = "hwdefs"', self.read("gen/rust/Cargo.toml"))
+    def test_crate_exemption_follows_the_configured_crate_not_the_project(self):
+        self.edit("defs/check.toml", 'rust_crate = "mini-defs"', 'rust_crate = "other-defs"')
+        self.edit("defs/uart.toml", 'doc = "Control register."', 'doc = "See the mini-defs crate."')
+        self.assert_fails("project name in generated Rust")
 
     def test_repo_specific_banned_rule(self):
         self.edit("defs/uart.toml", 'doc = "Control register."', 'doc = "calls mini_probe"')

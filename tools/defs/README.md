@@ -192,7 +192,7 @@ license = "BSD-3-Clause"            # SPDX id stamped on every generated file; t
 [gen]
 profile = "public"                  # or "internal": see Profiles
 forwarding = "on"                   # "off" stops writing forwarding headers
-rust_crate = "hwdefs"               # crate name; never derived from the project name
+rust_crate = "<repo>-defs"          # required: the repo names its generated crate
 
 [checks]
 address_bits = 14                   # a register may not lie beyond this address space
@@ -246,7 +246,7 @@ old name from `[c.aliases]`.
 2. Leaks. The built-in rules of the older form below (vendor paths, file and routine
    names, board tokens, binary offsets, tool names, ...) plus `[[banned.extra]]` are
    run over the public rendering of every generated file and over every
-   `devices/<unit>/helpers.h`. Generated Rust must not name the project, except in the crate name `<project>-defs`.
+   `devices/<unit>/helpers.h`. Generated Rust must not name the project, except in the configured `rust_crate` name.
 3. Prose: `[[claims]]`, vectors against `notes_corpus`, `no_addresses`, and (for a
    unit with registers) no register offset spelled out in `doc` text.
 4. Plugins.
@@ -402,7 +402,7 @@ setting for rust-regs (else the project in `[project]`) and the commit the sourc
 changes with every commit and the content it labels does not, so `defs-gen --check` and `defs-check`
 ignore it when they compare, and `defs-gen` leaves a file alone when only the commit differs. `defs-check`
 still requires the banner to be exactly that line, and the usual leak check runs over both profiles. The
-project name may appear nowhere else in the Rust but the crate name `<project>-defs`. `defs-check --build` compiles the C against a stand-in for
+project name may appear nowhere else in the Rust but the configured `rust_crate` name. `defs-check --build` compiles the C against a stand-in for
 the two macros, with a static assertion for each register offset and array stride, and, when `rustc` is
 present, parses each rust-regs file against a stand-in `regs!` that takes any tokens, which proves the file
 lexes and is one macro call.

@@ -49,13 +49,19 @@ class GenTest(RepoTest):
 
     def test_repo_setting_chooses_the_profile(self):
         self.edit("defs/uart.toml", 'from = "fixture notes (status page)"', 'from = "driver readings"')
-        self.edit("defs/check.toml", "[project]", '[gen]\nprofile = "internal"\n\n[project]')
+        self.edit("defs/check.toml", "[gen]\n", '[gen]\nprofile = "internal"\n')
         self.assertIn("driver readings", self.render()[1]["gen/docs/uart.md"])
 
-    def test_crate_name_default_and_setting(self):
-        self.assertIn('name = "hwdefs"', self.render()[1]["gen/rust/Cargo.toml"])
-        self.edit("defs/check.toml", "[project]", '[gen]\nrust_crate = "uart-regs"\n\n[project]')
+    def test_crate_name_is_required_and_set(self):
+        self.assertIn('name = "mini-defs"', self.render()[1]["gen/rust/Cargo.toml"])
+        self.edit("defs/check.toml", 'rust_crate = "mini-defs"', 'rust_crate = "uart-regs"')
         self.assertIn('name = "uart-regs"', self.render()[1]["gen/rust/Cargo.toml"])
+
+    def test_missing_rust_crate_is_an_error(self):
+        self.edit("defs/check.toml", 'rust_crate = "mini-defs"\n', "")
+        files, errors = gen.render(loader.load_repo(self.root))
+        self.assertNotIn("gen/rust/Cargo.toml", files)
+        self.assertTrue(any("rust_crate is not set" in e for e in errors), errors)
 
     def test_helpers_file_is_included_when_present(self):
         self.write("defs/uart_helpers.h", "#define UART_GET(w, f) (((w) >> UART_##f##_SHIFT) & UART_##f##_MASK)\n")
@@ -68,7 +74,7 @@ class GenTest(RepoTest):
         fwd = files["include/UART_DECODE.h"]
         self.assertIn('#include "../gen/c/uart.h"', fwd)
         self.assertIn("#define OLD_NAME", fwd)
-        self.edit("defs/check.toml", "[project]", '[gen]\nforwarding = "off"\n\n[project]')
+        self.edit("defs/check.toml", "[gen]\n", '[gen]\nforwarding = "off"\n')
         self.assertNotIn("include/UART_DECODE.h", self.render()[1])
 
     def test_write_then_check_is_fresh(self):

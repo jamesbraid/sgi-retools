@@ -75,7 +75,11 @@ def render(repo, profile=None):
     if repo.units:
         label = "devices/ and formats/" if new_layout else "defs/"
         cargo, lib = "%s/Cargo.toml" % lay.gen_dir("rust"), "%s/src/lib.rs" % lay.gen_dir("rust")
-        files[cargo] = st.apply(cargo, gen_rust.gen_cargo(repo.settings.get("gen", {}).get("rust_crate"), label))
+        crate = repo.settings.get("gen", {}).get("rust_crate")
+        if crate:
+            files[cargo] = st.apply(cargo, gen_rust.gen_cargo(crate, label))
+        else:
+            errors.append("[gen] rust_crate is not set: name the generated Rust crate, for example rust_crate = \"<repo>-defs\"")
         files[lib] = st.apply(lib, gen_rust.gen_lib(list(repo.units), label))
     exported, errs = gen_export.render_export(repo, models, gen_export.source_commit(repo.root))
     files.update({rel: st.apply(rel, text) for rel, text in exported.items()})

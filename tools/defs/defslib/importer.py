@@ -718,6 +718,7 @@ def import_repo(root, config_rel="defs.toml", frm=None, space_units=(), names=No
 def check_settings(cfg, res):
     """defs/check.toml: what defs.toml held, minus the header list."""
     out = {"project": {k: v for k, v in cfg.get("project", {}).items() if k in ("name", "plugin")}}
+    out["gen"] = {"rust_crate": "regs-defs"}      # a banned project name in the crate fails the leak check; rename by hand
     for sect in ("checks", "banned", "allowlists", "docs_scan"):
         if cfg.get(sect):
             out[sect] = copy.deepcopy(cfg[sect])

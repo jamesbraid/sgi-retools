@@ -1,3 +1,6 @@
+[gen]
+rust_crate = "mini-defs"
+
 [project]
 name = "mini"
 
